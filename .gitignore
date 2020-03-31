@@ -1,0 +1,15 @@
+.classpath
+.project
+.settings/
+.metadata/
+target/
+bin/
+.DS_Store
+*.ipr
+*.iws
+.idea
+*.iml
+atlassian-ide-plugin.xml
+~*
+*.swp
+Makefile.local
