@@ -2,11 +2,17 @@
 
 NATIVE_CMD=./Remux
 
-if [ [ -z "$1" ] -or [ "$1" = "--help" ] ] ; then
-	echo "Usage: $0 [file1] [file2] [etc]" >&2
-	exit 2
-fi
+function helptext() {
+	echo "Usage: $0 [file1] [file2] [etc]"
+}
 
+if [ -z "$1" ] ; then
+	helptext
+	exit 1
+elif [ "$1" = "--help" ] ; then
+	helptext
+	exit 0
+fi
 
 while [ -n "$1" ]
 do
