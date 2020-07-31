@@ -1,12 +1,12 @@
-import java.io.*;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 public class Remux
 {
@@ -17,59 +17,40 @@ public class Remux
 	{
 		final File inputFile = new File(args[0]);
 
-		final File parsedFile = new File(inputFile.getParent(), inputFile.getName() + ".txt");
-
-		final List<String> ubvinfoOutput;
-		if (parsedFile.exists())
+		final List<UbvPartition> partitions;
 		{
-			// ubvinfo parse output already available
-			ubvinfoOutput = Files.readAllLines(parsedFile.toPath());
-		}
-		else
-		{
-			ubvinfoOutput = ubvinfo(inputFile);
-		}
+			final File parsedFile = new File(inputFile.getParent(), inputFile.getName() + ".txt");
 
-		final int partitions = (int) ubvinfoOutput
-				                             .stream()
-				                             .filter(s -> s.equals("----------- PARTITION START -----------"))
-				                             .count();
-
-		if (partitions != 1)
-			throw new IllegalArgumentException(
-					"Input file contains multiple partitions, code does not currently handle this (discontinuities). Partition found: " +
-					partitions);
-
-
-		// TODO detect multiple partitions and create multiple output files
-
-		final File h264Stream = new File(inputFile.getParent(), inputFile.getName() + ".h264");
-
-		List<int[]> frames = new ArrayList<>();
-		boolean firstLine = true;
-		for (String line : ubvinfoOutput)
-		{
-			if (firstLine)
+			if (parsedFile.exists())
 			{
-				firstLine = false;
+				System.out.println("Cached ubnt_ubvinfo is available, using that instead of invoking ubnt_ubvinfo locally");
+				// ubvinfo parse output already available
+				partitions = UbvInfoParser.parse(Files.lines(parsedFile.toPath()));
 			}
 			else
 			{
-				if (Character.isWhitespace(line.charAt(0)))
-				{
-					String[] fields = line.split(" +", 7);
-
-					final int[] data = {Integer.parseInt(fields[4]), Integer.parseInt(fields[5])};
-					frames.add(data);
-				}
+				System.out.println("Invoking ubnt_ubvinfo on local machine...");
+				Stream<String> ubvinfoOutput = ubvinfo(inputFile);
+				partitions = UbvInfoParser.parse(ubvinfoOutput);
 			}
 		}
 
-		extractPrimitiveVideoStream(inputFile, h264Stream, frames);
+		System.out.println("Frame info parsed, extracting video frames...");
+
+		final boolean multipartition = partitions.size() > 1;
+
+		for (UbvPartition partition : partitions)
+		{
+			final String outputBasename = (multipartition) ? (inputFile.getName() + ".p" + partition.index) : inputFile.getName();
+
+			final File h264Stream = new File(inputFile.getParent(), outputBasename + ".h264");
+
+			extractPrimitiveVideoStream(inputFile, h264Stream, partition.frames);
+		}
 	}
 
 
-	private static List<String> ubvinfo(final File inputFile) throws IOException, InterruptedException
+	private static Stream<String> ubvinfo(final File inputFile) throws IOException, InterruptedException
 	{
 		// Write ubvinfo to a temporary file
 		File tempFile = null;
@@ -91,7 +72,7 @@ public class Remux
 			if (process.exitValue() != 0)
 				throw new IllegalArgumentException("ubvinfo failed!");
 
-			return Files.readAllLines(tempFile.toPath());
+			return Files.lines(tempFile.toPath());
 		}
 		finally
 		{
@@ -103,7 +84,7 @@ public class Remux
 
 	private static int extractPrimitiveVideoStream(final File inputFile,
 	                                               final File h264Stream,
-	                                               final List<int[]> frames) throws IOException
+	                                               final List<FrameDataRef> frames) throws IOException
 	{
 		final boolean video = true;
 
@@ -119,10 +100,10 @@ public class Remux
 				{
 					try (FileChannel oc = fos.getChannel())
 					{
-						for (int[] offsetAndLength : frames)
+						for (FrameDataRef dataref : frames)
 						{
-							final int frameOffset = offsetAndLength[0];
-							final int frameLength = offsetAndLength[1];
+							final int frameOffset = dataref.offset;
+							final int frameLength = dataref.size;
 
 							// TODO for video: process NALs (ubv format uses length prefixes rather than NAL separators)
 							// TODO for audio: simply extract the raw data
