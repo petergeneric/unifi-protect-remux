@@ -37,16 +37,20 @@ public class Remux
 
 		System.out.println("Frame info parsed, extracting video frames...");
 
-		final boolean multipartition = partitions.size() > 1;
-
 		for (UbvPartition partition : partitions)
 		{
-			final String outputBasename = (multipartition) ? (inputFile.getName() + ".p" + partition.index) : inputFile.getName();
+			final File videoOutput = new File(inputFile.getParent(), getOutputFilename(inputFile, partition));
 
-			final File h264Stream = new File(inputFile.getParent(), outputBasename + ".h264");
+			System.out.println("Extracting video starting at " + partition.firstFrameTimecode + " to " + videoOutput);
 
-			extractPrimitiveVideoStream(inputFile, h264Stream, partition.frames);
+			extractPrimitiveVideoStream(inputFile, videoOutput, partition.frames);
 		}
+	}
+
+
+	private static String getOutputFilename(final File inputFile, final UbvPartition partition)
+	{
+		return inputFile.getName() + "." + partition.firstFrameTimecode.toString().replaceAll("[:+]", ".") + ".h264";
 	}
 
 
@@ -63,14 +67,10 @@ public class Remux
 			pb.redirectOutput(tempFile);
 			Process process = pb.start();
 
-			long timeout = System.currentTimeMillis() + MAX_UBVINFO_RUNTIME; // Wait 2 minutes at most
-			while (process.isAlive() && System.currentTimeMillis() > timeout)
-			{
-				Thread.sleep(1000);
-			}
+			final int exitCode = process.waitFor();
 
-			if (process.exitValue() != 0)
-				throw new IllegalArgumentException("ubvinfo failed!");
+			if (exitCode != 0)
+				throw new IllegalArgumentException("ubvinfo failed with code " + exitCode);
 
 			return Files.lines(tempFile.toPath());
 		}
@@ -105,7 +105,6 @@ public class Remux
 							final int frameOffset = dataref.offset;
 							final int frameLength = dataref.size;
 
-							// TODO for video: process NALs (ubv format uses length prefixes rather than NAL separators)
 							// TODO for audio: simply extract the raw data
 							if (video)
 							{
