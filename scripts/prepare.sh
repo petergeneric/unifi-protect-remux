@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# This script is designed to prepare a .txt file with .ubv structure info on a CloudKey Gen2
+# to allow the execution of remux.sh on another machine (e.g. with more IO and with FFmpeg available)
+#
+
 if [ -z "$UBVINFO" ] ; then
 	UBVINFO=/usr/share/unifi-protect/app/node_modules/.bin/ubnt_ubvinfo
 fi
