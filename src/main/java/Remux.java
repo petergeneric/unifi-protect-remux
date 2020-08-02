@@ -62,7 +62,12 @@ public class Remux
 		{
 			tempFile = File.createTempFile("ubv", ".txt");
 
-			ProcessBuilder pb = new ProcessBuilder("ubnt_ubvinfo", "-t", "7", "-P", "-f", inputFile.getAbsolutePath());
+			final File cloudkeyBinaryLocation = new File("/usr/share/unifi-protect/app/node_modules/.bin/ubnt_ubvinfo");
+
+			// If possible, use the ubnt_ubvinfo under /usr/share. If not present, assume ubnt_ubvinfo is on PATH
+			final String binary = cloudkeyBinaryLocation.exists() ? cloudkeyBinaryLocation.getPath() : "ubnt_ubvinfo";
+
+			ProcessBuilder pb = new ProcessBuilder(binary, "-t", "7", "-P", "-f", inputFile.getAbsolutePath());
 			pb.redirectError(new File("/dev/null")); // Discard error
 			pb.redirectOutput(tempFile);
 			Process process = pb.start();
