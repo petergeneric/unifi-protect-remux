@@ -8,4 +8,4 @@ package: clean
 	
 # Uses GraalVM's native-image tool to produce a native binary
 native-image: package
-	native-image --no-fallback -cp target/*.jar Remux
+	native-image --no-fallback -cp target/*.jar com.peterphi.unifiprotect.remux.Remux

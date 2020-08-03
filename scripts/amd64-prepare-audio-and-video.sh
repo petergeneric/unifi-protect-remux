@@ -25,7 +25,7 @@ fi
 
 while [ -n "$1" ]
 do
-	$UBVINFO -t 7 -P -f "$1" > "$1.txt"
+	$UBVINFO -P -f "$1" > "$1.txt"
 	if [ "$?" != "0" ] ; then
 		echo "ubnt_ubvinfo invocation failed!" >&2
 		exit 1

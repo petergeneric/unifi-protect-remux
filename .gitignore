@@ -13,3 +13,4 @@ atlassian-ide-plugin.xml
 ~*
 *.swp
 Makefile.local
+src/test/java/ManualProgramInvocation.java
