@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 	"ubvremux/demux"
@@ -15,6 +14,7 @@ import (
 
 // Set at build time (see Makefile) with release tag (for release versions)
 var ReleaseVersion string
+
 // Set at build time (see Makefile) with git rev
 var GitCommit string
 
@@ -63,17 +63,18 @@ func main() {
 // Takes parsed commandline args and performs the remux tasks across the set of input files
 func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate int, createMP4 bool, outputFolder string) {
 	for _, ubvFile := range files {
+		log.Println("Analysing ", ubvFile)
 		info := ubv.Analyse(ubvFile, extractAudio)
 
-		log.Printf("\n\n*** Parsing complete! ***\n\n")
-		log.Printf("Number of partitions: %d", len(info.Partitions))
-
+		log.Printf("\n\nAnalysis complete!\n")
 		if len(info.Partitions) > 0 {
 			log.Printf("First Partition:")
 			log.Printf("\tTracks: %d", len(info.Partitions[0].Tracks))
 			log.Printf("\tFrames: %d", len(info.Partitions[0].Frames))
 			log.Printf("\tStart Timecode: %s", info.Partitions[0].Tracks[7].StartTimecode.Format(time.RFC3339))
 		}
+
+		log.Printf("\n\nExtracting %d partitions", len(info.Partitions))
 
 		// Optionally apply the user's forced framerate
 		if forceRate > 0 {
@@ -98,14 +99,11 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 					outputFolder = path.Dir(info.Filename)
 				}
 
-				// TODO generate a base filename that contains the start timecode?
-				basename := outputFolder + "/" + strings.TrimSuffix(path.Base(ubvFile), path.Ext(ubvFile))
+				// Strip the unixtime from the filename, we'll replace with the start timecode of the partition
+				baseFilename := strings.TrimSuffix(path.Base(ubvFile), path.Ext(ubvFile))
+				baseFilename = baseFilename[0:strings.LastIndex(baseFilename, "_")]
 
-				// For multi-partition files, generate a file per partition
-				// For single-partition files, we just use the simple output filename
-				if len(info.Partitions) > 1 {
-					basename = basename + "_p" + strconv.Itoa(partition.Index)
-				}
+				basename := outputFolder + "/" + baseFilename + "_" + getStartTimecode(partition).Format(time.RFC3339)
 
 				if extractVideo && partition.VideoTrackCount > 0 {
 					videoFile = basename + ".h264"
@@ -123,10 +121,10 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 			demux.DemuxSinglePartitionToNewFiles(ubvFile, videoFile, audioFile, partition)
 
 			if createMP4 {
-				log.Println("Generating MP4 ", mp4, " from ", videoFile, " and ", audioFile)
+				log.Println("\nWriting MP4 ", mp4, "...")
 
 				// Spawn FFmpeg to remux
-				// TODO: if we do a little parsing of the bitstream we could create an MP4 and reduce write amplification
+				// TODO: could we generate an MP4 directly? Would require some analysis of the input bitstreams to build MOOV
 				ffmpegutil.MuxAudioAndVideo(partition, videoFile, audioFile, mp4)
 
 				// Delete
@@ -143,4 +141,15 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 			}
 		}
 	}
+}
+
+func getStartTimecode(partition *ubv.UbvPartition) time.Time {
+	for _, track := range partition.Tracks {
+		if partition.VideoTrackCount == 0 || track.IsVideo {
+			return track.StartTimecode
+		}
+	}
+
+	// No start timecode available at all! Return the time of demux as a failsafe
+	return time.Now()
 }

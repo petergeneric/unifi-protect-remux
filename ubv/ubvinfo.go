@@ -124,7 +124,6 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 		if firstLine {
 			firstLine = false
 		} else if line == "----------- PARTITION START -----------" {
-			log.Printf("New partition")
 			// Start a new partition
 			current = &UbvPartition{
 				Index:  len(partitions),

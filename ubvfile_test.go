@@ -10,7 +10,7 @@ import (
 func TestCopyFrames(t *testing.T) {
 	ubvFile := "samples/FCECDA1F0A63_0_rotating_1597425468956.ubv"
 
-	info := ubv.Analyse(ubvFile)
+	info := ubv.Analyse(ubvFile, true)
 
 	log.Printf("\n\n*** Parsing complete! ***\n\n")
 	log.Printf("Number of partitions: %d", len(info.Partitions))
@@ -22,7 +22,8 @@ func TestCopyFrames(t *testing.T) {
 		log.Printf("Start Timecode: %s", info.Partitions[0].Tracks[7].StartTimecode.Format(time.RFC3339))
 	}
 
+	//
 	//demux.DemuxSinglePartitionToNewFiles(info.Filename, "/tmp/video.h264", "/tmp/audio.aac", info.Partitions[0])
 
-	t.Log("Test complete")
+	t.Log("Analysis completed")
 }
