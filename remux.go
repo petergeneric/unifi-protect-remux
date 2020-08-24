@@ -22,7 +22,7 @@ var GitCommit string
 func main() {
 	includeAudioPtr := flag.Bool("with-audio", false, "If true, extract audio")
 	includeVideoPtr := flag.Bool("with-video", true, "If true, extract video")
-	forceRatePtr := flag.Int("force-rate", 0, "If non-zero, forces a particular video framerate")
+	forceRatePtr := flag.Int("force-rate", 0, "If non-zero, adds a -r argument to FFmpeg invocations")
 	outputFolder := flag.String("output-folder", "./", "The path to output remuxed files to. \"SRC-FOLDER\" to put alongside .ubv files")
 	remuxPtr := flag.Bool("mp4", true, "If true, will create an MP4 as output")
 	versionPtr := flag.Bool("version", false, "Display version and quit")

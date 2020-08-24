@@ -67,7 +67,7 @@ A helper script is provided for this:
 BUILD FROM SOURCE
 =================
 
-Simply run "make package" to comple
+Simply run "make package" to compile
 
 
 DEPENDENCIES
