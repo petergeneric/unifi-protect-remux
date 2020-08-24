@@ -12,10 +12,13 @@ import (
 )
 
 const (
-	UBVINFO_INSTALL_LOCATION = "/usr/share/unifi-protect/app/node_modules/.bin/ubnt_ubvinfo"
+	// The string to use to find ubnt_ubvinfo if it's on the path
+	ubntUbvInfoPath1 = "ubnt_ubvinfo"
+	// The path to ubnt_ubvinfo on a Protect installation
+	ubntUbvInfoPath2 = "/usr/share/unifi-protect/app/node_modules/.bin/ubnt_ubvinfo"
 )
 
-// Analyse a .ubv file
+// Analyse a .ubv file (picking between ubnt_ubvinfo or a pre-prepared .txt file as appropriate)
 func Analyse(ubvFile string, includeAudio bool) UbvFile {
 	cachedUbvInfoFile := ubvFile + ".txt"
 
@@ -28,46 +31,47 @@ func Analyse(ubvFile string, includeAudio bool) UbvFile {
 	}
 }
 
-func runUbvInfo(ubvFile string, includeAudio bool) UbvFile {
-	var cmd string
+// Looks for ubnt_ubvinfo on the path and in the default Protect install location
+func getUbvInfoCommand() string {
+	paths := [...]string{ubntUbvInfoPath1, ubntUbvInfoPath2}
 
-	if _, err := exec.LookPath("ubnt_ubvinfo"); err != nil {
-		// ubnt_ubvinfo not in the user's PATH; check if it's in the Ubiquiti shipped path
-
-		if _, err := os.Stat(UBVINFO_INSTALL_LOCATION); err != nil {
-			log.Fatal("ubnt_ubvinfo not on PATH, nor in default location ", UBVINFO_INSTALL_LOCATION)
-		} else {
-			cmd = UBVINFO_INSTALL_LOCATION
+	for _, path := range paths {
+		if _, err := exec.LookPath(path); err == nil {
+			return path
 		}
-	} else {
-		cmd = "ubnt_ubvinfo"
 	}
 
-	return runUbvInfoCommand(cmd, ubvFile, includeAudio)
+	log.Fatal("ubnt_ubvinfo not on PATH, nor in any default search locations!")
+
+	// Keep compiler happy (log.Fatal dies)
+	return paths[0]
 }
 
-func runUbvInfoCommand(commandPath string, ubvFile string, includeAudio bool) UbvFile {
-	cmd := exec.Command(commandPath, "-P", "-f", ubvFile)
+func runUbvInfo(ubvFile string, includeAudio bool) UbvFile {
+	ubntUbvinfo := getUbvInfoCommand()
+	cmd := exec.Command(ubntUbvinfo, "-P", "-f", ubvFile)
 
 	// Optimise video-only extraction to speed ubnt_ubvinfo part of process
 	if !includeAudio {
-		cmd = exec.Command(commandPath, "-t", "7", "-P", "-f", ubvFile)
+		cmd = exec.Command(ubntUbvinfo, "-t", "7", "-P", "-f", ubvFile)
 	}
-
-	cmdReader, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Fatal("Error creating StdoutPipe for Cmd: ", err)
-	}
-
-	scanner := bufio.NewScanner(cmdReader)
 
 	// Parse stdout in the background
 	var info UbvFile
-	go func() {
-		info = parseUbvInfo(ubvFile, scanner)
-	}()
+	{
+		cmdReader, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Fatal("Error creating StdoutPipe for Cmd: ", err)
+		}
 
-	err = cmd.Start()
+		scanner := bufio.NewScanner(cmdReader)
+
+		go func() {
+			info = parseUbvInfo(ubvFile, scanner)
+		}()
+	}
+
+	err := cmd.Start()
 	if err != nil {
 		log.Fatal("ubnt_ubvinfo command failed against ", ubvFile, ": ", err)
 	}
@@ -105,7 +109,12 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 
 	var firstLine bool
 	var partitions []*UbvPartition
-	var current *UbvPartition
+
+	// N.B. the initial "current" will be erased almost immediate, this is here to keep the compiler happy about possible nil deref
+	var current = &UbvPartition{
+		Index:  0,
+		Tracks: make(map[int]*UbvTrack),
+	}
 
 	firstLine = true
 
