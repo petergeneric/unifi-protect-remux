@@ -13,12 +13,16 @@ import (
 	"ubvremux/ubv"
 )
 
+// Set at build time (see Makefile) with release tag (for release versions)
 var ReleaseVersion string
+// Set at build time (see Makefile) with git rev
 var GitCommit string
 
+// Parses and validates commandline options and passes them to RemuxCLI
 func main() {
 	includeAudioPtr := flag.Bool("with-audio", false, "If true, extract audio")
 	includeVideoPtr := flag.Bool("with-video", true, "If true, extract video")
+	forceRatePtr := flag.Int("force-rate", 0, "If non-zero, forces a particular video framerate")
 	outputFolder := flag.String("output-folder", "./", "The path to output remuxed files to. \"SRC-FOLDER\" to put alongside .ubv files")
 	remuxPtr := flag.Bool("mp4", true, "If true, will create an MP4 as output")
 	versionPtr := flag.Bool("version", false, "Display version and quit")
@@ -53,8 +57,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, ubvFile := range flag.Args() {
-		info := ubv.Analyse(ubvFile, *includeAudioPtr)
+	RemuxCLI(flag.Args(), *includeAudioPtr, *includeVideoPtr, *forceRatePtr, *remuxPtr, *outputFolder)
+}
+
+// Takes parsed commandline args and performs the remux tasks across the set of input files
+func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate int, createMP4 bool, outputFolder string) {
+	for _, ubvFile := range files {
+		info := ubv.Analyse(ubvFile, extractAudio)
 
 		log.Printf("\n\n*** Parsing complete! ***\n\n")
 		log.Printf("Number of partitions: %d", len(info.Partitions))
@@ -66,12 +75,24 @@ func main() {
 			log.Printf("\tStart Timecode: %s", info.Partitions[0].Tracks[7].StartTimecode.Format(time.RFC3339))
 		}
 
+		// Optionally apply the user's forced framerate
+		if forceRate > 0 {
+			log.Println("\nFramerate forced by user instruction: using ", forceRate, " fps")
+			for _, partition := range info.Partitions {
+				for _, track := range partition.Tracks {
+					if track.IsVideo {
+						track.Rate = forceRate
+					}
+				}
+			}
+		}
+
 		for _, partition := range info.Partitions {
 			var videoFile string
 			var audioFile string
 			var mp4 string
 			{
-				outputFolder := strings.TrimSuffix(*outputFolder, "/")
+				outputFolder := strings.TrimSuffix(outputFolder, "/")
 
 				if outputFolder == "SRC-FOLDER" {
 					outputFolder = path.Dir(info.Filename)
@@ -86,22 +107,22 @@ func main() {
 					basename = basename + "_p" + strconv.Itoa(partition.Index)
 				}
 
-				if *includeVideoPtr && partition.VideoTrackCount > 0 {
+				if extractVideo && partition.VideoTrackCount > 0 {
 					videoFile = basename + ".h264"
 				}
 
-				if *includeAudioPtr && partition.AudioTrackCount > 0 {
+				if extractAudio && partition.AudioTrackCount > 0 {
 					audioFile = basename + ".aac"
 				}
 
-				if *remuxPtr {
+				if createMP4 {
 					mp4 = basename + ".mp4"
 				}
 			}
 
 			demux.DemuxSinglePartitionToNewFiles(ubvFile, videoFile, audioFile, partition)
 
-			if *remuxPtr {
+			if createMP4 {
 				log.Println("Generating MP4 ", mp4, " from ", videoFile, " and ", audioFile)
 
 				// Spawn FFmpeg to remux
