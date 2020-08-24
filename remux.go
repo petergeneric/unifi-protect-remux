@@ -103,7 +103,7 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 				baseFilename := strings.TrimSuffix(path.Base(ubvFile), path.Ext(ubvFile))
 				baseFilename = baseFilename[0:strings.LastIndex(baseFilename, "_")]
 
-				basename := outputFolder + "/" + baseFilename + "_" + getStartTimecode(partition).Format(time.RFC3339)
+				basename := outputFolder + "/" + baseFilename + "_" + strings.ReplaceAll(getStartTimecode(partition).Format(time.RFC3339), ":", ".")
 
 				if extractVideo && partition.VideoTrackCount > 0 {
 					videoFile = basename + ".h264"
