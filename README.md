@@ -1,3 +1,5 @@
+![Go](https://github.com/petergeneric/unifi-protect-remux/workflows/Go/badge.svg)
+
 Overview
 ========
 
