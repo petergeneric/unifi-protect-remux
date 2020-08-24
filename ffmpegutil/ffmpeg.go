@@ -21,11 +21,19 @@ func MuxVideoOnly(partition *ubv.UbvPartition, h264File string, mp4File string) 
 	runFFmpeg(cmd)
 }
 
+func MuxAudioOnly(partition *ubv.UbvPartition, aacFile string, mp4File string) {
+	cmd := exec.Command(getFfmpegCommand(), "-i", aacFile, "-c", "copy", "-y", "-loglevel", "warning", mp4File)
+
+	runFFmpeg(cmd)
+}
+
 func MuxAudioAndVideo(partition *ubv.UbvPartition, h264File string, aacFile string, mp4File string) {
 	// If there is no audio file, fall back to the video-only mux operation
 	if len(aacFile) == 0 {
 		MuxVideoOnly(partition, h264File, mp4File)
 		return
+	} else if len(h264File) == 0 {
+		MuxAudioOnly(partition, aacFile, mp4File)
 	}
 
 	videoTrack := partition.Tracks[7]
