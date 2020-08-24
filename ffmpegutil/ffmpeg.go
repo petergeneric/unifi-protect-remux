@@ -64,7 +64,24 @@ func runFFmpeg(cmd *exec.Cmd) {
 	}
 }
 
+const (
+	FFMPEG_LOC_1 = "ffmpeg"
+	FFMPEG_LOC_2 = "/root/ffmpeg"
+	FFMPEG_LOC_3 = "/root/ffmpeg-4.3.1-arm64-static/ffmpeg"
+)
+
+// Looks for ubnt_ubvinfo on the path and in the default Protect install location
 func getFfmpegCommand() string {
-	// TODO check on path and then try some defaults
-	return "ffmpeg"
+	paths := [...]string{FFMPEG_LOC_1, FFMPEG_LOC_2, FFMPEG_LOC_3}
+
+	for _, path := range paths {
+		if _, err := exec.LookPath(path); err == nil {
+			return path
+		}
+	}
+
+	log.Fatal("FFmpeg not on PATH, nor in any default search locations!")
+
+	// Keep compiler happy (log.Fatal above exits)
+	return paths[0]
 }
