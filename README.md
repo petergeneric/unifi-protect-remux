@@ -3,7 +3,7 @@ Overview
 
 This is a tool that converts Ubiquiti's proprietary .ubv files into standard .MP4 files with H.264 and AAC. The conversion is a remux: no transcoding takes place, the exact same video and audio essence are placed into a different container; because of this the process is reasonably fast and not CPU intensive even on a low spec ARM machine.
 
-Native binaries are available for Linux 64-bit ARM and x86 architectures. Most people should use ARM64 on their Ubiquiti hardware.
+Native binaries are available. Most people should use ARM64 and run this on their Ubiquiti hardware.
 
 Please look in the github "releases" page at https://github.com/petergeneric/unifi-protect-remux/releases for builds of the latest version.
 
@@ -23,7 +23,7 @@ Instructions for Cloud Key Gen 2 Plus (and other Ubiquiti hardware):
 4. Upload this to your Cloud Key and extract it with ```xz -d ffmpeg-release-arm64-static.tar.xz && tar -xf ffmpeg-release-arm64-static.tar && mv ffmpeg*arm64-static/ffmpeg ./ && rm ffmpeg-release-arm64-static.tar.xz && chmod +x ffmpeg```
 5. Run the following on your cloudkey: ```export PATH=$HOME:$PATH``` (you'll either need to run this every time you log in or put it in your .bashrc file)
 6. Navigate to where your .ubv video is located (base path: /srv/unifi-protect/video).
-7. Run: ```remux-amd64 *.ubv```
+7. Run: ```remux *.ubv```
 8. By default, only video is extracted. If you need to extract audio too, add "--with-audio" to your command
 
 If FFmpeg is not installed (or if the command fails) the remux tool will leave the raw .aac and .h264 bitstream files; these can be combined with a variety of tools. 
@@ -67,36 +67,8 @@ A helper script is provided for this:
 BUILD FROM SOURCE
 =================
 
-Simply run "mvn package" to produce a .jar that can be executed. To use it, just run ```java -jar target/remux*.jar --help```
+Simply run "make package" to comple
 
-Build Native Binary
--------------------
-
-You can build a native binary using GraalVM's native-image tool. Instructions on how to install the dependencies are at:
-
-https://www.graalvm.org/docs/reference-manual/native-image/
-
-The installation steps as of the time of writing were:
-1. Download latest release from https://github.com/graalvm/graalvm-ce-builds/releases
-2. Unpack, put /path/to/graal/bin on your ATH
-3. Run ```gu install native-image```
-
-N.B. for Ubuntu you'll also need the following packages:
-```
-# N.B. Depending on your ubuntu version, you may need zlib1g-dev instead of libz-dev
-apt install build-essential libz-dev
-```
-
-Make Graal your default JVM and put it on your PATH:
-
-```
-export JAVA_HOME=/path/to/graal
-export PATH=$JAVA_HOME/bin:$PATH
-```
-
-You'll also need Apache Maven 3.6.x installed and placed on your PATH
-
-Then simply run ```make native-image```, which will run a Maven build and generate a binary via Graal. This process can take some time on slower ARM servers (e.g. Raspberry Pi 4)
 
 DEPENDENCIES
 ============
