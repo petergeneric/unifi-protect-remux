@@ -36,11 +36,12 @@ func main() {
 		println("https://github.com/petergeneric/unifi-protect-remux")
 		println("")
 
-		// If there's a release version specified, use that
+		// If there's a release version specified, use that. Otherwise print the git revision
 		if len(ReleaseVersion) > 0 {
 			println("\tVersion:    ", ReleaseVersion)
+		} else {
+			println("\tGit commit: ", GitCommit)
 		}
-		println("\tGit commit: ", GitCommit)
 
 		os.Exit(0)
 	} else if len(flag.Args()) == 0 {
