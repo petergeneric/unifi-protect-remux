@@ -29,10 +29,10 @@ func MuxAudioOnly(partition *ubv.UbvPartition, aacFile string, mp4File string) {
 
 func MuxAudioAndVideo(partition *ubv.UbvPartition, h264File string, aacFile string, mp4File string) {
 	// If there is no audio file, fall back to the video-only mux operation
-	if len(aacFile) == 0 {
+	if len(aacFile) <= 0 {
 		MuxVideoOnly(partition, h264File, mp4File)
 		return
-	} else if len(h264File) == 0 {
+	} else if len(h264File) <= 0 {
 		MuxAudioOnly(partition, aacFile, mp4File)
 	}
 

@@ -13,24 +13,48 @@ import (
 	"ubvremux/ubv"
 )
 
+var ReleaseVersion string
+var GitCommit string
+
 func main() {
-	includeAudioPtr := flag.Bool("audio", false, "If true, extract audio")
-	includeVideoPtr := flag.Bool("video", true, "If true, extract video")
-	outputFolder := flag.String("outputPath", "./", "The path to output remuxed files to")
-	remuxPtr := flag.Bool("remux", true, "If true, remux the resulting bitstreams into an .MP4")
+	includeAudioPtr := flag.Bool("with-audio", false, "If true, extract audio")
+	includeVideoPtr := flag.Bool("with-video", true, "If true, extract video")
+	outputFolder := flag.String("output-folder", "./", "The path to output remuxed files to. \"SRC-FOLDER\" to put alongside .ubv files")
+	remuxPtr := flag.Bool("mp4", true, "If true, will create an MP4 as output")
+	versionPtr := flag.Bool("version", false, "Display version and quit")
 
 	flag.Parse()
 
-	// Terminate immediately if no .ubv files were provided
-	if len(flag.Args()) == 0 {
+	// Perform some argument combo validation
+	if *versionPtr {
+		println("UBV Remux Tool")
+		println("Copyright (c) Peter Wright 2020")
+		println("https://github.com/petergeneric/unifi-protect-remux")
+		println("")
+
+		// If there's a release version specified, use that
+		if len(ReleaseVersion) > 0 {
+			println("\tVersion:    ", ReleaseVersion)
+		}
+		println("\tGit commit: ", GitCommit)
+
+		os.Exit(0)
+	} else if len(flag.Args()) == 0 {
+		// Terminate immediately if no .ubv files were provided
 		println("Expected at least one .ubv file as input!\n")
+
+		flag.Usage()
+		os.Exit(1)
+	} else if !*includeAudioPtr && !*includeVideoPtr {
+		// Fail if extracting neither audio nor video
+		println("Must enable extraction of at least one of: audio, video!\n")
 
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	for _, ubvFile := range flag.Args() {
-		info := ubv.Analyse(ubvFile)
+		info := ubv.Analyse(ubvFile, *includeAudioPtr)
 
 		log.Printf("\n\n*** Parsing complete! ***\n\n")
 		log.Printf("Number of partitions: %d", len(info.Partitions))
@@ -47,8 +71,14 @@ func main() {
 			var audioFile string
 			var mp4 string
 			{
+				outputFolder := strings.TrimSuffix(*outputFolder, "/")
+
+				if outputFolder == "SRC-FOLDER" {
+					outputFolder = path.Dir(info.Filename)
+				}
+
 				// TODO generate a base filename that contains the start timecode?
-				basename := *outputFolder + "/" + strings.TrimSuffix(path.Base(ubvFile), path.Ext(ubvFile))
+				basename := outputFolder + "/" + strings.TrimSuffix(path.Base(ubvFile), path.Ext(ubvFile))
 
 				// For multi-partition files, generate a file per partition
 				// For single-partition files, we just use the simple output filename
@@ -77,6 +107,18 @@ func main() {
 				// Spawn FFmpeg to remux
 				// TODO: if we do a little parsing of the bitstream we could create an MP4 and reduce write amplification
 				ffmpegutil.MuxAudioAndVideo(partition, videoFile, audioFile, mp4)
+
+				// Delete
+				if len(videoFile) > 0 {
+					if err := os.Remove(videoFile); err != nil {
+						log.Println("Warning: could not delete ", videoFile+": ", err)
+					}
+				}
+				if len(audioFile) > 0 {
+					if err := os.Remove(audioFile); err != nil {
+						log.Println("Warning: could not delete ", audioFile+": ", err)
+					}
+				}
 			}
 		}
 	}

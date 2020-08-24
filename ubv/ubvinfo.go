@@ -16,19 +16,19 @@ const (
 )
 
 // Analyse a .ubv file
-func Analyse(ubvFile string) UbvFile {
+func Analyse(ubvFile string, includeAudio bool) UbvFile {
 	cachedUbvInfoFile := ubvFile + ".txt"
 
 	if _, err := os.Stat(cachedUbvInfoFile); err != nil {
 		// No existing analysis, must run ubnt_ubvinfo
-		return runUbvInfo(ubvFile)
+		return runUbvInfo(ubvFile, includeAudio)
 	} else {
 		// Analysis file exists, read that instead of re-running ubnt_ubvinfo
 		return parseUbvInfoFile(ubvFile, cachedUbvInfoFile)
 	}
 }
 
-func runUbvInfo(ubvFile string) UbvFile {
+func runUbvInfo(ubvFile string, includeAudio bool) UbvFile {
 	var cmd string
 
 	if _, err := exec.LookPath("ubnt_ubvinfo"); err != nil {
@@ -43,11 +43,16 @@ func runUbvInfo(ubvFile string) UbvFile {
 		cmd = "ubnt_ubvinfo"
 	}
 
-	return runUbvInfoCommand(cmd, ubvFile)
+	return runUbvInfoCommand(cmd, ubvFile, includeAudio)
 }
 
-func runUbvInfoCommand(commandPath string, ubvFile string) UbvFile {
+func runUbvInfoCommand(commandPath string, ubvFile string, includeAudio bool) UbvFile {
 	cmd := exec.Command(commandPath, "-P", "-f", ubvFile)
+
+	// Optimise video-only extraction to speed ubnt_ubvinfo part of process
+	if !includeAudio {
+		cmd = exec.Command(commandPath, "-t", "7", "-P", "-f", ubvFile)
+	}
 
 	cmdReader, err := cmd.StdoutPipe()
 	if err != nil {
