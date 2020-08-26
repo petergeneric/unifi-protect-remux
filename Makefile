@@ -1,5 +1,5 @@
 GIT_COMMIT=$(shell git rev-list -1 HEAD)
-GIT_TAG=$(shell git describe --tags $(git rev-list --tags --max-count=1 2>/dev/null) 2>/dev/null)
+GIT_TAG=$(shell git describe --tags)
 
 
 all: package
