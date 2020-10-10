@@ -102,7 +102,12 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 
 				// Strip the unixtime from the filename, we'll replace with the start timecode of the partition
 				baseFilename := strings.TrimSuffix(path.Base(ubvFile), path.Ext(ubvFile))
-				baseFilename = baseFilename[0:strings.LastIndex(baseFilename, "_")]
+
+				// If the filename contains underscores, assume it's a Unifi Protect Filename
+				// and drop the final component.
+				if strings.Contains(baseFilename, "_") {
+					baseFilename = baseFilename[0:strings.LastIndex(baseFilename, "_")]
+				}
 
 				basename := outputFolder + "/" + baseFilename + "_" + strings.ReplaceAll(getStartTimecode(partition).Format(time.RFC3339), ":", ".")
 
