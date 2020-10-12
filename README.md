@@ -129,6 +129,10 @@ A helper script is provided for this:
 2. Next, transfer the .ubv and the .ubv.txt file(s) back to your main system.
 3. Finally, run the remux binary locally on the .ubv file; the tool will automatically find and use the .ubv.txt file prepared on your Protect system.
 
+From Docker
+-----------
+
+    docker-compose run --rm remux -with-audio -output-folder /srv/unifi-protect/output-video ./input-video/*.ubv
 
 BUILD FROM SOURCE
 =================

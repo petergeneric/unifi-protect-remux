@@ -1,0 +1,11 @@
+version: '3.7'
+
+services:
+
+  remux:
+    build:
+      context: .
+    volumes:
+      - ./input-video:/srv/unifi-protect/input-video
+      - ./output-video:/srv/unifi-protect/output-video
+    entrypoint: /opt/unifi-protect-remux/remux

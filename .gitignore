@@ -5,6 +5,7 @@ remux
 bin/
 samples/
 *.mp4
+*.ubv
 *.h264
 *.aac
 ~*
