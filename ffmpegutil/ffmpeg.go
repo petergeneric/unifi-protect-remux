@@ -16,6 +16,11 @@ func MuxVideoOnly(partition *ubv.UbvPartition, h264File string, mp4File string) 
 		return
 	}
 
+	if videoTrack.Rate <= 0 {
+		log.Println("Invalid guessed Video framerate of ", videoTrack.Rate, " for ", mp4File, ". Setting to 1")
+		videoTrack.Rate = 1
+	}
+
 	cmd := exec.Command(getFfmpegCommand(), "-i", h264File, "-c", "copy", "-r", strconv.Itoa(videoTrack.Rate), "-y", "-loglevel", "warning", mp4File)
 
 	runFFmpeg(cmd)
@@ -45,6 +50,11 @@ func MuxAudioAndVideo(partition *ubv.UbvPartition, h264File string, aacFile stri
 	}
 
 	audioDelaySec := float64(videoTrack.StartTimecode.UnixNano()-audioTrack.StartTimecode.UnixNano()) / 1000000000.0
+
+	if videoTrack.Rate <= 0 {
+		log.Println("Invalid guessed Video framerate of ", videoTrack.Rate, " for ", mp4File, ". Setting to 1")
+		videoTrack.Rate = 1
+	}
 
 	cmd := exec.Command(getFfmpegCommand(), "-i", h264File, "-itsoffset", strconv.FormatFloat(audioDelaySec, 'f', -1, 32), "-i", aacFile, "-map", "0:v", "-map", "1:a", "-c", "copy", "-r", strconv.Itoa(videoTrack.Rate), "-y", "-loglevel", "warning", mp4File)
 
