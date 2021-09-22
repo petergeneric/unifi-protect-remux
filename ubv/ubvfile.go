@@ -49,6 +49,11 @@ type UbvTrack struct {
 	// For audio, the number of samples (N.B. we do not index individual samples)
 	Rate int
 
+	// For Video tracks, holds a window of rate estimations per-frame
+	// This is populated and used to determine Rate
+	RateProbeWindow [32]int
+	RateProbeLastFrameWC int64
+
 	// The date+time of the last frame in this partition
 	LastTimecode time.Time
 }
@@ -95,20 +100,52 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 
 	// Special-case 1st and 2nd frames (figuring out start timecode and framerate)
 	if track.FrameCount == 0 {
-		log.Printf("First Frame timestamp %s", frameTimecode)
 		track.StartTimecode = frameTimecode
 
 		if !track.IsVideo {
 			// Ubiquiti use the audio sample rate directly for audio packet tbc
 			track.Rate = int(tbc)
+		} else {
+			log.Printf("First Frame: %s", frameTimecode)
+			track.RateProbeLastFrameWC = wc
 		}
-	} else if track.FrameCount == 1 {
-		if track.IsVideo {
-			log.Printf("Second Frame timestamp %s", frameTimecode)
+	} else if track.Rate == 0 && track.IsVideo {
+		if track.FrameCount < len(track.RateProbeWindow) {
+			// Compute rate based on current+last frame time
+			track.RateProbeWindow[track.FrameCount] = int(tbc / ((wc - track.RateProbeLastFrameWC) *100))
+		} else {
+			// Find the most frequent rate in the probe window
+			rate := guessVideoRate(track.RateProbeWindow)
 
-			// Work out how long (expressed in tbc) has elapsed for this frame/packet
-			frameDuration := frameTimecode.Sub(track.StartTimecode)
-			track.Rate = int(1000 / frameDuration.Milliseconds())
+			// Pick 75fps as a reasonable maximum rate
+			// The Unifi line currently tops out at 55fps on G4 Pro HFR mode
+			if rate > 0 && rate < 76 {
+				track.Rate = rate
+
+				log.Println("Video Rate Probe: File appears to be", track.Rate, "fps. Use -force-rate if incorrect.")
+			} else {
+				log.Fatal("Video Rate Probe: WARNING probed rate was", rate , "fps. Assuming invalid. Please use -force-rate ## (e.g. -force-rate 25) based on your camera's frame rate")
+				panic("Could not determine sensible video framerate based on data stored in .ubv")
+			}
 		}
 	}
+}
+
+func guessVideoRate(durations [32]int) int {
+	var mostFrequent int
+	var frequency int
+
+	counts := map[int]int{}
+	for _, val := range durations {
+		// Only consider positive values
+		if val > 0 {
+			counts[val]++
+			if counts[val] > frequency {
+				frequency++
+				mostFrequent = val
+			}
+		}
+	}
+
+	return mostFrequent
 }
