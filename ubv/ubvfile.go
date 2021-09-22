@@ -96,8 +96,6 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 	utcNanosPart := (utcMillis % 1000) * 1000000
 	frameTimecode := time.Unix(utcSecondsPart, utcNanosPart)
 
-	track.LastTimecode = frameTimecode
-
 	// Special-case 1st and 2nd frames (figuring out start timecode and framerate)
 	if track.FrameCount == 0 {
 		track.StartTimecode = frameTimecode
@@ -123,12 +121,17 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 				track.Rate = rate
 
 				log.Println("Video Rate Probe: File appears to be", track.Rate, "fps. Use -force-rate if incorrect.")
+			} else if rate == 0 {
+				log.Println("Video Rate Probe: WARNING probed rate was",rate, "fps. Assuming timelapse file and using 1fps")
+				track.Rate = 1
 			} else {
 				log.Fatal("Video Rate Probe: WARNING probed rate was", rate , "fps. Assuming invalid. Please use -force-rate ## (e.g. -force-rate 25) based on your camera's frame rate")
 				panic("Could not determine sensible video framerate based on data stored in .ubv")
 			}
 		}
 	}
+
+	track.LastTimecode = frameTimecode
 }
 
 func guessVideoRate(durations [32]int) int {
