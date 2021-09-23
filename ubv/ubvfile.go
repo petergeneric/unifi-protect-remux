@@ -110,7 +110,8 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 	} else if track.Rate == 0 && track.IsVideo {
 		if track.FrameCount < len(track.RateProbeWindow) {
 			// Compute rate based on current+last frame time
-			track.RateProbeWindow[track.FrameCount] = int(tbc / ((wc - track.RateProbeLastFrameWC) *100))
+			track.RateProbeWindow[track.FrameCount] = int(tbc / ((wc - track.RateProbeLastFrameWC)))
+			track.RateProbeLastFrameWC = wc
 		} else {
 			// Find the most frequent rate in the probe window
 			rate := guessVideoRate(track.RateProbeWindow)
