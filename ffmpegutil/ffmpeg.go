@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 	"ubvremux/ubv"
+	"fmt"
 )
 
 func MuxVideoOnly(partition *ubv.UbvPartition, h264File string, mp4File string) {
