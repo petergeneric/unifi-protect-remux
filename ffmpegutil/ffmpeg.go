@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strconv"
 	"ubvremux/ubv"
-	"fmt"
 )
 
 func MuxVideoOnly(partition *ubv.UbvPartition, h264File string, mp4File string) {
@@ -57,12 +56,6 @@ func MuxAudioAndVideo(partition *ubv.UbvPartition, h264File string, aacFile stri
 		videoTrack.Rate = 1
 	}
 
-	var timecode string
-	// calculate timecode ( HH:MM:SS.FRAME ) from seconds and nanoseconds
-	timecode = videoTrack.StartTimecode.Format("15:04:05") + "." + fmt.Sprintf("%02.0f", ((float32(videoTrack.StartTimecode.Nanosecond()) / float32(1000000000.0) * float32(videoTrack.Rate)) + 1) )
-	log.Println("Timecode: ", timecode)
-	log.Printf("Date/Time: %s", videoTrack.StartTimecode)
-
 	cmd := exec.Command(getFfmpegCommand(), 
 		"-i", h264File, 
 		"-itsoffset", strconv.FormatFloat(audioDelaySec, 'f', -1, 32), 
@@ -71,7 +64,7 @@ func MuxAudioAndVideo(partition *ubv.UbvPartition, h264File string, aacFile stri
 		"-map", "1:a", 
 		"-c", "copy", 
 		"-r", strconv.Itoa(videoTrack.Rate), 
-		"-timecode", timecode,
+		"-timecode", ubv.GenerateTimecode(videoTrack.StartTimecode, videoTrack.Rate),
 		"-y", 
 		"-loglevel", "warning", 
 		mp4File)
