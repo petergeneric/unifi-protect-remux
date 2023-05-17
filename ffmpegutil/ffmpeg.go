@@ -56,7 +56,18 @@ func MuxAudioAndVideo(partition *ubv.UbvPartition, h264File string, aacFile stri
 		videoTrack.Rate = 1
 	}
 
-	cmd := exec.Command(getFfmpegCommand(), "-i", h264File, "-itsoffset", strconv.FormatFloat(audioDelaySec, 'f', -1, 32), "-i", aacFile, "-map", "0:v", "-map", "1:a", "-c", "copy", "-r", strconv.Itoa(videoTrack.Rate), "-y", "-loglevel", "warning", mp4File)
+	cmd := exec.Command(getFfmpegCommand(), 
+		"-i", h264File, 
+		"-itsoffset", strconv.FormatFloat(audioDelaySec, 'f', -1, 32), 
+		"-i", aacFile, 
+		"-map", "0:v", 
+		"-map", "1:a", 
+		"-c", "copy", 
+		"-r", strconv.Itoa(videoTrack.Rate), 
+		"-timecode", ubv.GenerateTimecode(videoTrack.StartTimecode, videoTrack.Rate),
+		"-y", 
+		"-loglevel", "warning", 
+		mp4File)
 
 	runFFmpeg(cmd)
 }
