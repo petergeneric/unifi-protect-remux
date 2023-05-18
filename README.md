@@ -47,7 +47,7 @@ N.B. If you have files from a (discontinued, unsupported) x86 Protect installati
 sudo tee /usr/bin/ubnt_ubvinfo <<EOF
 #!/bin/sh
 export QEMU_LD_PREFIX=/usr/aarch64-linux-gnu
-exec qemu-aarch64 /usr/bin/arm-ubnt_ubvinfo $*
+exec qemu-aarch64 /usr/bin/arm-ubnt_ubvinfo "\$@"
 EOF
 chmod +x /usr/bin/ubnt_ubvinfo
 ```

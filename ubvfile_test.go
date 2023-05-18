@@ -7,6 +7,14 @@ import (
 	"ubvremux/ubv"
 )
 
+func TestGenerateTimecode(t *testing.T) {                                           
+	timecode := ubv.GenerateTimecode(time.Date(2023, time.Month(5), 16, 11, 58, 26, 500000000, time.UTC), 30)
+	log.Printf("Timecode Generated")
+	if timecode != "11:58:26.16" {
+		t.Errorf("Timecode generated is incorrect, got: %s, want: %s.", timecode, "11:58:26.16")
+	}
+}
+
 func TestCopyFrames(t *testing.T) {
 	ubvFile := "samples/FCECDA1F0A63_0_rotating_1597425468956.ubv"
 

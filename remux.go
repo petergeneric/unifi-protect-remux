@@ -32,7 +32,7 @@ func main() {
 	// Perform some argument combo validation
 	if *versionPtr {
 		println("UBV Remux Tool")
-		println("Copyright (c) Peter Wright 2020")
+		println("Copyright (c) Peter Wright 2020-2021")
 		println("https://github.com/petergeneric/unifi-protect-remux")
 		println("")
 
