@@ -21,7 +21,14 @@ func MuxVideoOnly(partition *ubv.UbvPartition, h264File string, mp4File string) 
 		videoTrack.Rate = 1
 	}
 
-	cmd := exec.Command(getFfmpegCommand(), "-i", h264File, "-c", "copy", "-r", strconv.Itoa(videoTrack.Rate), "-y", "-loglevel", "warning", mp4File)
+	cmd := exec.Command(getFfmpegCommand(), 
+	"-i", h264File,
+	"-c", "copy",
+	"-r", strconv.Itoa(videoTrack.Rate),
+	"-timecode", ubv.GenerateTimecode(videoTrack.StartTimecode, videoTrack.Rate),
+	"-y",
+	"-loglevel", "warning",
+	mp4File)
 
 	runFFmpeg(cmd)
 }
