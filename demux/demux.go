@@ -9,7 +9,7 @@ import (
 	"ubvremux/ubv"
 )
 
-func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, audioFilename string, partition *ubv.UbvPartition) {
+func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, partition *ubv.UbvPartition) {
 
 	// The input media file; N.B. we do not use a buffered reader for this because we will be seeking heavily
 	ubvFile, err := os.OpenFile(ubvFilename, os.O_RDONLY, 0)
@@ -33,26 +33,11 @@ func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, au
 		videoFile = nil
 	}
 
-	// Optionally write audio
-	var audioFile *bufio.Writer
-	if len(audioFilename) > 0 && partition.AudioTrackCount > 0 {
-		audioFileRaw, err := os.Create(audioFilename)
-		if err != nil {
-			log.Fatal("Error opening audio bitstream output", err)
-		}
-
-		defer audioFileRaw.Close()
-
-		audioFile = bufio.NewWriter(audioFileRaw)
-	} else {
-		audioFile = nil
-	}
-
-	DemuxSinglePartition(ubvFilename, partition, videoFile, ubvFile, audioFile)
+	DemuxSinglePartition(ubvFilename, partition, videoFile, ubvFile)
 }
 
 // Extract video and audio data from a given partition of a .ubv file into raw .H264 bitstream and/or raw .AAC bitstream file
-func DemuxSinglePartition(ubvFilename string, partition *ubv.UbvPartition, videoFile *bufio.Writer, ubvFile *os.File, audioFile *bufio.Writer) {
+func DemuxSinglePartition(ubvFilename string, partition *ubv.UbvPartition, videoFile *bufio.Writer, ubvFile *os.File) {
 	// Allocate a buffer large enough for the largest frame
 	var buffer []byte
 	{
@@ -113,34 +98,12 @@ func DemuxSinglePartition(ubvFilename string, partition *ubv.UbvPartition, video
 					log.Fatal("Failed to write output NAL Separator! Only wrote ", bytesWritten, " bytes. Error:", err)
 				}
 			}
-
-		} else if frame.TrackNumber == 1000 && audioFile != nil {
-			// Audio packet - contains raw AAC bitstream
-
-			// Seek
-			if _, err := ubvFile.Seek(int64(frame.Offset), io.SeekStart); err != nil {
-				log.Fatal("Failed to seek to ", frame.Offset, "in ", ubvFilename, err)
-			}
-
-			// Read
-			if _, err := io.ReadFull(ubvFile, buffer[0:frame.Size]); err != nil {
-				log.Fatal("Failed to read ", frame.Size, " bytes at ", frame.Offset, err)
-			}
-
-			if bytesWritten, err := audioFile.Write(buffer[0:frame.Size]); err != nil {
-				log.Fatal("Failed to write output audio data! Only wrote ", bytesWritten, ". Error:", err)
-			}
 		} else {
 			continue
 		}
 	}
 
 	// Flush all buffered output data
-
-	if audioFile != nil {
-		audioFile.Flush()
-	}
-
 	if videoFile != nil {
 		videoFile.Flush()
 	}
