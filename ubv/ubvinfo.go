@@ -11,12 +11,15 @@ import (
 	"unicode"
 )
 
-const (
-	// The string to use to find ubnt_ubvinfo if it's on the path
-	ubntUbvInfoPath1 = "ubnt_ubvinfo"
-	// The path to ubnt_ubvinfo on a Protect installation
-	ubntUbvInfoPath2 = "/usr/share/unifi-protect/app/node_modules/.bin/ubnt_ubvinfo"
-)
+// The string to use to find ubnt_ubvinfo if it's on the path
+const ubntUbvInfoPath1 = "ubnt_ubvinfo"
+
+// The path to ubnt_ubvinfo on a Protect installation
+const ubntUbvInfoPath2 = "/usr/share/unifi-protect/app/node_modules/.bin/ubnt_ubvinfo"
+
+const TrackAudio = 1000
+const TrackVideo = 7
+const TrackUnknown = 1003
 
 // Analyse a .ubv file (picking between ubnt_ubvinfo or a pre-prepared .txt file as appropriate)
 func Analyse(ubvFile string, includeAudio bool) UbvFile {
@@ -149,10 +152,15 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 				log.Fatal("Error parsing frame size!", err)
 			}
 
+			// Ignore Track 1003 (unknown purpose, first discovered in #44)
+			if frame.TrackNumber == TrackUnknown {
+				continue
+			}
+
 			// Bail if we encounter an unexpected track number
 			// We could silently ignore it, but it seems more useful to know about new cases
-			if frame.TrackNumber != 7 && frame.TrackNumber != 1000 {
-				log.Fatal("Encountered track number other than 7 or 1000: ", frame.TrackNumber)
+			if frame.TrackNumber != TrackVideo && frame.TrackNumber != TrackAudio {
+				log.Fatal("Encountered unrecognisdd track number, please report this. Track Number: ", frame.TrackNumber)
 			}
 
 			track, ok := current.Tracks[frame.TrackNumber]
@@ -160,7 +168,7 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 			if !ok {
 				track = &UbvTrack{
 					// TODO should really test field FIELD_TRACK_TYPE holds (A or V)
-					IsVideo:     frame.TrackNumber == 7,
+					IsVideo:     frame.TrackNumber == TrackVideo,
 					TrackNumber: frame.TrackNumber,
 					FrameCount:  0,
 				}
