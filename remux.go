@@ -26,13 +26,14 @@ func main() {
 	outputFolder := flag.String("output-folder", "./", "The path to output remuxed files to. \"SRC-FOLDER\" to put alongside .ubv files")
 	remuxPtr := flag.Bool("mp4", true, "If true, will create an MP4 as output")
 	versionPtr := flag.Bool("version", false, "Display version and quit")
+	videoTrackNumPtr := flag.Int("video-track", ubv.TrackVideo, "Video track number to extract (supported: 7, 1003)")
 
 	flag.Parse()
 
 	// Perform some argument combo validation
 	if *versionPtr {
 		println("UBV Remux Tool")
-		println("Copyright (c) Peter Wright 2020-2021")
+		println("Copyright (c) Peter Wright 2020-2024")
 		println("https://github.com/petergeneric/unifi-protect-remux")
 		println("")
 
@@ -58,21 +59,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	RemuxCLI(flag.Args(), *includeAudioPtr, *includeVideoPtr, *forceRatePtr, *remuxPtr, *outputFolder)
+	RemuxCLI(flag.Args(), *includeAudioPtr, *includeVideoPtr, *videoTrackNumPtr, *forceRatePtr, *remuxPtr, *outputFolder)
 }
 
 // Takes parsed commandline args and performs the remux tasks across the set of input files
-func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate int, createMP4 bool, outputFolder string) {
+func RemuxCLI(files []string, extractAudio bool, extractVideo bool, videoTrackNum int, forceRate int, createMP4 bool, outputFolder string) {
 	for _, ubvFile := range files {
 		log.Println("Analysing ", ubvFile)
-		info := ubv.Analyse(ubvFile, extractAudio)
+		info := ubv.Analyse(ubvFile, extractAudio, videoTrackNum)
 
 		log.Printf("\n\nAnalysis complete!\n")
 		if len(info.Partitions) > 0 {
 			log.Printf("First Partition:")
 			log.Printf("\tTracks: %d", len(info.Partitions[0].Tracks))
 			log.Printf("\tFrames: %d", len(info.Partitions[0].Frames))
-			log.Printf("\tStart Timecode: %s", info.Partitions[0].Tracks[7].StartTimecode.Format(time.RFC3339))
+
+			for _, track := range info.Partitions[0].Tracks {
+				if track.IsVideo || info.Partitions[0].VideoTrackCount == 0 {
+					log.Printf("\tStart Timecode: %s", track.StartTimecode.Format(time.RFC3339))
+					break
+				}
+			}
 		}
 
 		log.Printf("\n\nExtracting %d partitions", len(info.Partitions))
@@ -109,7 +116,7 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 					baseFilename = baseFilename[0:strings.LastIndex(baseFilename, "_")]
 				}
 
-				basename := outputFolder + "/" + baseFilename + "_" + strings.ReplaceAll(getStartTimecode(partition).Format(time.RFC3339), ":", ".")
+				basename := outputFolder + "/" + baseFilename + "_" + strings.ReplaceAll(getStartTimecode(partition, videoTrackNum).Format(time.RFC3339), ":", ".")
 
 				if extractVideo && partition.VideoTrackCount > 0 {
 					videoFile = basename + ".h264"
@@ -124,14 +131,14 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 				}
 			}
 
-			demux.DemuxSinglePartitionToNewFiles(ubvFile, videoFile, audioFile, partition)
+			// Demux .ubv into .h264 (and optionally .aac) atomic streams
+			demux.DemuxSinglePartitionToNewFiles(ubvFile, videoFile, videoTrackNum, audioFile, partition)
 
 			if createMP4 {
 				log.Println("\nWriting MP4 ", mp4, "...")
 
 				// Spawn FFmpeg to remux
-				// TODO: could we generate an MP4 directly? Would require some analysis of the input bitstreams to build MOOV
-				ffmpegutil.MuxAudioAndVideo(partition, videoFile, audioFile, mp4)
+				ffmpegutil.MuxAudioAndVideo(partition, videoFile, videoTrackNum, audioFile, mp4)
 
 				// Delete
 				if len(videoFile) > 0 {
@@ -149,9 +156,9 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, forceRate in
 	}
 }
 
-func getStartTimecode(partition *ubv.UbvPartition) time.Time {
+func getStartTimecode(partition *ubv.UbvPartition, videoTrackNum int) time.Time {
 	for _, track := range partition.Tracks {
-		if partition.VideoTrackCount == 0 || track.IsVideo {
+		if partition.VideoTrackCount == 0 || (track.IsVideo && track.TrackNumber == videoTrackNum) {
 			return track.StartTimecode
 		}
 	}

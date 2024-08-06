@@ -19,15 +19,15 @@ const ubntUbvInfoPath2 = "/usr/share/unifi-protect/app/node_modules/.bin/ubnt_ub
 
 const TrackAudio = 1000
 const TrackVideo = 7
-const TrackUnknown = 1003
+const TrackVideoHevcUnknown = 1003
 
 // Analyse a .ubv file (picking between ubnt_ubvinfo or a pre-prepared .txt file as appropriate)
-func Analyse(ubvFile string, includeAudio bool) UbvFile {
+func Analyse(ubvFile string, includeAudio bool, videoTrackNum int) UbvFile {
 	cachedUbvInfoFile := ubvFile + ".txt"
 
 	if _, err := os.Stat(cachedUbvInfoFile); err != nil {
 		// No existing analysis, must run ubnt_ubvinfo
-		return runUbvInfo(ubvFile, includeAudio)
+		return runUbvInfo(ubvFile, includeAudio, videoTrackNum)
 	} else {
 		// Analysis file exists, read that instead of re-running ubnt_ubvinfo
 		return parseUbvInfoFile(ubvFile, cachedUbvInfoFile)
@@ -50,13 +50,13 @@ func getUbvInfoCommand() string {
 	return paths[0]
 }
 
-func runUbvInfo(ubvFile string, includeAudio bool) UbvFile {
+func runUbvInfo(ubvFile string, includeAudio bool, videoTrackNum int) UbvFile {
 	ubntUbvinfo := getUbvInfoCommand()
 	cmd := exec.Command(ubntUbvinfo, "-P", "-f", ubvFile)
 
 	// Optimise video-only extraction to speed ubnt_ubvinfo part of process
 	if !includeAudio {
-		cmd = exec.Command(ubntUbvinfo, "-t", "7", "-P", "-f", ubvFile)
+		cmd = exec.Command(ubntUbvinfo, "-t", strconv.Itoa(videoTrackNum), "-P", "-f", ubvFile)
 	}
 
 	// Parse stdout in the background
@@ -152,14 +152,11 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 				log.Fatal("Error parsing frame size!", err)
 			}
 
-			// Ignore Track 1003 (unknown purpose, first discovered in #44)
-			if frame.TrackNumber == TrackUnknown {
-				continue
-			}
+			isRecognisedVideoTrack := frame.TrackNumber == TrackVideo || frame.TrackNumber == TrackVideoHevcUnknown
 
 			// Bail if we encounter an unexpected track number
 			// We could silently ignore it, but it seems more useful to know about new cases
-			if frame.TrackNumber != TrackVideo && frame.TrackNumber != TrackAudio {
+			if !isRecognisedVideoTrack && frame.TrackNumber != TrackAudio {
 				log.Fatal("Encountered unrecognisdd track number, please report this. Track Number: ", frame.TrackNumber)
 			}
 
@@ -168,7 +165,7 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 			if !ok {
 				track = &UbvTrack{
 					// TODO should really test field FIELD_TRACK_TYPE holds (A or V)
-					IsVideo:     frame.TrackNumber == TrackVideo,
+					IsVideo:     isRecognisedVideoTrack,
 					TrackNumber: frame.TrackNumber,
 					FrameCount:  0,
 				}

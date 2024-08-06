@@ -7,7 +7,7 @@ import (
 	"ubvremux/ubv"
 )
 
-func TestGenerateTimecode(t *testing.T) {                                           
+func TestGenerateTimecode(t *testing.T) {
 	timecode := ubv.GenerateTimecode(time.Date(2023, time.Month(5), 16, 11, 58, 26, 500000000, time.UTC), 30)
 	log.Printf("Timecode Generated")
 	if timecode != "11:58:26.16" {
@@ -18,7 +18,7 @@ func TestGenerateTimecode(t *testing.T) {
 func TestCopyFrames(t *testing.T) {
 	ubvFile := "samples/FCECDA1F0A63_0_rotating_1597425468956.ubv"
 
-	info := ubv.Analyse(ubvFile, true)
+	info := ubv.Analyse(ubvFile, true, ubv.TrackVideo)
 
 	log.Printf("\n\n*** Parsing complete! ***\n\n")
 	log.Printf("Number of partitions: %d", len(info.Partitions))
@@ -27,7 +27,15 @@ func TestCopyFrames(t *testing.T) {
 		log.Printf("Partition %d", info.Partitions[0].Index)
 		log.Printf("Tracks: %d", len(info.Partitions[0].Tracks))
 		log.Printf("Frames: %d", len(info.Partitions[0].Frames))
-		log.Printf("Start Timecode: %s", info.Partitions[0].Tracks[7].StartTimecode.Format(time.RFC3339))
+
+		mainVideoTrack := info.Partitions[0].Tracks[ubv.TrackVideo]
+		altVideoTrack := info.Partitions[0].Tracks[ubv.TrackVideoHevcUnknown]
+		if mainVideoTrack != nil {
+			log.Printf("Start Timecode: %s", mainVideoTrack.StartTimecode.Format(time.RFC3339))
+		}
+		if altVideoTrack != nil {
+			log.Printf("Start Timecode (Alt Video): %s", altVideoTrack.StartTimecode.Format(time.RFC3339))
+		}
 	}
 
 	//

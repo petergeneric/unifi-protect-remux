@@ -1,10 +1,10 @@
 package ubv
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"time"
-	"fmt"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 )
 
 type UbvFrame struct {
-	//The track ID; only two observed values are 7 for the main video, and 1000 for main audio (AAC)
+	//The track ID; observed values are 7 for the main video, 1003 for some hevc alt video, and 1000 for main audio (AAC)
 	TrackNumber int
 	Offset      int
 	Size        int
@@ -52,7 +52,7 @@ type UbvTrack struct {
 
 	// For Video tracks, holds a window of rate estimations per-frame
 	// This is populated and used to determine Rate
-	RateProbeWindow [32]int
+	RateProbeWindow      [32]int
 	RateProbeLastFrameWC int64
 
 	// The date+time of the last frame in this partition
@@ -111,7 +111,7 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 	} else if track.Rate == 0 && track.IsVideo {
 		if track.FrameCount < len(track.RateProbeWindow) {
 			// Compute rate based on current+last frame time
-			track.RateProbeWindow[track.FrameCount] = int(tbc / ((wc - track.RateProbeLastFrameWC)))
+			track.RateProbeWindow[track.FrameCount] = int(tbc / (wc - track.RateProbeLastFrameWC))
 			track.RateProbeLastFrameWC = wc
 		} else {
 			// Find the most frequent rate in the probe window
@@ -124,10 +124,10 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 
 				log.Println("Video Rate Probe: File appears to be", track.Rate, "fps. Use -force-rate if incorrect.")
 			} else if rate == 0 {
-				log.Println("Video Rate Probe: WARNING probed rate was",rate, "fps. Assuming timelapse file and using 1fps")
+				log.Println("Video Rate Probe: WARNING probed rate was", rate, "fps. Assuming timelapse file and using 1fps")
 				track.Rate = 1
 			} else {
-				log.Fatal("Video Rate Probe: WARNING probed rate was", rate , "fps. Assuming invalid. Please use -force-rate ## (e.g. -force-rate 25) based on your camera's frame rate")
+				log.Fatal("Video Rate Probe: WARNING probed rate was", rate, "fps. Assuming invalid. Please use -force-rate ## (e.g. -force-rate 25) based on your camera's frame rate")
 				panic("Could not determine sensible video framerate based on data stored in .ubv")
 			}
 		}
@@ -159,18 +159,18 @@ func guessVideoRate(durations [32]int) int {
  * Generates a timecode string from a StartTimecode object and framerate.
  * The timecode is set as the wall clock time (so a clip starting at 03:45 pm and 13 seconds will have a timestamp of 03:45:13)
  * Additionally, the nanosecond time value is rounded to the nearest frame index based on the framerate,
- * so a 13.50000 second time is frame 16 on a 30 fps clip (frames are indexed from 1 onwards). 
+ * so a 13.50000 second time is frame 16 on a 30 fps clip (frames are indexed from 1 onwards).
  * So the clip will have a full timestamp of 03:34:13.16
  *
  * @param startTimecode The StartTimecode object to generate a timecode string from
  * @param framerate The framerate of the video
  * @return The timecode string
  */
- func GenerateTimecode(startTimecode time.Time, framerate int) string {
-	
+func GenerateTimecode(startTimecode time.Time, framerate int) string {
+
 	var timecode string
 	// calculate timecode ( HH:MM:SS.FF ) from seconds and nanoseconds for frame part
-	timecode = startTimecode.Format("15:04:05") + "." + fmt.Sprintf("%02.0f", ((float32(startTimecode.Nanosecond()) / float32(1000000000.0) * float32(framerate)) + 1) )
+	timecode = startTimecode.Format("15:04:05") + "." + fmt.Sprintf("%02.0f", ((float32(startTimecode.Nanosecond())/float32(1000000000.0)*float32(framerate))+1))
 	// log.Println("Timecode: ", timecode)
 	// log.Printf("Date/Time: %s", videoTrack.StartTimecode)
 	return timecode

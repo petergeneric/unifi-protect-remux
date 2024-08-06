@@ -9,7 +9,7 @@ import (
 	"ubvremux/ubv"
 )
 
-func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, audioFilename string, partition *ubv.UbvPartition) {
+func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, videoTrackNum int, audioFilename string, partition *ubv.UbvPartition) {
 
 	// The input media file; N.B. we do not use a buffered reader for this because we will be seeking heavily
 	ubvFile, err := os.OpenFile(ubvFilename, os.O_RDONLY, 0)
@@ -48,11 +48,11 @@ func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, au
 		audioFile = nil
 	}
 
-	DemuxSinglePartition(ubvFilename, partition, videoFile, ubvFile, audioFile)
+	DemuxSinglePartition(ubvFilename, partition, videoFile, videoTrackNum, ubvFile, audioFile)
 }
 
 // Extract video and audio data from a given partition of a .ubv file into raw .H264 bitstream and/or raw .AAC bitstream file
-func DemuxSinglePartition(ubvFilename string, partition *ubv.UbvPartition, videoFile *bufio.Writer, ubvFile *os.File, audioFile *bufio.Writer) {
+func DemuxSinglePartition(ubvFilename string, partition *ubv.UbvPartition, videoFile *bufio.Writer, videoTrackNum int, ubvFile *os.File, audioFile *bufio.Writer) {
 	// Allocate a buffer large enough for the largest frame
 	var buffer []byte
 	{
@@ -75,7 +75,7 @@ func DemuxSinglePartition(ubvFilename string, partition *ubv.UbvPartition, video
 	}
 
 	for _, frame := range partition.Frames {
-		if frame.TrackNumber == 7 && videoFile != nil {
+		if frame.TrackNumber == videoTrackNum && videoFile != nil {
 			// Video packet - contains one or more length-prefixed NALs
 			frameDataRead := 0
 
@@ -114,7 +114,7 @@ func DemuxSinglePartition(ubvFilename string, partition *ubv.UbvPartition, video
 				}
 			}
 
-		} else if frame.TrackNumber == 1000 && audioFile != nil {
+		} else if frame.TrackNumber == ubv.TrackAudio && audioFile != nil {
 			// Audio packet - contains raw AAC bitstream
 
 			// Seek
