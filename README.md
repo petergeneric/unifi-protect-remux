@@ -27,7 +27,7 @@ Instructions for Cloud Key Gen 2 Plus (and other Ubiquiti hardware). Due to the 
 5. Run the following on your cloudkey: ```export PATH=$HOME:$PATH``` (you'll either need to run this every time you log in or put it in your ```.bashrc``` file)
 6. Navigate to where your .ubv video is located (base path: /srv/unifi-protect/video).
 7. Run: ```remux *.ubv```
-8. By default, only video is extracted. If you need to extract audio too, add "--with-audio=true" to your command
+8. By default, audio and video is extracted. If you do not need to extract audio, add "--with-audio=false" to your command
 
 If FFmpeg is not installed (or if the command fails) the remux tool will leave the raw .aac and .h264 bitstream files; these can be combined with a variety of tools. 
 
@@ -69,7 +69,7 @@ Once the dependencies are installed, use the following instructions to get the u
 2. Upload this to your Linux server and extract with ```tar -zxf remux-x86_64.tar.gz```
 3. Transfer .ubv files from your CloudKey to your x86 server (on cloudkey, .ubv files are found under /srv/unifi-protect/video).
 4. Run: ```remux *.ubv```
-5. By default, only video is extracted. If you need to extract audio too, add "--with-audio=true" to your command
+5. By default, audio and video is extracted. If you do not need to extract audio, add "--with-audio=false" to your command
 
 If FFmpeg is not installed (or if the command fails) the remux tool will leave the raw .aac and .h264 bitstream files; these can be combined with a variety of tools. 
 
