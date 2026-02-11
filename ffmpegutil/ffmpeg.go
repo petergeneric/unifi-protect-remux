@@ -99,7 +99,7 @@ const (
 	FFMPEG_LOC_3 = "/root/ffmpeg-4.3.1-arm64-static/ffmpeg"
 )
 
-// Looks for ubnt_ubvinfo on the path and in the default Protect install location
+// Looks for FFmpeg on the path and in default install locations
 func getFfmpegCommand() string {
 	paths := [...]string{FFMPEG_LOC_1, FFMPEG_LOC_2, FFMPEG_LOC_3}
 
