@@ -24,8 +24,6 @@ const (
 
 	//Timebase for track
 	FIELD_WC_TBC = 8
-
-	PROBE_FRAMES = 70
 )
 
 type UbvFrame struct {
