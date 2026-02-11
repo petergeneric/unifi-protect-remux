@@ -146,7 +146,7 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 			// Bail if we encounter an unexpected track number
 			// We could silently ignore it, but it seems more useful to know about new cases
 			if !isRecognisedVideoTrack && frame.TrackNumber != TrackAudio {
-				log.Fatal("Encountered unrecognisdd track number, please report this. Track Number: ", frame.TrackNumber)
+				log.Fatal("Encountered unrecognised track number, please report this. Track Number: ", frame.TrackNumber)
 			}
 
 			track, ok := current.Tracks[frame.TrackNumber]
