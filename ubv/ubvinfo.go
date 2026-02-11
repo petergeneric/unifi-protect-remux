@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -59,30 +58,20 @@ func runUbvInfo(ubvFile string, includeAudio bool, videoTrackNum int) UbvFile {
 		cmd = exec.Command(ubntUbvinfo, "-t", strconv.Itoa(videoTrackNum), "-P", "-f", ubvFile)
 	}
 
-	// Parse stdout in the background
-	var info UbvFile
-	{
-		cmdReader, err := cmd.StdoutPipe()
-		if err != nil {
-			log.Fatal("Error creating StdoutPipe for Cmd: ", err)
-		}
-
-		scanner := bufio.NewScanner(cmdReader)
-
-		go func() {
-			info = parseUbvInfo(ubvFile, scanner)
-		}()
+	cmdReader, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal("Error creating StdoutPipe for Cmd: ", err)
 	}
 
-	err := cmd.Start()
+	scanner := bufio.NewScanner(cmdReader)
+
+	err = cmd.Start()
 	if err != nil {
 		log.Fatal("ubnt_ubvinfo command failed against ", ubvFile, ": ", err)
 	}
 
-	// Await the parsed UBV Info
-	for !info.Complete {
-		time.Sleep(100 * time.Millisecond)
-	}
+	// Parse stdout synchronously (blocks until scanner reaches EOF)
+	info := parseUbvInfo(ubvFile, scanner)
 
 	// Call wait so stdout/stderr pipes are cleaned up
 	err = cmd.Wait()
