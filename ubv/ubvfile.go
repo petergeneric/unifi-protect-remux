@@ -146,7 +146,7 @@ func guessVideoRate(durations [32]int) int {
 		if val > 0 {
 			counts[val]++
 			if counts[val] > frequency {
-				frequency++
+				frequency = counts[val]
 				mostFrequent = val
 			}
 		}
