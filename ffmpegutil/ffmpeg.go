@@ -46,6 +46,7 @@ func MuxAudioAndVideo(partition *ubv.UbvPartition, h264File string, videoTrackNu
 		return
 	} else if len(h264File) <= 0 {
 		MuxAudioOnly(partition, aacFile, mp4File)
+		return
 	}
 
 	videoTrack := partition.Tracks[videoTrackNum]
