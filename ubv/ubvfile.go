@@ -80,10 +80,10 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 	var tbc int64
 
 	if wc, err = strconv.ParseInt(fields[FIELD_WC], 10, 64); err != nil {
-		log.Fatal("Error parsing field offset!", err)
+		log.Fatal("Error parsing WC field!", err)
 	}
 	if tbc, err = strconv.ParseInt(fields[FIELD_WC_TBC], 10, 64); err != nil {
-		log.Fatal("Error parsing frame size!", err)
+		log.Fatal("Error parsing TBC field!", err)
 	}
 
 	// Bail if we encounter a TBC of 0, otherwise we'll have a divide by zeor
