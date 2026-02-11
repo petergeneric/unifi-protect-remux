@@ -8,4 +8,4 @@ clean:
 	-rm -f remux *.h264 *.aac *.mp4
 
 package: clean
-	go build -ldflags "-X main.GitCommit=${GIT_COMMIT} -X main.ReleaseVersion=${GIT_TAG}" *.go
+	go build -o remux -ldflags "-X main.GitCommit=${GIT_COMMIT} -X main.ReleaseVersion=${GIT_TAG}" .
