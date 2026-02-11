@@ -4,7 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 	"ubvremux/demux"
@@ -104,11 +104,11 @@ func RemuxCLI(files []string, extractAudio bool, extractVideo bool, videoTrackNu
 				outputFolder := strings.TrimSuffix(outputFolder, "/")
 
 				if outputFolder == "SRC-FOLDER" {
-					outputFolder = path.Dir(info.Filename)
+					outputFolder = filepath.Dir(info.Filename)
 				}
 
 				// Strip the unixtime from the filename, we'll replace with the start timecode of the partition
-				baseFilename := strings.TrimSuffix(path.Base(ubvFile), path.Ext(ubvFile))
+				baseFilename := strings.TrimSuffix(filepath.Base(ubvFile), filepath.Ext(ubvFile))
 
 				// If the filename contains underscores, assume it's a Unifi Protect Filename
 				// and drop the final component.
