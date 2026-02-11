@@ -94,14 +94,14 @@ func runFFmpeg(cmd *exec.Cmd) {
 }
 
 const (
-	FFMPEG_LOC_1 = "ffmpeg"
-	FFMPEG_LOC_2 = "/root/ffmpeg"
-	FFMPEG_LOC_3 = "/root/ffmpeg-4.3.1-arm64-static/ffmpeg"
+	ffmpegLoc1 = "ffmpeg"
+	ffmpegLoc2 = "/root/ffmpeg"
+	ffmpegLoc3 = "/root/ffmpeg-4.3.1-arm64-static/ffmpeg"
 )
 
 // Looks for FFmpeg on the path and in default install locations
 func getFfmpegCommand() string {
-	paths := [...]string{FFMPEG_LOC_1, FFMPEG_LOC_2, FFMPEG_LOC_3}
+	paths := [...]string{ffmpegLoc1, ffmpegLoc2, ffmpegLoc3}
 
 	for _, path := range paths {
 		if _, err := exec.LookPath(path); err == nil {

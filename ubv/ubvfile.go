@@ -9,21 +9,21 @@ import (
 
 const (
 	//Observed values: V=Video, A=Audio
-	FIELD_TRACK_TYPE = 0
+	fieldTrackType = 0
 
 	//Observed values: 7=Main video, 1000=Main Audio
-	FIELD_TRACK_ID = 1
+	fieldTrackID = 1
 
 	//1=keyframe (on video tracks).
-	FIELD_IS_KEYFRAME = 2
-	FIELD_OFFSET      = 3
-	FIELD_SIZE        = 4
+	fieldIsKeyframe = 2
+	fieldOffset     = 3
+	fieldSize       = 4
 
-	//WC field: wall-clock perhaps? value is UTC time since 1970, expressed in units of FIELD_WC_TBC. Divide by TBC to get fractional seconds.
-	FIELD_WC = 7
+	//WC field: wall-clock perhaps? value is UTC time since 1970, expressed in units of fieldWCTBC. Divide by TBC to get fractional seconds.
+	fieldWC = 7
 
 	//Timebase for track
-	FIELD_WC_TBC = 8
+	fieldWCTBC = 8
 )
 
 type UbvFrame struct {
@@ -77,10 +77,10 @@ func extractTimecodeAndRate(fields []string, line string, track *UbvTrack) {
 	var wc int64
 	var tbc int64
 
-	if wc, err = strconv.ParseInt(fields[FIELD_WC], 10, 64); err != nil {
+	if wc, err = strconv.ParseInt(fields[fieldWC], 10, 64); err != nil {
 		log.Fatal("Error parsing WC field!", err)
 	}
-	if tbc, err = strconv.ParseInt(fields[FIELD_WC_TBC], 10, 64); err != nil {
+	if tbc, err = strconv.ParseInt(fields[fieldWCTBC], 10, 64); err != nil {
 		log.Fatal("Error parsing TBC field!", err)
 	}
 

@@ -131,13 +131,13 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 
 			var frame = UbvFrame{}
 
-			if frame.TrackNumber, err = strconv.Atoi(fields[FIELD_TRACK_ID]); err != nil {
+			if frame.TrackNumber, err = strconv.Atoi(fields[fieldTrackID]); err != nil {
 				log.Fatal("Error parsing track number!", err)
 			}
-			if frame.Offset, err = strconv.Atoi(fields[FIELD_OFFSET]); err != nil {
+			if frame.Offset, err = strconv.Atoi(fields[fieldOffset]); err != nil {
 				log.Fatal("Error parsing field offset!", err)
 			}
-			if frame.Size, err = strconv.Atoi(fields[FIELD_SIZE]); err != nil {
+			if frame.Size, err = strconv.Atoi(fields[fieldSize]); err != nil {
 				log.Fatal("Error parsing frame size!", err)
 			}
 
@@ -153,7 +153,7 @@ func parseUbvInfo(ubvFile string, scanner *bufio.Scanner) UbvFile {
 
 			if !ok {
 				track = &UbvTrack{
-					// TODO should really test field FIELD_TRACK_TYPE holds (A or V)
+					// TODO should really test field fieldTrackType holds (A or V)
 					IsVideo:     isRecognisedVideoTrack,
 					TrackNumber: frame.TrackNumber,
 					FrameCount:  0,
