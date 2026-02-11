@@ -29,6 +29,7 @@ func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, vi
 
 		defer videoFileRaw.Close()
 		videoFile = bufio.NewWriter(videoFileRaw)
+		defer videoFile.Flush()
 	} else {
 		videoFile = nil
 	}
@@ -42,8 +43,8 @@ func DemuxSinglePartitionToNewFiles(ubvFilename string, videoFilename string, vi
 		}
 
 		defer audioFileRaw.Close()
-
 		audioFile = bufio.NewWriter(audioFileRaw)
+		defer audioFile.Flush()
 	} else {
 		audioFile = nil
 	}
