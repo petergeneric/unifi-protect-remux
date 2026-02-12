@@ -193,10 +193,6 @@ pub fn analyse(
                     let rate = guess_video_rate(&track.rate_probe_window);
                     if rate > 0 && rate < MAX_ACCEPTED_FPS {
                         track.rate = rate;
-                        log::info!(
-                            "Video Rate Probe: File appears to be {} fps. Use --force-rate if incorrect.",
-                            rate
-                        );
                     } else if rate == 0 {
                         log::warn!("Video Rate Probe: probed rate was 0 fps. Assuming timelapse file and using 1fps");
                         track.rate = 1;

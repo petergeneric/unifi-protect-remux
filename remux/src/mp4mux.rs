@@ -143,19 +143,30 @@ fn resolve_rate(
     if let Some(detected) = detect_rate(ictx) {
         let fps = detected.numerator() as f64 / detected.denominator() as f64;
         if fps > 0.0 && fps < MAX_ACCEPTED_FPS as f64 {
-            log::info!(
-                "Detected framerate from bitstream: {}/{} ({:.2} fps)",
-                detected.numerator(),
-                detected.denominator(),
-                fps
-            );
+            let fps_rounded = fps.round() as u32;
+            if analysis_rate > 0 && fps_rounded != analysis_rate {
+                log::info!(
+                    "Video framerate: {}/{} ({:.2} fps) from bitstream (UBV estimate was {} fps). Use --force-rate if incorrect.",
+                    detected.numerator(),
+                    detected.denominator(),
+                    fps,
+                    analysis_rate
+                );
+            } else {
+                log::info!(
+                    "Video framerate: {}/{} ({:.2} fps)",
+                    detected.numerator(),
+                    detected.denominator(),
+                    fps
+                );
+            }
             return detected;
         }
     }
 
     if analysis_rate > 0 {
         log::warn!(
-            "Could not detect framerate from bitstream for {}, using UBV estimate: {} fps",
+            "Could not detect framerate from bitstream for {}, using UBV estimate: {} fps. Use --force-rate if incorrect.",
             mp4_file,
             analysis_rate
         );
