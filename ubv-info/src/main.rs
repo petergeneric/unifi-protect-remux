@@ -8,8 +8,12 @@ use ubv::partition::PartitionEntry;
 #[command(name = "ubv-info", about = "Parse and display UBV file structure")]
 struct Args {
     /// Input .ubv file
-    #[arg(short = 'f', long = "file", required_unless_present_any = ["schema", "version"])]
+    #[arg(short = 'f', long = "file")]
     file: Option<String>,
+
+    /// Input .ubv file (positional)
+    #[arg(conflicts_with = "file", required_unless_present_any = ["file", "schema", "version"])]
+    input: Option<String>,
 
     /// Filter by track ID
     #[arg(short = 't', long = "track")]
@@ -48,7 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let mut reader = ubv::reader::open_ubv(Path::new(args.file.as_ref().unwrap()))?;
+    let file = args.file.or(args.input).expect("file argument required");
+    let mut reader = ubv::reader::open_ubv(Path::new(&file))?;
     let ubv = ubv::reader::parse_ubv(&mut reader)?;
 
     if args.json {
