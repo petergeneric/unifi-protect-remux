@@ -1,9 +1,9 @@
 [package]
 name = "remux"
-version = "4.0.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 license = "AGPL-3.0-only"
-authors = ["Peter <code@peter.works>"]
+authors.workspace = true
 description = "CLI to convert .ubv files to standard MP4"
 
 [dependencies]

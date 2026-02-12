@@ -1,9 +1,9 @@
 [package]
 name = "ubv"
-version = "4.0.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 license = "AGPL-3.0-only"
-authors = ["Peter <code@peter.works>"]
+authors.workspace = true
 description = "Parser library for Ubiquiti's proprietary .ubv video format"
 
 [features]
