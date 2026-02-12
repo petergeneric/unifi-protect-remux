@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS arm64
+          - os: ubuntu-latest
+            name: Ubuntu x86_64
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg pkg-config
+
+      - name: Install pre-built FFmpeg (Ubuntu x86_64)
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang pkg-config libxv-dev libc++-dev
+          curl -L https://sourceforge.net/projects/avbuild/files/linux/ffmpeg-8.0-linux-clang-default.tar.xz/download -o ffmpeg.tar.xz
+          tar -xf ffmpeg.tar.xz
+          echo "FFMPEG_DIR=${PWD}/ffmpeg-8.0-linux-clang-default" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Build
+        run: cargo build --no-default-features
+
+      - name: Test
+        run: cargo test --no-default-features
