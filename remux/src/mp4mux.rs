@@ -64,6 +64,18 @@ fn write_header(octx: &mut format::context::Output, fast_start: bool) -> io::Res
     Ok(())
 }
 
+/// Return the number of audio samples per frame for a given track, used to
+/// synthesize monotonic timestamps in CFR mode. AAC-LC is always 1024; Opus
+/// at 48 kHz with 20 ms frames is 960. Falls back to 1024 for unknown codecs.
+fn audio_samples_per_frame(track_id: u16) -> u32 {
+    match track_info(track_id).map(|ti| ti.track_type) {
+        Some(TrackType::AudioAac) => 1024,
+        Some(TrackType::AudioOpus) => 960,
+        // Raw/PCM: frame size varies; 1024 is a safe default for the CFR path
+        _ => 1024,
+    }
+}
+
 /// Compute DTS and duration for a frame from the rebased DTS values array.
 fn compute_dts_duration(dts_values: &[u64], index: usize) -> (i64, i64) {
     let dts = dts_values[index] as i64;
@@ -125,13 +137,12 @@ pub fn stream_to_mp4(
 
     // Probe codec parameters from first few frames
     let video_params =
-        crate::probe::probe_stream_params(ubv_path, &video_frames, video_track_num, true)?;
+        crate::probe::probe_stream_params(ubv_path, &video_frames, video_track_num)?;
     let audio_params = match audio_track {
-        Some(_) if !audio_frames.is_empty() => Some(crate::probe::probe_stream_params(
+        Some(at) if !audio_frames.is_empty() => Some(crate::probe::probe_stream_params(
             ubv_path,
             &audio_frames,
-            audio_frames[0].track_id,
-            false,
+            at.track_id,
         )?),
         _ => None,
     };
@@ -155,7 +166,6 @@ pub fn stream_to_mp4(
     }
 
     // Add audio stream (index 1) if present
-    let has_audio = audio_params.is_some();
     if let Some(params) = audio_params {
         let mut ost = octx
             .add_stream(encoder::find(codec::Id::None))
@@ -173,8 +183,8 @@ pub fn stream_to_mp4(
     // extradata produced by probing. The MOV muxer detects the Annex B format and
     // converts both extradata and packet data to the length-prefixed format required
     // by the MP4 container (hvcC/avcC boxes and sample data).
+    let mut ubv_file = File::open(ubv_path)?;
     {
-        let mut ubv_file = File::open(ubv_path)?;
         let max_frame = video_frames
             .iter()
             .map(|f| f.data_size as usize)
@@ -246,38 +256,63 @@ pub fn stream_to_mp4(
     }
 
     // Write audio packets
-    if let (true, Some(at)) = (has_audio, audio_track) {
-        let mut ubv_file = File::open(ubv_path)?;
+    if let Some(at) = audio_track {
         let mut audio_buf = Vec::new();
         let audio_stream_idx = 1;
         let ost_time_base = octx.stream(audio_stream_idx).unwrap().time_base();
-        let input_tb = Rational(1, at.clock_rate as i32);
-        let dts_values = &at.dts_values;
 
-        log::info!(
-            "Audio: {} Hz timebase, {} frames",
-            at.clock_rate,
-            at.frame_count
-        );
-        for (i, frame) in audio_frames.iter().enumerate() {
-            if i >= dts_values.len() {
-                log::warn!(
-                    "More audio frames ({}) than DTS values ({})",
-                    audio_frames.len(),
-                    dts_values.len()
-                );
-                break;
+        if cfr {
+            // CFR path: synthesize monotonic timestamps from the codec's fixed
+            // frame duration, matching what FFmpeg's demuxer would produce from a
+            // raw bitstream file. For AAC-LC each frame is 1024 samples.
+            let samples_per_frame = audio_samples_per_frame(at.track_id);
+            let input_tb = Rational(1, at.clock_rate as i32);
+            log::info!(
+                "Audio: CFR {} Hz, {} samples/frame, {} frames",
+                at.clock_rate,
+                samples_per_frame,
+                at.frame_count
+            );
+            for (i, frame) in audio_frames.iter().enumerate() {
+                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)?;
+                let pts = i as i64 * samples_per_frame as i64;
+                let mut packet = ffmpeg::Packet::copy(&audio_buf);
+                packet.set_pts(Some(pts));
+                packet.set_dts(Some(pts));
+                packet.set_duration(samples_per_frame as i64);
+                packet.rescale_ts(input_tb, ost_time_base);
+                packet.set_position(-1);
+                packet.set_stream(audio_stream_idx);
+                packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
             }
-            crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)?;
-            let (dts, duration) = compute_dts_duration(dts_values, i);
-            let mut packet = ffmpeg::Packet::copy(&audio_buf);
-            packet.set_pts(Some(dts));
-            packet.set_dts(Some(dts));
-            packet.set_duration(duration);
-            packet.rescale_ts(input_tb, ost_time_base);
-            packet.set_position(-1);
-            packet.set_stream(audio_stream_idx);
-            packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
+        } else {
+            let input_tb = Rational(1, at.clock_rate as i32);
+            let dts_values = &at.dts_values;
+            log::info!(
+                "Audio: VFR {} Hz timebase, {} frames",
+                at.clock_rate,
+                at.frame_count
+            );
+            for (i, frame) in audio_frames.iter().enumerate() {
+                if i >= dts_values.len() {
+                    log::warn!(
+                        "More audio frames ({}) than DTS values ({})",
+                        audio_frames.len(),
+                        dts_values.len()
+                    );
+                    break;
+                }
+                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)?;
+                let (dts, duration) = compute_dts_duration(dts_values, i);
+                let mut packet = ffmpeg::Packet::copy(&audio_buf);
+                packet.set_pts(Some(dts));
+                packet.set_dts(Some(dts));
+                packet.set_duration(duration);
+                packet.rescale_ts(input_tb, ost_time_base);
+                packet.set_position(-1);
+                packet.set_stream(audio_stream_idx);
+                packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
+            }
         }
     }
 

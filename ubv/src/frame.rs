@@ -29,8 +29,6 @@ pub struct Frame {
     /// Common record header fields.
     #[serde(flatten)]
     pub header: RecordHeader,
-    /// Whether this is a keyframe.
-    pub keyframe: bool,
     /// Composition timestamp offset (always 0 in observed files).
     pub cts: i64,
     /// Wall-clock time in track clock rate units.

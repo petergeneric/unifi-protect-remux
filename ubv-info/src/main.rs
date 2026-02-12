@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "{:>4} {:>5} {:>3} {:>16} {:>8} {:>15} {:>5} {:>17} {:>6} {:>7}",
                         format!("{}", frame.type_char),
                         frame.header.track_id,
-                        if frame.keyframe { 1 } else { 0 },
+                        if frame.header.keyframe { 1 } else { 0 },
                         frame.header.data_offset,
                         frame.header.data_size,
                         frame.header.dts,

@@ -46,11 +46,6 @@ pub fn demux_partition(
         .unwrap_or(0);
     let mut buffer = vec![0u8; max_size];
 
-    // Write opening NAL separator for video
-    if let Some(ref mut vw) = video_writer {
-        vw.write_all(&NAL_START_CODE)?;
-    }
-
     for frame in &partition.frames {
         if frame.track_id == video_track_num {
             if let Some(ref mut vw) = video_writer {
@@ -115,7 +110,7 @@ where
     Ok(())
 }
 
-/// Write a video frame: read length-prefixed NALs and emit with 00 00 00 01 separators.
+/// Write a video frame: read length-prefixed NALs, each preceded by an Annex B start code.
 fn write_video_frame(
     ubv_file: &mut File,
     frame: &RecordHeader,
@@ -123,8 +118,8 @@ fn write_video_frame(
     buffer: &mut [u8],
 ) -> io::Result<()> {
     for_each_nal(ubv_file, frame, buffer, |nal| {
-        writer.write_all(nal)?;
-        writer.write_all(&NAL_START_CODE)
+        writer.write_all(&NAL_START_CODE)?;
+        writer.write_all(nal)
     })
 }
 
@@ -143,7 +138,7 @@ fn write_audio_frame(
 
 /// Demux video frames from a UBV file into an Annex B bitstream written to the given writer.
 ///
-/// Writes a leading NAL start code, then each frame's NAL units separated by start codes.
+/// Each NAL unit is preceded by a 4-byte start code (00 00 00 01).
 /// The `frames` slice should contain only video frames for the desired track.
 pub fn demux_video_frames(
     ubv_path: &str,
@@ -163,7 +158,6 @@ pub fn demux_video_frames(
         .unwrap_or(0);
     let mut buffer = vec![0u8; max_size];
 
-    writer.write_all(&NAL_START_CODE)?;
     for frame in frames {
         write_video_frame(&mut ubv_file, frame, writer, &mut buffer)?;
     }
@@ -231,4 +225,53 @@ pub fn read_audio_frame_raw(
     ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
     ubv_file.read_exact(buffer)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{}_{}_{}.bin", name, std::process::id(), nanos))
+    }
+
+    #[test]
+    fn demux_video_frames_writes_annexb_without_trailing_start_code() {
+        // Two length-prefixed NAL units: [AA BB] and [CC]
+        let frame_data: Vec<u8> = vec![
+            0, 0, 0, 2, 0xAA, 0xBB, // NAL 1
+            0, 0, 0, 1, 0xCC, // NAL 2
+        ];
+
+        let ubv_path = temp_file_path("demux_annexb_test");
+        fs::write(&ubv_path, &frame_data).unwrap();
+
+        let frame = RecordHeader {
+            track_id: 7,
+            data_offset: 0,
+            data_size: frame_data.len() as u32,
+            dts: 0,
+            clock_rate: 90_000,
+            sequence: 0,
+            keyframe: true,
+        };
+
+        let mut output = Vec::new();
+        demux_video_frames(ubv_path.to_str().unwrap(), &[frame], &mut output).unwrap();
+
+        let expected = vec![
+            0, 0, 0, 1, 0xAA, 0xBB, // NAL 1
+            0, 0, 0, 1, 0xCC, // NAL 2
+        ];
+        assert_eq!(output, expected);
+
+        let _ = fs::remove_file(ubv_path);
+    }
 }

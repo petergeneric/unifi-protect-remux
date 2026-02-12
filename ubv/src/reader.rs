@@ -131,7 +131,6 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
                 let frame = Frame {
                     type_char,
                     header,
-                    keyframe: rec.format_code.keyframe(),
                     cts: 0,
                     wc,
                     packet_position: rec.format_code.packet_position(),

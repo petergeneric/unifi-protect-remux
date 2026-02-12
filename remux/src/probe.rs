@@ -6,6 +6,7 @@ extern crate ffmpeg_next as ffmpeg;
 
 use crate::demux;
 use ubv::frame::RecordHeader;
+use ubv::track::is_video_track;
 
 const AVIO_BUF_SIZE: usize = 4096;
 
@@ -62,7 +63,6 @@ pub fn probe_stream_params(
     ubv_path: &str,
     frames: &[RecordHeader],
     track_id: u16,
-    is_video: bool,
 ) -> io::Result<ffmpeg::codec::Parameters> {
     if frames.is_empty() {
         return Err(io::Error::new(
@@ -82,7 +82,7 @@ pub fn probe_stream_params(
     let probe_count = frames.len().min(10);
     let probe_frames = &frames[..probe_count];
     let mut data = Vec::new();
-    if is_video {
+    if is_video_track(track_id) {
         demux::demux_video_frames(ubv_path, probe_frames, &mut data)?;
     } else {
         demux::demux_audio_frames(ubv_path, probe_frames, &mut data)?;
