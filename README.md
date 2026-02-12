@@ -6,15 +6,6 @@ This is a tool that converts Ubiquiti's proprietary .ubv files into standard .MP
 Please look in the github "releases" page at https://github.com/petergeneric/unifi-protect-remux/releases for builds of the latest version.
 
 
-Dependencies: FFmpeg
-------------------------
-(These instructions are Ubuntu/Debian specific; pull requests welcome for CentOS/Arch/Windows equivalent)
-
-To install FFmpeg, run:
-```
-apt install -y ffmpeg
-```
-
 Extracting video
 ----------------
 Once the dependencies are installed, use the following instructions to get the unifi-protect-remux tool working:
@@ -24,8 +15,6 @@ Once the dependencies are installed, use the following instructions to get the u
 3. Transfer .ubv files from your CloudKey to your x86 server (on cloudkey, .ubv files are found under /srv/unifi-protect/video).
 4. Run: ```remux *.ubv```
 5. By default, audio and video is extracted. If you do not need to extract audio, add "--with-audio=false" to your command
-
-If FFmpeg is not installed (or if the command fails) the remux tool will leave the raw .aac and .h264 bitstream files; these can be combined with a variety of tools. 
 
 
 Command-line arguments
@@ -62,20 +51,5 @@ find /srv/unifi-protect/video -type f -name "*_0_rotating_*.ubv"
 BUILD FROM SOURCE
 =================
 
-Simply run "make package" to compile
+See COMPILING.md for more detail
 
-
-DEPENDENCIES
-============
-
-FFmpeg
-------
-This tool extracts bare audio/video bitstreams, and relies on FFmpeg to mux them into an MP4.
-
-You can install FFmpeg on Ubuntu with:
-
-```
-apt install ffmpeg
-```
-
-There are also several FFmpeg static builds available, see https://ffmpeg.org/download.html
