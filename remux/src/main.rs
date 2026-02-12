@@ -27,6 +27,10 @@ struct Args {
     #[arg(long = "force-rate", default_value_t = 0)]
     force_rate: u32,
 
+    /// If true, generated MP4 files will have faststart enabled for better streaming. Increases remux IO cost
+    #[arg(long = "fast-start", default_value_t = false, action = ArgAction::Set)]
+    fast_start: bool,
+
     /// Output directory ("SRC-FOLDER" = alongside .ubv files)
     #[arg(long = "output-folder", default_value = "./")]
     output_folder: String,
@@ -54,6 +58,7 @@ fn normalise_args(args: Vec<String>) -> Vec<String> {
         "-with-audio",
         "-with-video",
         "-force-rate",
+        "-fast-start",
         "-output-folder",
         "-mp4",
         "-video-track",
@@ -283,6 +288,7 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
                     audio_file.as_deref(),
                     &mp4_file,
                     force_rate,
+                    args.fast_start,
                 )?;
 
                 // Delete intermediate files

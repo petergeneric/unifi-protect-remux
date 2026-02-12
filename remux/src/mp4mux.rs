@@ -242,6 +242,18 @@ fn write_audio_packets_cfr(
     Ok(())
 }
 
+/// Write the output header, optionally with faststart movflag.
+fn write_header(octx: &mut format::context::Output, fast_start: bool) -> io::Result<()> {
+    if fast_start {
+        let mut opts = ffmpeg::Dictionary::new();
+        opts.set("movflags", "faststart");
+        octx.write_header_with(opts).map_err(ffmpeg_err)?;
+    } else {
+        octx.write_header().map_err(ffmpeg_err)?;
+    }
+    Ok(())
+}
+
 /// Mux video and/or audio into MP4 using FFmpeg via ffmpeg-next.
 pub fn mux(
     partition: &AnalysedPartition,
@@ -250,14 +262,15 @@ pub fn mux(
     audio_file: Option<&str>,
     mp4_file: &str,
     force_rate: Option<u32>,
+    fast_start: bool,
 ) -> io::Result<()> {
     ensure_init();
 
     match (video_file, audio_file) {
         (Some(vf), Some(af)) => {
-            mux_audio_and_video(partition, vf, video_track_num, af, mp4_file, force_rate)
+            mux_audio_and_video(partition, vf, video_track_num, af, mp4_file, force_rate, fast_start)
         }
-        (Some(vf), None) => mux_video_only(partition, vf, video_track_num, mp4_file, force_rate),
+        (Some(vf), None) => mux_video_only(partition, vf, video_track_num, mp4_file, force_rate, fast_start),
         (None, Some(_)) => {
             log::warn!(
                 "Audio-only MP4 muxing is not supported without a video track. \
@@ -279,6 +292,7 @@ fn mux_video_only(
     video_track_num: u16,
     mp4_file: &str,
     force_rate: Option<u32>,
+    fast_start: bool,
 ) -> io::Result<()> {
     let video_track = match &partition.video_track {
         Some(t) => t,
@@ -304,7 +318,7 @@ fn mux_video_only(
     add_video_output_stream(&ictx, &mut octx, rate, hevc)?;
     set_timecode_metadata(&mut octx, video_track, rate);
 
-    octx.write_header().map_err(ffmpeg_err)?;
+    write_header(&mut octx, fast_start)?;
 
     if cfr {
         log::info!("Video: CFR {} fps (forced)", nominal_fps);
@@ -331,6 +345,7 @@ fn mux_audio_and_video(
     audio_file: &str,
     mp4_file: &str,
     force_rate: Option<u32>,
+    fast_start: bool,
 ) -> io::Result<()> {
     let video_track = match &partition.video_track {
         Some(t) => t,
@@ -346,7 +361,7 @@ fn mux_audio_and_video(
     let audio_track = match &partition.audio_track {
         Some(t) => t,
         None => {
-            return mux_video_only(partition, video_file, video_track_num, mp4_file, force_rate);
+            return mux_video_only(partition, video_file, video_track_num, mp4_file, force_rate, fast_start);
         }
     };
 
@@ -384,7 +399,7 @@ fn mux_audio_and_video(
 
     set_timecode_metadata(&mut octx, video_track, rate);
 
-    octx.write_header().map_err(ffmpeg_err)?;
+    write_header(&mut octx, fast_start)?;
 
     // Write video
     if cfr {

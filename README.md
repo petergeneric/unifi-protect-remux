@@ -39,12 +39,14 @@ Usage of remux:
     	If true, extract video (default true)
   --mp4
     	If true, will create an MP4 as output (default true)
+  --fast-start
+    	If true, generated MP4 files will have faststart enabled for better streaming. Increases remux IO cost (default false)
   --output-folder string
     	The path to output remuxed files to. "SRC-FOLDER" to put alongside .ubv files (default "./")
   --version
     	Display version and quit
   --force-rate int
-    	If non-zero, adds a -r argument to FFmpeg invocations
+    	If non-zero, forces CFR at the defined rate
 ```
 
 FINDING SOURCE MEDIA
