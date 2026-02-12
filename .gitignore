@@ -16,4 +16,4 @@ samples/
 *.swp
 
 # Local-only
-Makefile.local
+*.local
