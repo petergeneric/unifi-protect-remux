@@ -42,7 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     if args.version {
-        print_version();
+        ubv::version::print_cli_version_banner(
+            "UBV Info Tool",
+            env!("CARGO_PKG_VERSION"),
+            env!("RELEASE_VERSION"),
+            env!("GIT_COMMIT"),
+        );
         return Ok(());
     }
 
@@ -104,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "{:>4} {:>5} {:>3} {:>16} {:>8} {:>15} {:>5} {:>17} {:>6} {:>7}",
                         format!("{}", frame.type_char),
                         frame.header.track_id,
-                        if frame.keyframe { 1 } else { 0 },
+                        if frame.header.keyframe { 1 } else { 0 },
                         frame.header.data_offset,
                         frame.header.data_size,
                         frame.header.dts,
@@ -154,23 +159,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-}
-
-fn print_version() {
-    println!("UBV Info Tool");
-    println!("Copyright (c) Peter Wright 2020-2026");
-    println!("License: GNU AGPL v3 (AGPL-3.0-only)");
-    println!("https://github.com/petergeneric/unifi-protect-remux");
-    println!();
-
-    println!("\tVersion:     {}", env!("CARGO_PKG_VERSION"));
-
-    let release = env!("RELEASE_VERSION");
-    let commit = env!("GIT_COMMIT");
-    if !release.is_empty() {
-        println!("\tGit tag:     {}", release);
-    }
-    if !commit.is_empty() {
-        println!("\tGit commit:  {}", commit);
-    }
 }

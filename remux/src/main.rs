@@ -1,6 +1,7 @@
 mod analysis;
 mod demux;
 mod mp4mux;
+mod probe;
 
 use std::io;
 use std::path::Path;
@@ -98,25 +99,20 @@ fn main() {
 
 fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.version {
-        println!("UBV Remux Tool");
-        println!("Copyright (c) Peter Wright 2020-2026");
-        println!("License: GNU AGPL v3 (AGPL-3.0-only)");
-        println!("https://github.com/petergeneric/unifi-protect-remux");
-        println!();
-
-        println!("\tVersion:     {}", env!("CARGO_PKG_VERSION"));
-
-        let release = env!("RELEASE_VERSION");
-        let commit = env!("GIT_COMMIT");
-        if !release.is_empty() {
-            println!("\tGit tag:     {}", release);
-        }
-        if !commit.is_empty() {
-            println!("\tGit commit:  {}", commit);
-        }
+        ubv::version::print_cli_version_banner(
+            "UBV Remux Tool",
+            env!("CARGO_PKG_VERSION"),
+            env!("RELEASE_VERSION"),
+            env!("GIT_COMMIT"),
+        );
         return Ok(());
     }
 
+    validate_args(args)?;
+    remux_cli(args)
+}
+
+fn validate_args(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.files.is_empty() {
         return Err("Expected at least one .ubv file as input!".into());
     }
@@ -125,7 +121,14 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         return Err("Must enable extraction of at least one of: audio, video!".into());
     }
 
-    remux_cli(args)
+    if args.mp4 && !args.with_video {
+        return Err(
+            "MP4 output requires video; --with-video=false is not supported with --mp4=true"
+                .into(),
+        );
+    }
+
+    Ok(())
 }
 
 fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
@@ -252,60 +255,46 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
                 .to_string_lossy()
                 .to_string();
 
-            // Determine output file paths
-            let video_file = if args.with_video && partition.video_track_count > 0 {
-                let ext = codec_name_for_track(video_track).unwrap_or("h264");
-                Some(format!("{}.{}", basename, ext))
-            } else {
-                None
-            };
-
-            let audio_file = if args.with_audio && partition.audio_track_count > 0 {
-                let ext = partition
-                    .audio_track
-                    .as_ref()
-                    .and_then(|at| codec_name_for_track(at.track_id))
-                    .unwrap_or("aac");
-                Some(format!("{}.{}", basename, ext))
-            } else {
-                None
-            };
-
-            // Demux
-            demux::demux_partition(
-                ubv_path,
-                partition,
-                video_file.as_deref(),
-                video_track,
-                audio_file.as_deref(),
-            )?;
-
-            // Mux to MP4
             if args.mp4 {
+                // Stream directly from UBV to MP4 — no intermediate files
                 let mp4_file = format!("{}.mp4", basename);
                 log::info!("Writing MP4 {}...", mp4_file);
 
-                mp4mux::mux(
+                mp4mux::stream_to_mp4(
+                    ubv_path,
                     partition,
-                    video_file.as_deref(),
                     video_track,
-                    audio_file.as_deref(),
                     &mp4_file,
                     force_rate,
                     args.fast_start,
                 )?;
+            } else {
+                // Demux to raw bitstream files
+                let video_file = if args.with_video && partition.video_track_count > 0 {
+                    let ext = codec_name_for_track(video_track).unwrap_or("h264");
+                    Some(format!("{}.{}", basename, ext))
+                } else {
+                    None
+                };
 
-                // Delete intermediate files
-                if let Some(ref vf) = video_file {
-                    if let Err(e) = std::fs::remove_file(vf) {
-                        log::warn!("Could not delete {}: {}", vf, e);
-                    }
-                }
-                if let Some(ref af) = audio_file {
-                    if let Err(e) = std::fs::remove_file(af) {
-                        log::warn!("Could not delete {}: {}", af, e);
-                    }
-                }
+                let audio_file = if args.with_audio && partition.audio_track_count > 0 {
+                    let ext = partition
+                        .audio_track
+                        .as_ref()
+                        .and_then(|at| codec_name_for_track(at.track_id))
+                        .unwrap_or("aac");
+                    Some(format!("{}.{}", basename, ext))
+                } else {
+                    None
+                };
+
+                demux::demux_partition(
+                    ubv_path,
+                    partition,
+                    video_file.as_deref(),
+                    video_track,
+                    audio_file.as_deref(),
+                )?;
             }
         }
     }
@@ -343,5 +332,45 @@ fn get_start_timecode(
             .as_ref()
             .filter(|vt| vt.track_id == video_track_num)
             .and_then(|vt| vt.start_timecode)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_args() -> Args {
+        Args {
+            with_audio: true,
+            with_video: true,
+            force_rate: 0,
+            fast_start: false,
+            output_folder: "./".to_string(),
+            mp4: true,
+            video_track: 0,
+            version: false,
+            files: vec!["dummy.ubv".to_string()],
+        }
+    }
+
+    #[test]
+    fn validate_args_rejects_mp4_audio_only() {
+        let mut args = base_args();
+        args.with_video = false;
+        args.with_audio = true;
+        args.mp4 = true;
+
+        let err = validate_args(&args).unwrap_err().to_string();
+        assert!(err.contains("MP4 output requires video"));
+    }
+
+    #[test]
+    fn validate_args_allows_audio_only_when_not_mp4() {
+        let mut args = base_args();
+        args.with_video = false;
+        args.with_audio = true;
+        args.mp4 = false;
+
+        assert!(validate_args(&args).is_ok());
     }
 }

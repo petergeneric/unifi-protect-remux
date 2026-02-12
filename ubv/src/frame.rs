@@ -16,6 +16,8 @@ pub struct RecordHeader {
     pub clock_rate: u32,
     /// Sequence counter from the record header.
     pub sequence: u16,
+    /// Whether this frame is a keyframe (from UBV format code bitflags).
+    pub keyframe: bool,
 }
 
 /// A parsed media frame from the UBV file.
@@ -27,8 +29,6 @@ pub struct Frame {
     /// Common record header fields.
     #[serde(flatten)]
     pub header: RecordHeader,
-    /// Whether this is a keyframe.
-    pub keyframe: bool,
     /// Composition timestamp offset (always 0 in observed files).
     pub cts: i64,
     /// Wall-clock time in track clock rate units.

@@ -79,8 +79,13 @@ pub fn generate_timecode(start: &DateTime<Utc>, framerate: u32) -> String {
 }
 
 /// Analyse a parsed UBV partition, extracting track metadata, per-frame DTS values,
-/// and building the demux frame list. Only includes frames for the requested
-/// video track and audio track 1000.
+/// and building the demux frame list.
+///
+/// Track selection policy:
+/// - Video: only frames for `video_track_num`
+/// - Audio: all tracks where `is_audio_track(track_id)` is true, when `extract_audio` is enabled
+///
+/// The returned `audio_track` summary currently represents the first audio track encountered.
 pub fn analyse(
     partition: &Partition,
     extract_audio: bool,
@@ -135,7 +140,7 @@ pub fn analyse(
         let is_video = is_video_track(frame.header.track_id);
         let is_audio = is_audio_track(frame.header.track_id);
 
-        // Only process the requested video track and audio
+        // Only process the requested video track and known audio tracks.
         if is_video && frame.header.track_id != video_track_num {
             continue;
         }
@@ -209,6 +214,7 @@ pub fn analyse(
 
     let audio_track = tracks
         .iter()
+        // Authoritative summary policy: first encountered audio track.
         .find(|t| !t.is_video)
         .map(&to_analysed);
 

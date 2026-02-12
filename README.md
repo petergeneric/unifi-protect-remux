@@ -28,6 +28,7 @@ Usage of remux:
     	If true, extract video (default true)
   --mp4
     	If true, will create an MP4 as output (default true)
+        Note: MP4 output currently requires `--with-video=true`; audio-only MP4 is not supported
   --fast-start
     	If true, generated MP4 files will have faststart enabled for better streaming. Increases remux IO cost (default false)
   --output-folder string
@@ -52,4 +53,3 @@ BUILD FROM SOURCE
 =================
 
 See COMPILING.md for more detail
-

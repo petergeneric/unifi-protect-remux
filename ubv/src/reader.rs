@@ -38,6 +38,11 @@ impl Seek for UbvReader {
 /// Open a `.ubv` or `.ubv.gz` file and return a seekable reader.
 ///
 /// Gzip-compressed files are fully decompressed into memory.
+///
+/// This is intentional: in this project `.ubv.gz` parsing is primarily used by
+/// unit/integration tests and fixture tooling. Production remux/anonymise flows
+/// operate on plain `.ubv` files, so we prefer the simplest seekable approach
+/// here over adding a more complex seekable-gzip implementation.
 pub fn open_ubv(path: &Path) -> std::io::Result<UbvReader> {
     let is_gz = path
         .to_str()
@@ -48,6 +53,7 @@ pub fn open_ubv(path: &Path) -> std::io::Result<UbvReader> {
         let file = File::open(path)?;
         let mut decoder = GzDecoder::new(file);
         let mut buf = Vec::new();
+        // Keep gzip handling simple and fully seekable for test fixtures.
         decoder.read_to_end(&mut buf)?;
         Ok(UbvReader::Memory(Cursor::new(buf)))
     } else {
@@ -82,6 +88,7 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
             dts: rec.dts,
             clock_rate: rec.clock_rate,
             sequence: rec.sequence,
+            keyframe: rec.format_code.keyframe(),
         };
 
         match info.track_type {
@@ -130,7 +137,6 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
                 let frame = Frame {
                     type_char,
                     header,
-                    keyframe: rec.format_code.keyframe(),
                     cts: 0,
                     wc,
                     packet_position: rec.format_code.packet_position(),
