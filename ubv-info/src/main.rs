@@ -25,6 +25,12 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Reset SIGPIPE to default so piped output (e.g. head/tail) exits cleanly
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let args = Args::parse();
 
     if args.schema {

@@ -789,6 +789,7 @@ name = "ubv-info"
 version = "4.0.0"
 dependencies = [
  "clap",
+ "libc",
  "schemars",
  "serde_json",
  "ubv",
