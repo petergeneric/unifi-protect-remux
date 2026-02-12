@@ -18,9 +18,9 @@ fn main() {
         .unwrap_or_default();
     println!("cargo:rustc-env=GIT_COMMIT={commit}");
 
-    // Inject release version from git tag
+    // Inject release version (only if HEAD is directly tagged)
     let version = Command::new("git")
-        .args(["describe", "--tags"])
+        .args(["tag", "--points-at", "HEAD"])
         .output()
         .ok()
         .filter(|o| o.status.success())

@@ -38,11 +38,14 @@ fn print_version() {
     println!("https://github.com/petergeneric/unifi-protect-remux");
     println!();
 
+    println!("\tVersion:     {}", env!("CARGO_PKG_VERSION"));
+
     let release = env!("RELEASE_VERSION");
     let commit = env!("GIT_COMMIT");
     if !release.is_empty() {
-        println!("\tVersion:     {}", release);
-    } else {
+        println!("\tGit tag:     {}", release);
+    }
+    if !commit.is_empty() {
         println!("\tGit commit:  {}", commit);
     }
 }
