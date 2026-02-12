@@ -48,19 +48,20 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install nasm pkg-config
 
-      - name: Setup MSYS2 (Windows)
+      - name: Install FFmpeg and LLVM (Windows)
         if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          path-type: inherit
-          update: true
-          install: >-
-            base-devel
-            mingw-w64-ucrt-x86_64-nasm
-            mingw-w64-ucrt-x86_64-clang
-            diffutils
-            make
+        shell: pwsh
+        run: |
+          # LLVM for bindgen
+          choco install llvm --yes --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+          # Pre-built FFmpeg 8 shared libs
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-win64-lgpl-shared-8.0.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath .
+          $ffmpegDir = (Resolve-Path "ffmpeg-n8.0-latest-win64-lgpl-shared-8.0").Path
+          echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
+          echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -81,10 +82,7 @@ jobs:
 
       - name: Build release binaries (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          export PATH="/ucrt64/bin:$PATH"
-          cargo build --release
+        run: cargo build --release --no-default-features
 
       - name: Build release binaries
         if: runner.os != 'Windows'
@@ -92,10 +90,7 @@ jobs:
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          export PATH="/ucrt64/bin:$PATH"
-          cargo nextest run --release --profile ci
+        run: cargo nextest run --release --no-default-features --profile ci
 
       - name: Test
         if: runner.os != 'Windows'
@@ -126,6 +121,8 @@ jobs:
           Copy-Item target/release/remux.exe staging/
           Copy-Item target/release/ubv-info.exe staging/
           Copy-Item target/release/ubv-anonymise.exe staging/
+          # Bundle FFmpeg DLLs so users don't need a separate FFmpeg install
+          Copy-Item "$env:FFMPEG_DIR\bin\*.dll" staging/
           Compress-Archive -Path staging/* -DestinationPath ${{ matrix.artifact }}.zip
 
       - name: Upload artifact
