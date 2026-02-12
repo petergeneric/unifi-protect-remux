@@ -6,22 +6,18 @@ use ubv::frame::RecordHeader;
 use ubv::partition::{Partition, PartitionEntry};
 use ubv::track::{is_audio_track, is_video_track};
 
-/// Maximum acceptable framerate (fps) for both probed and bitstream-detected rates.
-pub const MAX_ACCEPTED_FPS: u32 = 240;
-
-/// Number of frames to sample when probing video framerate from wall-clock deltas.
-const RATE_PROBE_WINDOW: usize = 32;
-
 /// Analysed metadata for a single track within a partition.
 #[derive(Debug, Clone)]
 pub struct AnalysedTrack {
     pub track_id: u16,
     pub frame_count: u32,
-    /// Framerate (video) or sample rate (audio).
-    pub rate: u32,
+    /// UBV clock rate in Hz (e.g. 90000 for video). Becomes the MP4 timescale.
+    pub clock_rate: u32,
+    /// Informational framerate (video) or sample rate (audio), for logging/timecode.
+    pub nominal_fps: u32,
+    /// Per-frame DTS values rebased so dts_values[0] == 0, in clock_rate units.
+    pub dts_values: Vec<u64>,
     pub start_timecode: Option<DateTime<Utc>>,
-    /// Wall-clock nanos since epoch for the first frame (for A/V sync).
-    pub start_nanos: i64,
 }
 
 /// Analysed partition with resolved tracks and demux-ready frame list.
@@ -47,31 +43,31 @@ fn wc_to_datetime(wc: u64, clock_rate: u32) -> io::Result<DateTime<Utc>> {
     })
 }
 
-/// Guess the most frequent framerate from a probe window of per-frame rate estimates.
-fn guess_video_rate(window: &[u32]) -> u32 {
-    let mut best_val = 0u32;
-    let mut best_count = 0u32;
-    // Simple O(n^2) frequency count — window is at most 32 entries
-    let mut counts: Vec<(u32, u32)> = Vec::new();
-    for &val in window {
-        if val == 0 {
-            continue;
-        }
-        if let Some(entry) = counts.iter_mut().find(|(v, _)| *v == val) {
-            entry.1 += 1;
-            if entry.1 > best_count {
-                best_count = entry.1;
-                best_val = val;
-            }
-        } else {
-            counts.push((val, 1));
-            if 1 > best_count {
-                best_count = 1;
-                best_val = val;
-            }
-        }
+/// Compute a nominal framerate from DTS deltas using the median for outlier robustness.
+pub fn compute_nominal_fps(dts_values: &[u64], clock_rate: u32) -> u32 {
+    if dts_values.len() < 2 || clock_rate == 0 {
+        return 1;
     }
-    best_val
+
+    let mut deltas: Vec<u64> = dts_values
+        .windows(2)
+        .map(|w| w[1].saturating_sub(w[0]))
+        .filter(|&d| d > 0)
+        .collect();
+
+    if deltas.is_empty() {
+        return 1;
+    }
+
+    deltas.sort_unstable();
+    let median = deltas[deltas.len() / 2];
+
+    if median == 0 {
+        return 1;
+    }
+
+    let fps = (clock_rate as u64 + median / 2) / median; // rounded division
+    (fps as u32).max(1)
 }
 
 /// Generate a non-drop-frame timecode string (HH:MM:SS:FF) from a start time and framerate.
@@ -82,24 +78,21 @@ pub fn generate_timecode(start: &DateTime<Utc>, framerate: u32) -> String {
     format!("{}:{:02}", hms, frame)
 }
 
-/// Analyse a parsed UBV partition, extracting track metadata, framerate, and
-/// building the demux frame list. Only includes frames for the requested
+/// Analyse a parsed UBV partition, extracting track metadata, per-frame DTS values,
+/// and building the demux frame list. Only includes frames for the requested
 /// video track and audio track 1000.
 pub fn analyse(
     partition: &Partition,
     extract_audio: bool,
     video_track_num: u16,
 ) -> io::Result<AnalysedPartition> {
-    // Per-track state for framerate probing
     struct TrackState {
         track_id: u16,
         is_video: bool,
         frame_count: u32,
-        rate: u32,
-        rate_probe_window: [u32; RATE_PROBE_WINDOW],
-        rate_probe_last_wc: u64,
+        clock_rate: u32,
+        dts_values: Vec<u64>,
         start_timecode: Option<DateTime<Utc>>,
-        start_nanos: i64,
     }
 
     let mut tracks: Vec<TrackState> = Vec::new();
@@ -126,11 +119,9 @@ pub fn analyse(
             track_id,
             is_video,
             frame_count: 0,
-            rate: 0,
-            rate_probe_window: [0; 32],
-            rate_probe_last_wc: 0,
+            clock_rate: 0,
+            dts_values: Vec::new(),
             start_timecode: None,
-            start_nanos: 0,
         });
         tracks.len() - 1
     }
@@ -164,64 +155,51 @@ pub fn analyse(
         );
         let track = &mut tracks[idx];
 
-        // Compute timecode from wall-clock
-        if frame.header.clock_rate > 0 {
-            let dt = wc_to_datetime(frame.wc, frame.header.clock_rate)?;
-
-            if track.frame_count == 0 {
-                // First frame
-                track.start_timecode = Some(dt);
-                track.start_nanos = (frame.wc as u128 * 1_000_000_000 / frame.header.clock_rate as u128) as i64;
-
-                if !track.is_video {
-                    // Audio: rate = clock_rate (sample rate)
-                    track.rate = frame.header.clock_rate;
-                } else {
-                    log::info!("First Frame: {}", dt.format("%Y-%m-%dT%H:%M:%S%.3fZ"));
-                    track.rate_probe_last_wc = frame.wc;
-                }
-            } else if track.rate == 0 && track.is_video {
-                let fc = track.frame_count as usize;
-                if fc < track.rate_probe_window.len() {
-                    let delta = frame.wc.saturating_sub(track.rate_probe_last_wc);
-                    if delta > 0 {
-                        let rate = frame.header.clock_rate as u64 / delta;
-                        track.rate_probe_window[fc] = rate.min(u32::MAX as u64) as u32;
-                    }
-                    track.rate_probe_last_wc = frame.wc;
-                } else if fc == track.rate_probe_window.len() {
-                    let rate = guess_video_rate(&track.rate_probe_window);
-                    if rate > 0 && rate < MAX_ACCEPTED_FPS {
-                        track.rate = rate;
-                    } else if rate == 0 {
-                        log::warn!("Video Rate Probe: probed rate was 0 fps. Assuming timelapse file and using 1fps");
-                        track.rate = 1;
-                    } else {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!(
-                                "Video Rate Probe: probed rate was {} fps. Assuming invalid. Please use --force-rate",
-                                rate
-                            ),
-                        ));
-                    }
-                }
-            }
-
+        // Record clock_rate from the first frame
+        if track.frame_count == 0 && frame.header.clock_rate > 0 {
+            track.clock_rate = frame.header.clock_rate;
         }
 
-        track.frame_count += 1;
+        // Compute timecode from wall-clock on first frame
+        if frame.header.clock_rate > 0 && track.frame_count == 0 {
+            let dt = wc_to_datetime(frame.wc, frame.header.clock_rate)?;
+            track.start_timecode = Some(dt);
+            if track.is_video {
+                log::info!("First Frame: {}", dt.format("%Y-%m-%dT%H:%M:%S%.3fZ"));
+            }
+        }
 
+        // Collect raw DTS for every frame
+        track.dts_values.push(frame.header.dts);
+
+        track.frame_count += 1;
         frames.push(frame.header);
     }
 
-    // Build final analysed tracks
-    let to_analysed = |t: &TrackState| AnalysedTrack {
-        track_id: t.track_id,
-        frame_count: t.frame_count,
-        rate: t.rate,
-        start_timecode: t.start_timecode,
-        start_nanos: t.start_nanos,
+    // Rebase DTS values so first frame = 0, and build AnalysedTrack
+    let to_analysed = |t: &TrackState| -> AnalysedTrack {
+        let rebased: Vec<u64> = if t.dts_values.is_empty() {
+            Vec::new()
+        } else {
+            let base = t.dts_values[0];
+            t.dts_values.iter().map(|&d| d.saturating_sub(base)).collect()
+        };
+
+        let nominal_fps = if t.is_video {
+            compute_nominal_fps(&rebased, t.clock_rate)
+        } else {
+            // Audio: nominal_fps = clock_rate (sample rate) for informational purposes
+            t.clock_rate
+        };
+
+        AnalysedTrack {
+            track_id: t.track_id,
+            frame_count: t.frame_count,
+            clock_rate: t.clock_rate,
+            nominal_fps,
+            dts_values: rebased,
+            start_timecode: t.start_timecode,
+        }
     };
 
     let video_track = tracks
@@ -268,22 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn test_guess_video_rate() {
-        let mut window = [0u32; 32];
-        // Simulate mostly 30fps with some noise
-        for i in 1..32 {
-            window[i] = 30;
-        }
-        window[5] = 29;
-        window[10] = 31;
-        assert_eq!(guess_video_rate(&window), 30);
-    }
-
-    #[test]
     fn test_generate_timecode_large_nanos() {
-        // 999_999_000 nanos at 60fps: exact frame = 999_999_000/1e9 * 60 + 1 = 60.999940 + 1
-        // With f32 this loses precision; with f64 the frame number is correct.
-        // 933ms at 60fps = floor(0.933333333 * 60) + 1 = 56 + 1 = 57
         let dt = Utc
             .with_ymd_and_hms(2023, 1, 1, 12, 0, 0)
             .unwrap()
@@ -307,10 +270,137 @@ mod tests {
 
     #[test]
     fn test_wc_to_datetime() {
-        // 1683867154888 ms = known test value from clock.rs tests
-        // wc in 90000Hz units: 151548043939920
-        // utc_millis = 151548043939920 * 1000 / 90000 = 1683867154888
         let dt = wc_to_datetime(151548043939920, 90000).unwrap();
         assert_eq!(dt.timestamp_millis(), 1683867154888);
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_30fps() {
+        // 90000 Hz clock, 30fps => delta = 3000 ticks
+        let dts: Vec<u64> = (0..100).map(|i| i * 3000).collect();
+        assert_eq!(compute_nominal_fps(&dts, 90000), 30);
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_15fps_jittery() {
+        // 90000 Hz clock, 15fps => nominal delta = 6000 ticks, add jitter
+        let mut dts: Vec<u64> = Vec::new();
+        let mut t = 0u64;
+        for i in 0..100 {
+            dts.push(t);
+            // Alternate between 5998, 6000, 6002
+            t += 6000 + (i % 3) as u64 - 1;
+        }
+        assert_eq!(compute_nominal_fps(&dts, 90000), 15);
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_single_frame() {
+        let dts: Vec<u64> = vec![0];
+        assert_eq!(compute_nominal_fps(&dts, 90000), 1);
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_empty() {
+        let dts: Vec<u64> = vec![];
+        assert_eq!(compute_nominal_fps(&dts, 90000), 1);
+    }
+
+    /// Helper: parse a .ubv.gz testdata file and run analysis on the first partition.
+    fn analyse_testdata(filename: &str) -> Option<AnalysedPartition> {
+        use std::path::Path;
+        use ubv::reader::{open_ubv, parse_ubv};
+        use ubv::partition::PartitionEntry;
+
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("testdata")
+            .join(filename);
+        if !path.exists() {
+            eprintln!("Skipping test: file not found at {}", path.display());
+            return None;
+        }
+
+        let mut reader = open_ubv(&path).expect("failed to open UBV file");
+        let ubv_file = parse_ubv(&mut reader).expect("failed to parse UBV file");
+        assert!(!ubv_file.partitions.is_empty());
+
+        let video_track_id = ubv_file.partitions[0]
+            .entries
+            .iter()
+            .find_map(|e| match e {
+                PartitionEntry::Frame(f) if is_video_track(f.header.track_id) => {
+                    Some(f.header.track_id)
+                }
+                _ => None,
+            })
+            .expect("expected a video track");
+
+        Some(analyse(&ubv_file.partitions[0], true, video_track_id).expect("analysis failed"))
+    }
+
+    fn assert_track_invariants(track: &AnalysedTrack, expect_video: bool) {
+        assert_eq!(track.dts_values.len() as u32, track.frame_count);
+        if track.frame_count == 0 {
+            return;
+        }
+        assert_eq!(track.dts_values[0], 0, "first DTS should be rebased to 0");
+        for w in track.dts_values.windows(2) {
+            assert!(w[1] >= w[0], "DTS not monotonic: {} < {}", w[1], w[0]);
+        }
+        if expect_video {
+            assert_eq!(track.clock_rate, 90000);
+            assert!(
+                track.nominal_fps >= 1 && track.nominal_fps <= 240,
+                "nominal_fps out of range: {}",
+                track.nominal_fps
+            );
+        }
+    }
+
+    #[test]
+    fn test_analysis_sample1_h264() {
+        let a = match analyse_testdata("sample1_0_rotating_1770769558568.ubv.gz") {
+            Some(a) => a,
+            None => return,
+        };
+        let vt = a.video_track.as_ref().expect("expected video track");
+        assert_track_invariants(vt, true);
+        assert!(vt.frame_count > 0);
+        assert_eq!(vt.track_id, 7);
+        if let Some(ref at) = a.audio_track {
+            assert_track_invariants(at, false);
+            assert!(at.clock_rate > 0);
+        }
+    }
+
+    #[test]
+    fn test_analysis_sample2_h264() {
+        let a = match analyse_testdata("sample2_0_rotating_1683867159535.ubv.gz") {
+            Some(a) => a,
+            None => return,
+        };
+        let vt = a.video_track.as_ref().expect("expected video track");
+        assert_track_invariants(vt, true);
+        assert!(vt.frame_count > 0);
+        assert_eq!(vt.track_id, 7);
+        if let Some(ref at) = a.audio_track {
+            assert_track_invariants(at, false);
+        }
+    }
+
+    #[test]
+    fn test_analysis_sample3_hevc() {
+        let a = match analyse_testdata("sample3_0_rotating_1770695988380.ubv.gz") {
+            Some(a) => a,
+            None => return,
+        };
+        let vt = a.video_track.as_ref().expect("expected video track");
+        assert_track_invariants(vt, true);
+        assert!(vt.frame_count > 0);
+        assert_eq!(vt.track_id, 1003);
+        if let Some(ref at) = a.audio_track {
+            assert_track_invariants(at, false);
+        }
     }
 }

@@ -4,7 +4,7 @@ use std::sync::Once;
 extern crate ffmpeg_next as ffmpeg;
 use ffmpeg::{codec, encoder, format, Rational};
 
-use crate::analysis::{generate_timecode, AnalysedPartition, AnalysedTrack, MAX_ACCEPTED_FPS};
+use crate::analysis::{generate_timecode, AnalysedPartition, AnalysedTrack};
 use ubv::track::{track_info, TrackType};
 
 static FFMPEG_INIT: Once = Once::new();
@@ -40,7 +40,7 @@ fn set_codec_tag(ost: &mut ffmpeg::StreamMut, tag: u32) {
 fn add_video_output_stream(
     ictx: &format::context::Input,
     octx: &mut format::context::Output,
-    rate: Rational,
+    nominal_fps: Rational,
     hevc: bool,
 ) -> io::Result<()> {
     let ist = ictx.stream(0).unwrap();
@@ -48,8 +48,8 @@ fn add_video_output_stream(
         .add_stream(encoder::find(codec::Id::None))
         .map_err(ffmpeg_err)?;
     ost.set_parameters(ist.parameters());
-    ost.set_rate(rate);
-    ost.set_avg_frame_rate(rate);
+    ost.set_rate(nominal_fps);
+    ost.set_avg_frame_rate(nominal_fps);
 
     if hevc {
         set_codec_tag(&mut ost, u32::from_le_bytes(*b"hvc1"));
@@ -74,11 +74,68 @@ fn set_timecode_metadata(
     }
 }
 
-/// Write video packets from the input to the output with sequential timestamps.
+/// Write video packets with VFR timestamps from DTS values.
 ///
-/// Assigns DTS=PTS sequentially (assumes no B-frames, which holds for
-/// Ubiquiti Protect cameras using IP-only GOP structures).
-fn write_video_packets(
+/// Each packet gets DTS/PTS from the analysed track's rebased dts_values,
+/// with duration computed from the delta to the next frame.
+fn write_video_packets_vfr(
+    ictx: &mut format::context::Input,
+    octx: &mut format::context::Output,
+    dts_values: &[u64],
+    clock_rate: u32,
+    out_stream_index: usize,
+) -> io::Result<()> {
+    let ost_time_base = octx.stream(out_stream_index).unwrap().time_base();
+    let input_tb = Rational(1, clock_rate as i32);
+    let mut frame_index: usize = 0;
+
+    for (stream, mut packet) in ictx.packets() {
+        if stream.index() != 0 {
+            continue;
+        }
+
+        if frame_index >= dts_values.len() {
+            log::warn!(
+                "FFmpeg produced more video packets ({}) than DTS values ({}), dropping excess",
+                frame_index + 1,
+                dts_values.len()
+            );
+            break;
+        }
+
+        let dts = dts_values[frame_index] as i64;
+        let duration = if frame_index + 1 < dts_values.len() {
+            (dts_values[frame_index + 1] as i64 - dts).max(1)
+        } else if frame_index > 0 {
+            // Last frame: repeat previous delta
+            (dts - dts_values[frame_index - 1] as i64).max(1)
+        } else {
+            1
+        };
+
+        packet.set_pts(Some(dts));
+        packet.set_dts(Some(dts));
+        packet.set_duration(duration);
+        packet.rescale_ts(input_tb, ost_time_base);
+        packet.set_position(-1);
+        packet.set_stream(out_stream_index);
+        packet.write_interleaved(octx).map_err(ffmpeg_err)?;
+        frame_index += 1;
+    }
+
+    if frame_index < dts_values.len() {
+        log::warn!(
+            "FFmpeg produced fewer video packets ({}) than DTS values ({})",
+            frame_index,
+            dts_values.len()
+        );
+    }
+
+    Ok(())
+}
+
+/// Write video packets with CFR timestamps (legacy --force-rate behaviour).
+fn write_video_packets_cfr(
     ictx: &mut format::context::Input,
     octx: &mut format::context::Output,
     rate: Rational,
@@ -103,81 +160,86 @@ fn write_video_packets(
     Ok(())
 }
 
-/// Try to detect the video framerate from FFmpeg's parsing of the input bitstream.
-/// FFmpeg's H.264/HEVC parser extracts VUI timing_info from SPS, giving us the
-/// actual framerate encoded in the bitstream rather than an estimate from
-/// wall-clock deltas in the UBV container.
-fn detect_rate(ictx: &format::context::Input) -> Option<Rational> {
-    let stream = ictx.stream(0)?;
+/// Write audio packets with VFR timestamps from DTS values.
+fn write_audio_packets_vfr(
+    ictx: &mut format::context::Input,
+    octx: &mut format::context::Output,
+    dts_values: &[u64],
+    clock_rate: u32,
+    out_stream_index: usize,
+) -> io::Result<()> {
+    let ost_time_base = octx.stream(out_stream_index).unwrap().time_base();
+    let input_tb = Rational(1, clock_rate as i32);
+    let mut frame_index: usize = 0;
 
-    // Try r_frame_rate first (real base framerate from parser)
-    let rate = stream.rate();
-    if rate.numerator() > 0 && rate.denominator() > 0 {
-        return Some(rate);
+    for (stream, mut packet) in ictx.packets() {
+        if stream.index() != 0 {
+            continue;
+        }
+
+        if frame_index >= dts_values.len() {
+            log::warn!(
+                "FFmpeg produced more audio packets ({}) than DTS values ({}), dropping excess",
+                frame_index + 1,
+                dts_values.len()
+            );
+            break;
+        }
+
+        let dts = dts_values[frame_index] as i64;
+        let duration = if frame_index + 1 < dts_values.len() {
+            (dts_values[frame_index + 1] as i64 - dts).max(1)
+        } else if frame_index > 0 {
+            (dts - dts_values[frame_index - 1] as i64).max(1)
+        } else {
+            1
+        };
+
+        packet.set_pts(Some(dts));
+        packet.set_dts(Some(dts));
+        packet.set_duration(duration);
+        packet.rescale_ts(input_tb, ost_time_base);
+        packet.set_position(-1);
+        packet.set_stream(out_stream_index);
+        packet.write_interleaved(octx).map_err(ffmpeg_err)?;
+        frame_index += 1;
     }
 
-    // Fall back to avg_frame_rate
-    let avg = stream.avg_frame_rate();
-    if avg.numerator() > 0 && avg.denominator() > 0 {
-        return Some(avg);
+    if frame_index < dts_values.len() {
+        log::warn!(
+            "FFmpeg produced fewer audio packets ({}) than DTS values ({})",
+            frame_index,
+            dts_values.len()
+        );
     }
 
-    None
+    Ok(())
 }
 
-/// Determine the video framerate to use, with priority:
-/// 1. User-specified --force-rate
-/// 2. FFmpeg-detected rate from bitstream SPS/VUI
-/// 3. Analysis estimate from UBV wall-clock deltas
-fn resolve_rate(
-    force_rate: Option<u32>,
-    ictx: &format::context::Input,
-    analysis_rate: u32,
-    mp4_file: &str,
-) -> Rational {
-    if let Some(fr) = force_rate {
-        log::info!("Using forced framerate: {} fps for {}", fr, mp4_file);
-        return Rational(fr as i32, 1);
-    }
+/// Write audio packets copying timestamps from FFmpeg's demuxer (legacy CFR path).
+fn write_audio_packets_cfr(
+    audio_ictx: &mut format::context::Input,
+    octx: &mut format::context::Output,
+    out_stream_index: usize,
+) -> io::Result<()> {
+    let audio_ist_time_base = audio_ictx
+        .stream(0)
+        .ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "No stream in audio input file")
+        })?
+        .time_base();
+    let audio_ost_time_base = octx.stream(out_stream_index).unwrap().time_base();
 
-    if let Some(detected) = detect_rate(ictx) {
-        let fps = detected.numerator() as f64 / detected.denominator() as f64;
-        if fps > 0.0 && fps < MAX_ACCEPTED_FPS as f64 {
-            let fps_rounded = fps.round() as u32;
-            if analysis_rate > 0 && fps_rounded != analysis_rate {
-                log::info!(
-                    "Video framerate: {}/{} ({:.2} fps) from bitstream (UBV estimate was {} fps). Use --force-rate if incorrect.",
-                    detected.numerator(),
-                    detected.denominator(),
-                    fps,
-                    analysis_rate
-                );
-            } else {
-                log::info!(
-                    "Video framerate: {}/{} ({:.2} fps)",
-                    detected.numerator(),
-                    detected.denominator(),
-                    fps
-                );
-            }
-            return detected;
+    for (stream, mut packet) in audio_ictx.packets() {
+        if stream.index() != 0 {
+            continue;
         }
+        packet.rescale_ts(audio_ist_time_base, audio_ost_time_base);
+        packet.set_position(-1);
+        packet.set_stream(out_stream_index);
+        packet.write_interleaved(octx).map_err(ffmpeg_err)?;
     }
-
-    if analysis_rate > 0 {
-        log::warn!(
-            "Could not detect framerate from bitstream for {}, using UBV estimate: {} fps. Use --force-rate if incorrect.",
-            mp4_file,
-            analysis_rate
-        );
-        Rational(analysis_rate as i32, 1)
-    } else {
-        log::warn!(
-            "No framerate detected for {}, defaulting to 1 fps",
-            mp4_file
-        );
-        Rational(1, 1)
-    }
+    Ok(())
 }
 
 /// Mux video and/or audio into MP4 using FFmpeg via ffmpeg-next.
@@ -232,16 +294,31 @@ fn mux_video_only(
     }
 
     let hevc = is_hevc(video_track_num);
+    let cfr = force_rate.is_some();
+    let nominal_fps = force_rate.unwrap_or(video_track.nominal_fps);
+    let rate = Rational(nominal_fps as i32, 1);
 
     let mut ictx = format::input(&video_file).map_err(ffmpeg_err)?;
-    let rate = resolve_rate(force_rate, &ictx, video_track.rate, mp4_file);
     let mut octx = format::output(&mp4_file).map_err(ffmpeg_err)?;
 
     add_video_output_stream(&ictx, &mut octx, rate, hevc)?;
     set_timecode_metadata(&mut octx, video_track, rate);
 
     octx.write_header().map_err(ffmpeg_err)?;
-    write_video_packets(&mut ictx, &mut octx, rate, 0)?;
+
+    if cfr {
+        log::info!("Video: CFR {} fps (forced)", nominal_fps);
+        write_video_packets_cfr(&mut ictx, &mut octx, rate, 0)?;
+    } else {
+        log::info!("Video: VFR nominal {} fps, {} Hz timebase", nominal_fps, video_track.clock_rate);
+        write_video_packets_vfr(
+            &mut ictx,
+            &mut octx,
+            &video_track.dts_values,
+            video_track.clock_rate,
+            0,
+        )?;
+    }
 
     octx.write_trailer().map_err(ffmpeg_err)?;
     Ok(())
@@ -282,21 +359,15 @@ fn mux_audio_and_video(
     }
 
     let hevc = is_hevc(video_track_num);
+    let cfr = force_rate.is_some();
+    let nominal_fps = force_rate.unwrap_or(video_track.nominal_fps);
+    let rate = Rational(nominal_fps as i32, 1);
 
     // Open inputs
     let mut video_ictx = format::input(&video_file).map_err(ffmpeg_err)?;
-    let rate = resolve_rate(force_rate, &video_ictx, video_track.rate, mp4_file);
     let mut audio_ictx = format::input(&audio_file).map_err(ffmpeg_err)?;
 
     let mut octx = format::output(&mp4_file).map_err(ffmpeg_err)?;
-
-    // Capture audio input time base (video timestamps are assigned manually)
-    let audio_ist_time_base = audio_ictx
-        .stream(0)
-        .ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "No stream in audio input file")
-        })?
-        .time_base();
 
     // Add video output stream (index 0)
     add_video_output_stream(&video_ictx, &mut octx, rate, hevc)?;
@@ -313,52 +384,35 @@ fn mux_audio_and_video(
 
     set_timecode_metadata(&mut octx, video_track, rate);
 
-    // Compute A/V sync offset
-    let audio_delay_sec =
-        (video_track.start_nanos - audio_track.start_nanos) as f64 / 1_000_000_000.0;
-    log::info!("A/V sync offset: {:.3} s", audio_delay_sec);
-
     octx.write_header().map_err(ffmpeg_err)?;
 
-    // Read audio output time base after write_header (FFmpeg may adjust it)
-    let audio_ost_time_base = octx.stream(1).unwrap().time_base();
-
-    write_video_packets(&mut video_ictx, &mut octx, rate, 0)?;
-
-    // Convert audio delay from seconds to output time_base units
-    let audio_delay_ts = if audio_ost_time_base.numerator() != 0 {
-        (audio_delay_sec * audio_ost_time_base.denominator() as f64
-            / audio_ost_time_base.numerator() as f64) as i64
+    // Write video
+    if cfr {
+        log::info!("Video: CFR {} fps (forced)", nominal_fps);
+        write_video_packets_cfr(&mut video_ictx, &mut octx, rate, 0)?;
     } else {
-        0
-    };
+        log::info!("Video: VFR {} fps, {} Hz timebase", nominal_fps, video_track.clock_rate);
+        write_video_packets_vfr(
+            &mut video_ictx,
+            &mut octx,
+            &video_track.dts_values,
+            video_track.clock_rate,
+            0,
+        )?;
+    }
 
-    // Write all audio packets with sync offset
-    for (stream, mut packet) in audio_ictx.packets() {
-        if stream.index() != 0 {
-            continue;
-        }
-        packet.rescale_ts(audio_ist_time_base, audio_ost_time_base);
-
-        // Apply A/V sync offset
-        if let Some(pts) = packet.pts() {
-            let adjusted = pts + audio_delay_ts;
-            if adjusted < 0 {
-                continue;
-            }
-            packet.set_pts(Some(adjusted));
-        }
-        if let Some(dts) = packet.dts() {
-            let adjusted = dts + audio_delay_ts;
-            if adjusted < 0 {
-                continue;
-            }
-            packet.set_dts(Some(adjusted));
-        }
-
-        packet.set_position(-1);
-        packet.set_stream(1);
-        packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
+    // Write audio
+    if cfr {
+        write_audio_packets_cfr(&mut audio_ictx, &mut octx, 1)?;
+    } else {
+        log::info!("Audio: VFR {} Hz timebase, {} frames", audio_track.clock_rate, audio_track.frame_count);
+        write_audio_packets_vfr(
+            &mut audio_ictx,
+            &mut octx,
+            &audio_track.dts_values,
+            audio_track.clock_rate,
+            1,
+        )?;
     }
 
     octx.write_trailer().map_err(ffmpeg_err)?;

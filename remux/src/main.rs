@@ -15,15 +15,15 @@ use ubv::track::{is_video_track, track_info};
 #[derive(Parser)]
 #[command(name = "remux")]
 struct Args {
-    /// Extract audio streams
+    /// Extract audio stream?
     #[arg(long = "with-audio", default_value_t = true, action = ArgAction::Set)]
     with_audio: bool,
 
-    /// Extract video streams
+    /// Extract video stream?
     #[arg(long = "with-video", default_value_t = true, action = ArgAction::Set)]
     with_video: bool,
 
-    /// Override detected framerate (0 = auto-detect)
+    /// Force a particular video framerate (0 = auto Variable Framerate, otherwise force CFR)
     #[arg(long = "force-rate", default_value_t = 0)]
     force_rate: u32,
 
@@ -153,7 +153,6 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
             .map(|p| analysis::analyse(p, args.with_audio, video_track))
             .collect::<io::Result<Vec<_>>>()?;
 
-        log::info!("\n\nAnalysis complete!");
         if let Some(first) = partitions.first() {
             log::info!("First Partition:");
             let track_count =
@@ -165,14 +164,14 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
                 let codec = codec_name_for_track(vt.track_id).unwrap_or("unknown");
                 log::info!(
                     "\tVideo: {} ({} fps, {} frames)",
-                    codec, vt.rate, vt.frame_count
+                    codec, vt.nominal_fps, vt.frame_count
                 );
             }
             if let Some(ref at) = first.audio_track {
                 let codec = codec_name_for_track(at.track_id).unwrap_or("unknown");
                 log::info!(
                     "\tAudio: {} ({} Hz, {} frames)",
-                    codec, at.rate, at.frame_count
+                    codec, at.clock_rate, at.frame_count
                 );
             }
 
@@ -189,7 +188,12 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        log::info!("\n\nExtracting {} partitions", partitions.len());
+        if partitions.len() == 1 {
+            log::info!("Extracting 1 partition");
+        }
+        else {
+            log::info!("Extracting {} partitions", partitions.len());
+        }
 
         let force_rate = if args.force_rate > 0 {
             log::info!(
@@ -270,7 +274,7 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
             // Mux to MP4
             if args.mp4 {
                 let mp4_file = format!("{}.mp4", basename);
-                log::info!("\nWriting MP4 {}...", mp4_file);
+                log::info!("Writing MP4 {}...", mp4_file);
 
                 mp4mux::mux(
                     partition,
