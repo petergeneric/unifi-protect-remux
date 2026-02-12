@@ -35,7 +35,7 @@ brew install nasm pkg-config
 
 Debian/Ubuntu:
 ```
-apt-get install build-essential nasm pkg-config
+apt-get install build-essential nasm pkg-config libclang-dev
 ```
 
 ## CI
