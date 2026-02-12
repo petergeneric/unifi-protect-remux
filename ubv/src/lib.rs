@@ -7,3 +7,4 @@ pub mod partition;
 pub mod reader;
 pub mod record;
 pub mod track;
+pub mod version;

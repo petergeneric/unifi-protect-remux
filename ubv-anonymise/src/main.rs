@@ -32,28 +32,14 @@ fn zero_region(file: &mut File, offset: u64, size: u32) -> io::Result<()> {
     Ok(())
 }
 
-fn print_version() {
-    println!("UBV Anonymise Tool");
-    println!("Copyright (c) Peter Wright 2020-2026");
-    println!("License: GNU AGPL v3 (AGPL-3.0-only)");
-    println!("https://github.com/petergeneric/unifi-protect-remux");
-    println!();
-
-    println!("\tVersion:     {}", env!("CARGO_PKG_VERSION"));
-
-    let release = env!("RELEASE_VERSION");
-    let commit = env!("GIT_COMMIT");
-    if !release.is_empty() {
-        println!("\tGit tag:     {}", release);
-    }
-    if !commit.is_empty() {
-        println!("\tGit commit:  {}", commit);
-    }
-}
-
 fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.version {
-        print_version();
+        ubv::version::print_cli_version_banner(
+            "UBV Anonymise Tool",
+            env!("CARGO_PKG_VERSION"),
+            env!("RELEASE_VERSION"),
+            env!("GIT_COMMIT"),
+        );
         return Ok(());
     }
 
