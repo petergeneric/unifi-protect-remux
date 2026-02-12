@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach assets to (leave empty for build-only test)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: unifi-protect-remux-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: unifi-protect-remux-linux-aarch64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: unifi-protect-remux-macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: unifi-protect-remux-windows-x86_64
+
+    name: ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential nasm pkg-config
+
+      - name: Install build deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install nasm pkg-config
+
+      - name: Install build deps (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm --yes --no-progress
+          choco install llvm --yes --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            release-${{ matrix.target }}-
+
+      - name: Build release binaries
+        run: cargo build --release
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p staging
+          cp target/release/remux staging/
+          cp target/release/ubv-info staging/
+          cp target/release/ubv-anonymise staging/
+          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force staging
+          Copy-Item target/release/remux.exe staging/
+          Copy-Item target/release/ubv-info.exe staging/
+          Copy-Item target/release/ubv-anonymise.exe staging/
+          Compress-Archive -Path staging/* -DestinationPath ${{ matrix.artifact }}.zip
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release asset (Unix)
+        if: runner.os != 'Windows' && steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.tar.gz
+
+      - name: Upload release asset (Windows)
+        if: runner.os == 'Windows' && steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.zip
