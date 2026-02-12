@@ -1,17 +1,19 @@
-.DS_Store
-.idea/
-cli
-bin/
 target/
 samples/
+
+# Essence files
+*.ubv
 *.mp4
 *.h264
 *.hevc
+*.av1
 *.aac
+
+# General folders
+.DS_Store
+.idea/
 ~*
 *.swp
+
+# Local-only
 Makefile.local
-
-*.ubv
-*.ubv.txt
-
