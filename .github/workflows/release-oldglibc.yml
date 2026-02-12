@@ -76,4 +76,6 @@ jobs:
         if: steps.tag.outputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ steps.tag.outputs.tag }}" unifi-protect-remux-linux-aarch64-legacy.tar.gz
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          gh release upload "${{ steps.tag.outputs.tag }}" unifi-protect-remux-linux-aarch64-legacy.tar.gz
