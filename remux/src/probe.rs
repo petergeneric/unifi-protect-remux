@@ -7,7 +7,7 @@ extern crate ffmpeg_next as ffmpeg;
 use crate::demux;
 use ubv::frame::RecordHeader;
 
-const AVIO_BUF_SIZE: c_int = 4096;
+const AVIO_BUF_SIZE: usize = 4096;
 
 /// AVERROR_EOF: -(MKTAG('E','O','F',' '))
 const AVERROR_EOF: c_int = -(0x45 | (0x4F << 8) | (0x46 << 16) | (0x20 << 24));
@@ -26,6 +26,9 @@ unsafe extern "C" fn avio_read_callback(
 ) -> c_int {
     unsafe {
         let state = &mut *(opaque as *mut ReadState);
+        if buf_size <= 0 {
+            return AVERROR_EOF;
+        }
         let remaining = state.data.len() - state.pos;
         if remaining == 0 {
             return AVERROR_EOF;
@@ -107,7 +110,7 @@ unsafe fn probe_from_buffer(
     let state_ptr: *mut c_void = &mut *state as *mut ReadState as *mut c_void;
 
     // Allocate AVIO internal buffer (FFmpeg may reallocate it)
-    let avio_buf = unsafe { av_malloc(AVIO_BUF_SIZE as usize) } as *mut u8;
+    let avio_buf = unsafe { av_malloc(AVIO_BUF_SIZE) } as *mut u8;
     if avio_buf.is_null() {
         return Err(io::Error::new(
             io::ErrorKind::OutOfMemory,
@@ -119,7 +122,7 @@ unsafe fn probe_from_buffer(
     let mut avio_ctx = unsafe {
         avio_alloc_context(
             avio_buf,
-            AVIO_BUF_SIZE,
+            AVIO_BUF_SIZE as c_int,
             0, // read-only
             state_ptr,
             Some(avio_read_callback),
@@ -129,8 +132,7 @@ unsafe fn probe_from_buffer(
     };
     if avio_ctx.is_null() {
         unsafe {
-            let mut p = avio_buf as *mut c_void;
-            av_freep(&mut p as *mut _ as *mut c_void);
+            av_free(avio_buf as *mut c_void);
         }
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -225,7 +227,7 @@ unsafe fn do_probe(
     // Log probed parameters for diagnostics
     let p = unsafe { &*params.as_ptr() };
     let extradata_size = p.extradata_size;
-    let extradata_fmt = if extradata_size > 0 {
+    let extradata_fmt = if extradata_size > 0 && !p.extradata.is_null() {
         let first_byte = unsafe { *p.extradata };
         if first_byte == 0x01 { "AVCC" } else { "Annex B" }
     } else {

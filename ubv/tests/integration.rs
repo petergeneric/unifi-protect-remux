@@ -49,6 +49,6 @@ fn test_json_checksum_new_h264() {
 fn test_json_checksum_hevc() {
     check_json_checksum(
         "../testdata/sample3_0_rotating_1770695988380.ubv.gz",
-        "dd6c2bb32be89bad3fbfde7842776385efc6e76c702370252fb257841f6bb875",
+        "19917af8d619ff068e3945240bb4a41de656cca06865a640e988787b5bc77e85",
     );
 }

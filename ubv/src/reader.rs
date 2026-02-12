@@ -82,6 +82,7 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
             dts: rec.dts,
             clock_rate: rec.clock_rate,
             sequence: rec.sequence,
+            keyframe: rec.format_code.keyframe(),
         };
 
         match info.track_type {

@@ -74,17 +74,19 @@ pub fn demux_partition(
     Ok(())
 }
 
-/// Write a video frame: read length-prefixed NALs and emit with 00 00 00 01 separators.
-fn write_video_frame(
+/// Iterate over length-prefixed NAL units in a video frame, calling `f` for each NAL payload.
+fn for_each_nal<F>(
     ubv_file: &mut File,
     frame: &RecordHeader,
-    writer: &mut impl Write,
-    buffer: &mut [u8],
-) -> io::Result<()> {
+    read_buf: &mut [u8],
+    mut f: F,
+) -> io::Result<()>
+where
+    F: FnMut(&[u8]) -> io::Result<()>,
+{
     let mut pos = 0u32;
     let frame_size = frame.data_size;
 
-    // Seek to frame start; subsequent reads are sequential within the frame
     ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
 
     while pos < frame_size {
@@ -104,16 +106,26 @@ fn write_video_frame(
             ));
         }
 
-        // Read NAL payload
-        ubv_file.read_exact(&mut buffer[..nal_size as usize])?;
+        ubv_file.read_exact(&mut read_buf[..nal_size as usize])?;
         pos += nal_size;
 
-        // Write NAL payload followed by separator
-        writer.write_all(&buffer[..nal_size as usize])?;
-        writer.write_all(&NAL_START_CODE)?;
+        f(&read_buf[..nal_size as usize])?;
     }
 
     Ok(())
+}
+
+/// Write a video frame: read length-prefixed NALs and emit with 00 00 00 01 separators.
+fn write_video_frame(
+    ubv_file: &mut File,
+    frame: &RecordHeader,
+    writer: &mut impl Write,
+    buffer: &mut [u8],
+) -> io::Result<()> {
+    for_each_nal(ubv_file, frame, buffer, |nal| {
+        writer.write_all(nal)?;
+        writer.write_all(&NAL_START_CODE)
+    })
 }
 
 /// Write an audio frame: raw data copy, no NAL processing.
@@ -200,38 +212,11 @@ pub fn read_video_frame_annexb(
     read_buf: &mut [u8],
 ) -> io::Result<()> {
     annexb_buf.clear();
-
-    let mut pos = 0u32;
-    let frame_size = frame.data_size;
-    ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
-
-    while pos < frame_size {
-        // Read 4-byte NAL length prefix
-        let mut len_buf = [0u8; 4];
-        ubv_file.read_exact(&mut len_buf)?;
-        let nal_size = u32::from_be_bytes(len_buf);
-        pos += 4;
-
-        if pos + nal_size > frame_size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "NAL read goes beyond frame: pos={}, nal_size={}, frame_size={}",
-                    pos, nal_size, frame_size
-                ),
-            ));
-        }
-
-        // Read NAL payload
-        ubv_file.read_exact(&mut read_buf[..nal_size as usize])?;
-        pos += nal_size;
-
-        // Write start code followed by NAL payload
+    for_each_nal(ubv_file, frame, read_buf, |nal| {
         annexb_buf.extend_from_slice(&NAL_START_CODE);
-        annexb_buf.extend_from_slice(&read_buf[..nal_size as usize]);
-    }
-
-    Ok(())
+        annexb_buf.extend_from_slice(nal);
+        Ok(())
+    })
 }
 
 /// Read a single audio frame from the UBV file into the provided buffer.

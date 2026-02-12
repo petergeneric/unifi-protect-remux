@@ -64,20 +64,6 @@ fn write_header(octx: &mut format::context::Output, fast_start: bool) -> io::Res
     Ok(())
 }
 
-/// Detect if a video frame is a keyframe from the first NAL unit type in Annex B data.
-fn detect_video_keyframe(annexb_data: &[u8], hevc: bool) -> bool {
-    if annexb_data.len() <= 4 {
-        return false;
-    }
-    if hevc {
-        let nal_type = (annexb_data[4] >> 1) & 0x3F;
-        (16..=23).contains(&nal_type) || (32..=34).contains(&nal_type)
-    } else {
-        let nal_type = annexb_data[4] & 0x1F;
-        nal_type == 5 || nal_type == 7 || nal_type == 8
-    }
-}
-
 /// Compute DTS and duration for a frame from the rebased DTS values array.
 fn compute_dts_duration(dts_values: &[u64], index: usize) -> (i64, i64) {
     let dts = dts_values[index] as i64;
@@ -215,7 +201,7 @@ pub fn stream_to_mp4(
                 packet.rescale_ts(video_tb, ost_time_base);
                 packet.set_position(-1);
                 packet.set_stream(0);
-                if detect_video_keyframe(&annexb_buf, hevc) {
+                if frame.keyframe {
                     packet.set_flags(codec::packet::Flags::KEY);
                 }
                 packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
@@ -251,7 +237,7 @@ pub fn stream_to_mp4(
                 packet.rescale_ts(input_tb, ost_time_base);
                 packet.set_position(-1);
                 packet.set_stream(0);
-                if detect_video_keyframe(&annexb_buf, hevc) {
+                if frame.keyframe {
                     packet.set_flags(codec::packet::Flags::KEY);
                 }
                 packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
