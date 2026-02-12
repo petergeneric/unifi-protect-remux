@@ -1,6 +1,13 @@
 use std::process::Command;
 
 fn main() {
+    // Re-run when git state changes (commit, tag, branch) so cached
+    // CI builds pick up the correct version after tagging.
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=../.git/HEAD");
+    println!("cargo:rerun-if-changed=../.git/refs");
+    println!("cargo:rerun-if-changed=../.git/packed-refs");
+
     // Inject git commit hash
     let commit = Command::new("git")
         .args(["rev-list", "-1", "HEAD"])
