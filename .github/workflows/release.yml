@@ -104,6 +104,12 @@ jobs:
           Copy-Item target/release/ubv-anonymise.exe staging/
           Compress-Archive -Path staging/* -DestinationPath ${{ matrix.artifact }}.zip
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: staging/
+
       - name: Determine release tag
         id: tag
         shell: bash
