@@ -22,27 +22,13 @@ jobs:
       - name: Install system deps
         run: |
           apt-get update
-          apt-get install -y build-essential nasm pkg-config curl git libclang-dev xz-utils
+          apt-get install -y build-essential nasm pkg-config curl git libclang-dev
           # gh CLI (not pre-installed in container unlike GitHub-hosted runners)
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
             | tee /usr/share/keyrings/githubcli-archive-keyring.gpg > /dev/null
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
             | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
           apt-get update && apt-get install -y gh
-
-      - name: Build FFmpeg shared libraries
-        run: |
-          curl -L https://ffmpeg.org/releases/ffmpeg-8.0.tar.xz | tar xJ
-          cd ffmpeg-8.0
-          ./configure \
-            --prefix=/opt/ffmpeg \
-            --enable-shared \
-            --disable-static \
-            --disable-programs \
-            --disable-doc \
-            --extra-cflags="-march=armv8-a"
-          make -j$(nproc)
-          make install
 
       - uses: actions/checkout@v4
         with:
@@ -63,16 +49,10 @@ jobs:
             release-aarch64-legacy-
 
       - name: Build
-        run: cargo build --release --no-default-features
-        env:
-          FFMPEG_DIR: /opt/ffmpeg
-          RUSTFLAGS: -C link-args=-Wl,-rpath,$ORIGIN
+        run: cargo build --release
 
       - name: Test
-        run: cargo test --release --no-default-features
-        env:
-          FFMPEG_DIR: /opt/ffmpeg
-          LD_LIBRARY_PATH: /opt/ffmpeg/lib
+        run: cargo test --release
 
       - name: Package
         run: |
@@ -80,7 +60,6 @@ jobs:
           cp target/release/remux staging/
           cp target/release/ubv-info staging/
           cp target/release/ubv-anonymise staging/
-          cp /opt/ffmpeg/lib/*.so* staging/
           tar czf unifi-protect-remux-linux-aarch64-legacy.tar.gz -C staging .
 
       - name: Upload artifact

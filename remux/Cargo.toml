@@ -13,7 +13,8 @@ chrono = "0.4"
 log = "0.4"
 env_logger = "0.11"
 ffmpeg-next = "8"
+ffmpeg-sys-next = "8"
 
 [features]
 default = ["ffmpeg-static"]
-ffmpeg-static = ["ffmpeg-next/static", "ffmpeg-next/build"]
+ffmpeg-static = ["ffmpeg-next/static", "ffmpeg-next/build", "ffmpeg-sys-next/build-march-generic"]

@@ -1,3 +1,6 @@
 [workspace]
 members = ["ubv", "ubv-info", "remux", "ubv-anonymise"]
 resolver = "2"
+
+[patch.crates-io]
+ffmpeg-sys-next = { git = "https://github.com/petergeneric/rust-ffmpeg-sys", branch = "master" }
