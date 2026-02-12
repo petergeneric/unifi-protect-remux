@@ -1,0 +1,389 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UbvFile",
+  "description": "Parsed UBV file contents.",
+  "type": "object",
+  "required": [
+    "partitions"
+  ],
+  "properties": {
+    "partitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Partition"
+      }
+    }
+  },
+  "definitions": {
+    "ClockSync": {
+      "description": "Clock sync data parsed from a clock sync record (track 0xDA7E).",
+      "type": "object",
+      "required": [
+        "sc_dts",
+        "sc_rate",
+        "wc_ms",
+        "wc_nanoseconds",
+        "wc_seconds"
+      ],
+      "properties": {
+        "sc_dts": {
+          "description": "Stream clock DTS value from the clock sync record header.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "sc_rate": {
+          "description": "Stream clock rate (always 1000 Hz = milliseconds).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "wc_ms": {
+          "description": "Wall-clock time in milliseconds since epoch.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "wc_nanoseconds": {
+          "description": "Raw wall-clock nanoseconds from the payload.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "wc_seconds": {
+          "description": "Raw wall-clock seconds from the payload.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "FormatCode": {
+      "description": "Decoded format code from bytes 4-5 of a record header.",
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0.0
+    },
+    "Frame": {
+      "description": "A parsed media frame from the UBV file.",
+      "type": "object",
+      "required": [
+        "clock_rate",
+        "cts",
+        "data_offset",
+        "data_size",
+        "dts",
+        "keyframe",
+        "packet_position",
+        "sequence",
+        "track_id",
+        "type_char",
+        "wc"
+      ],
+      "properties": {
+        "clock_rate": {
+          "description": "Clock rate / timebase in Hz.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "cts": {
+          "description": "Composition timestamp offset (always 0 in observed files).",
+          "type": "integer",
+          "format": "int64"
+        },
+        "data_offset": {
+          "description": "Byte offset of the payload data in the file.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "data_size": {
+          "description": "Size of the payload data in bytes.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "dts": {
+          "description": "Decoding timestamp in track clock rate units.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "keyframe": {
+          "description": "Whether this is a keyframe.",
+          "type": "boolean"
+        },
+        "packet_position": {
+          "description": "Packet position (Single, First, Middle, Last).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PacketPosition"
+            }
+          ]
+        },
+        "sequence": {
+          "description": "Sequence counter from the record header.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "track_id": {
+          "description": "Track ID.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "type_char": {
+          "description": "Output type character: 'V' or 'A'.",
+          "type": "string",
+          "maxLength": 1,
+          "minLength": 1
+        },
+        "wc": {
+          "description": "Wall-clock time in track clock rate units.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MetadataRecord": {
+      "description": "A non-media record (motion, smart event, JPEG, skip, talkback).",
+      "type": "object",
+      "required": [
+        "clock_rate",
+        "data_offset",
+        "data_size",
+        "dts",
+        "file_offset",
+        "sequence",
+        "track_id"
+      ],
+      "properties": {
+        "clock_rate": {
+          "description": "Clock rate / timebase in Hz.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "data_offset": {
+          "description": "Byte offset of the payload data in the file.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "data_size": {
+          "description": "Size of the payload data in bytes.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "dts": {
+          "description": "Decoding timestamp in track clock rate units.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "file_offset": {
+          "description": "Absolute byte offset of this record in the file.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "sequence": {
+          "description": "Sequence counter from the record header.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "track_id": {
+          "description": "Track ID.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "PacketPosition": {
+      "type": "string",
+      "enum": [
+        "Single",
+        "First",
+        "Middle",
+        "Last"
+      ]
+    },
+    "Partition": {
+      "description": "A partition (recording segment) within a UBV file.",
+      "type": "object",
+      "required": [
+        "entries",
+        "index"
+      ],
+      "properties": {
+        "entries": {
+          "description": "Entries in file order (clock syncs interleaved with frames and metadata).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PartitionEntry"
+          }
+        },
+        "header": {
+          "description": "Parsed partition header record, if present.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PartitionHeader"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "index": {
+          "description": "Partition index (0-based).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "PartitionEntry": {
+      "description": "An event in the partition's stream.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "ClockSync"
+          ],
+          "properties": {
+            "ClockSync": {
+              "$ref": "#/definitions/ClockSync"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Frame"
+          ],
+          "properties": {
+            "Frame": {
+              "$ref": "#/definitions/Frame"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Motion"
+          ],
+          "properties": {
+            "Motion": {
+              "$ref": "#/definitions/MetadataRecord"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "SmartEvent"
+          ],
+          "properties": {
+            "SmartEvent": {
+              "$ref": "#/definitions/MetadataRecord"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Jpeg"
+          ],
+          "properties": {
+            "Jpeg": {
+              "$ref": "#/definitions/MetadataRecord"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Skip"
+          ],
+          "properties": {
+            "Skip": {
+              "$ref": "#/definitions/MetadataRecord"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Talkback"
+          ],
+          "properties": {
+            "Talkback": {
+              "$ref": "#/definitions/MetadataRecord"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "PartitionHeader": {
+      "description": "Parsed partition header record metadata.",
+      "type": "object",
+      "required": [
+        "clock_rate",
+        "dts",
+        "file_offset",
+        "format_code",
+        "payload"
+      ],
+      "properties": {
+        "clock_rate": {
+          "description": "Clock rate from the partition header record.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "dts": {
+          "description": "DTS from the partition header record.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "file_offset": {
+          "description": "Absolute byte offset of the partition header record in the file.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "format_code": {
+          "description": "Format code from the partition header record.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/FormatCode"
+            }
+          ]
+        },
+        "payload": {
+          "description": "Raw payload bytes from the partition header record.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        }
+      }
+    }
+  }
+}
