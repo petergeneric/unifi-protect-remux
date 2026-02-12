@@ -118,6 +118,11 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    validate_args(args)?;
+    remux_cli(args)
+}
+
+fn validate_args(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.files.is_empty() {
         return Err("Expected at least one .ubv file as input!".into());
     }
@@ -126,7 +131,14 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         return Err("Must enable extraction of at least one of: audio, video!".into());
     }
 
-    remux_cli(args)
+    if args.mp4 && !args.with_video {
+        return Err(
+            "MP4 output requires video; --with-video=false is not supported with --mp4=true"
+                .into(),
+        );
+    }
+
+    Ok(())
 }
 
 fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
@@ -330,5 +342,45 @@ fn get_start_timecode(
             .as_ref()
             .filter(|vt| vt.track_id == video_track_num)
             .and_then(|vt| vt.start_timecode)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_args() -> Args {
+        Args {
+            with_audio: true,
+            with_video: true,
+            force_rate: 0,
+            fast_start: false,
+            output_folder: "./".to_string(),
+            mp4: true,
+            video_track: 0,
+            version: false,
+            files: vec!["dummy.ubv".to_string()],
+        }
+    }
+
+    #[test]
+    fn validate_args_rejects_mp4_audio_only() {
+        let mut args = base_args();
+        args.with_video = false;
+        args.with_audio = true;
+        args.mp4 = true;
+
+        let err = validate_args(&args).unwrap_err().to_string();
+        assert!(err.contains("MP4 output requires video"));
+    }
+
+    #[test]
+    fn validate_args_allows_audio_only_when_not_mp4() {
+        let mut args = base_args();
+        args.with_video = false;
+        args.with_audio = true;
+        args.mp4 = false;
+
+        assert!(validate_args(&args).is_ok());
     }
 }
