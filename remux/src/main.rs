@@ -204,7 +204,7 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         for partition in &partitions {
             // Build output filenames
             let output_folder = {
-                let f = args.output_folder.trim_end_matches('/');
+                let f = args.output_folder.trim_end_matches(['/', '\\']);
                 if f == "SRC-FOLDER" {
                     Path::new(ubv_path)
                         .parent()
@@ -234,7 +234,10 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
                 None => "unknown-time".to_string(),
             };
 
-            let basename = format!("{}/{}_{}",output_folder, base_filename, tc_str);
+            let basename = Path::new(&output_folder)
+                .join(format!("{}_{}", base_filename, tc_str))
+                .to_string_lossy()
+                .to_string();
 
             // Determine output file paths
             let video_file = if args.with_video && partition.video_track_count > 0 {
