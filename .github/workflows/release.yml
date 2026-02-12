@@ -47,14 +47,18 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install nasm pkg-config
 
-      - name: Install build deps (Windows)
+      - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install nasm --yes --no-progress
-          choco install llvm --yes --no-progress
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
-          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-clang
+            diffutils
+            make
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -70,7 +74,15 @@ jobs:
           restore-keys: |
             release-${{ matrix.target }}-
 
+      - name: Build release binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export PATH="/ucrt64/bin:$PATH"
+          cargo build --release
+
       - name: Build release binaries
+        if: runner.os != 'Windows'
         run: cargo build --release
 
       - name: Package (Unix)
