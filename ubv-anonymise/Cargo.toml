@@ -1,0 +1,11 @@
+[package]
+name = "ubv-anonymise"
+version = "4.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+authors = ["Peter <code@peter.works>"]
+description = "CLI to anonymise .ubv files by nulling all AV essence (which also makes them highly compressible for including in unit tests)"
+
+[dependencies]
+ubv = { path = "../ubv" }
+clap = { version = "4", features = ["derive"] }

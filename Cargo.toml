@@ -1,0 +1,3 @@
+[workspace]
+members = ["ubv", "ubv-info", "remux", "ubv-anonymise"]
+resolver = "2"

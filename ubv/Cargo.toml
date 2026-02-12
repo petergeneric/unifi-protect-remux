@@ -1,0 +1,20 @@
+[package]
+name = "ubv"
+version = "4.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+authors = ["Peter <code@peter.works>"]
+description = "Parser library for Ubiquiti's proprietary .ubv video format"
+
+[features]
+jsonschema = ["dep:schemars"]
+
+[dependencies]
+thiserror = "2"
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+schemars = { version = "0.8", optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+sha2 = "0.10"

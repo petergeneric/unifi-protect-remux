@@ -1,0 +1,13 @@
+[package]
+name = "ubv-info"
+version = "4.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+authors = ["Peter <code@peter.works>"]
+description = "CLI to inspect .ubv file structure"
+
+[dependencies]
+ubv = { path = "../ubv", features = ["jsonschema"] }
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+schemars = "0.8"
