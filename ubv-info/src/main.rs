@@ -8,7 +8,7 @@ use ubv::partition::PartitionEntry;
 #[command(name = "ubv-info", about = "Parse and display UBV file structure")]
 struct Args {
     /// Input .ubv file
-    #[arg(short = 'f', long = "file", required_unless_present = "schema")]
+    #[arg(short = 'f', long = "file", required_unless_present_any = ["schema", "version"])]
     file: Option<String>,
 
     /// Filter by track ID
@@ -22,6 +22,10 @@ struct Args {
     /// Print JSON schema for the output format and exit
     #[arg(long)]
     schema: bool,
+
+    /// Display version and quit
+    #[arg(long)]
+    version: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,6 +36,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let args = Args::parse();
+
+    if args.version {
+        print_version();
+        return Ok(());
+    }
 
     if args.schema {
         let schema = schemars::schema_for!(ubv::reader::UbvFile);
@@ -140,4 +149,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn print_version() {
+    println!("UBV Info Tool");
+    println!("Copyright (c) Peter Wright 2020-2026");
+    println!("https://github.com/petergeneric/unifi-protect-remux");
+    println!();
+
+    let release = env!("RELEASE_VERSION");
+    let commit = env!("GIT_COMMIT");
+    if !release.is_empty() {
+        println!("\tVersion:     {}", release);
+    } else {
+        println!("\tGit commit:  {}", commit);
+    }
 }

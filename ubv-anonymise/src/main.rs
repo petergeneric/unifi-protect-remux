@@ -9,10 +9,14 @@ use ubv::track;
 #[derive(Parser)]
 #[command(about = "Strip audio/video/image essence from a .ubv file, preserving record structure")]
 struct Args {
+    /// Display version and quit
+    #[arg(long)]
+    version: bool,
+
     /// Input .ubv file
-    input: PathBuf,
+    input: Option<PathBuf>,
     /// Output .ubv file (anonymised copy)
-    output: PathBuf,
+    output: Option<PathBuf>,
 }
 
 /// Zero out a region of the file at the given offset and size.
@@ -28,18 +32,41 @@ fn zero_region(file: &mut File, offset: u64, size: u32) -> io::Result<()> {
     Ok(())
 }
 
+fn print_version() {
+    println!("UBV Anonymise Tool");
+    println!("Copyright (c) Peter Wright 2020-2026");
+    println!("https://github.com/petergeneric/unifi-protect-remux");
+    println!();
+
+    let release = env!("RELEASE_VERSION");
+    let commit = env!("GIT_COMMIT");
+    if !release.is_empty() {
+        println!("\tVersion:     {}", release);
+    } else {
+        println!("\tGit commit:  {}", commit);
+    }
+}
+
 fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
-    if args.input.to_string_lossy().ends_with(".ubv.gz") {
+    if args.version {
+        print_version();
+        return Ok(());
+    }
+
+    let input = args.input.ok_or("INPUT is required unless --version is specified")?;
+    let output = args.output.ok_or("OUTPUT is required unless --version is specified")?;
+
+    if input.to_string_lossy().ends_with(".ubv.gz") {
         return Err(
             ".ubv.gz input is not supported for anonymisation; provide an uncompressed .ubv file"
                 .into(),
         );
     }
 
-    fs::copy(&args.input, &args.output)?;
+    fs::copy(&input, &output)?;
 
-    let mut reader = open_ubv(&args.input)?;
-    let mut out = OpenOptions::new().write(true).open(&args.output)?;
+    let mut reader = open_ubv(&input)?;
+    let mut out = OpenOptions::new().write(true).open(&output)?;
 
     let mut records_zeroed: u64 = 0;
     let mut bytes_zeroed: u64 = 0;
