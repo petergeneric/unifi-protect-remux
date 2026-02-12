@@ -597,7 +597,7 @@ checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
 
 [[package]]
 name = "remux"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "chrono",
  "clap",
@@ -766,7 +766,7 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
 name = "ubv"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "flate2",
  "schemars",
@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "ubv-anonymise"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "clap",
  "ubv",
@@ -786,7 +786,7 @@ dependencies = [
 
 [[package]]
 name = "ubv-info"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "clap",
  "libc",

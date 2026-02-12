@@ -100,6 +100,7 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.version {
         println!("UBV Remux Tool");
         println!("Copyright (c) Peter Wright 2020-2026");
+        println!("License: GNU AGPL v3 (AGPL-3.0-only)");
         println!("https://github.com/petergeneric/unifi-protect-remux");
         println!();
 

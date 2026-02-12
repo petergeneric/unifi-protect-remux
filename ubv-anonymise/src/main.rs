@@ -35,6 +35,7 @@ fn zero_region(file: &mut File, offset: u64, size: u32) -> io::Result<()> {
 fn print_version() {
     println!("UBV Anonymise Tool");
     println!("Copyright (c) Peter Wright 2020-2026");
+    println!("License: GNU AGPL v3 (AGPL-3.0-only)");
     println!("https://github.com/petergeneric/unifi-protect-remux");
     println!();
 
