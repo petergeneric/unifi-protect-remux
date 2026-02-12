@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  checks: write
 
 jobs:
   build:
@@ -64,6 +65,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Cache cargo registry and build
         uses: actions/cache@v4
         with:
@@ -85,6 +89,25 @@ jobs:
       - name: Build release binaries
         if: runner.os != 'Windows'
         run: cargo build --release
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export PATH="/ucrt64/bin:$PATH"
+          cargo nextest run --release --profile ci
+
+      - name: Test
+        if: runner.os != 'Windows'
+        run: cargo nextest run --release --profile ci
+
+      - name: Publish test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests (${{ matrix.artifact }})
+          path: target/nextest/ci/junit.xml
+          reporter: java-junit
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
