@@ -1,0 +1,79 @@
+name: Release (Legacy ARM64)
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach assets to (leave empty for build-only test)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: unifi-protect-remux-linux-aarch64-legacy
+    runs-on: ubuntu-24.04-arm
+    container: debian:bullseye
+
+    steps:
+      - name: Install system deps
+        run: |
+          apt-get update
+          apt-get install -y build-essential nasm pkg-config curl git libclang-dev
+          # gh CLI (not pre-installed in container unlike GitHub-hosted runners)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | tee /usr/share/keyrings/githubcli-archive-keyring.gpg > /dev/null
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          apt-get update && apt-get install -y gh
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-aarch64-legacy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            release-aarch64-legacy-
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Package
+        run: |
+          mkdir -p staging
+          cp target/release/remux staging/
+          cp target/release/ubv-info staging/
+          cp target/release/ubv-anonymise staging/
+          tar czf unifi-protect-remux-linux-aarch64-legacy.tar.gz -C staging .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unifi-protect-remux-linux-aarch64-legacy
+          path: staging/
+
+      - name: Determine release tag
+        id: tag
+        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release asset
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" unifi-protect-remux-linux-aarch64-legacy.tar.gz

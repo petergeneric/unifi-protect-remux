@@ -8,29 +8,50 @@ on:
       tag:
         description: "Existing tag to attach assets to (leave empty for build-only test)"
         required: false
+      target:
+        description: "Build only this target (leave empty for all)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - aarch64-apple-darwin
+          - x86_64-pc-windows-msvc
 
 permissions:
   contents: write
   checks: write
 
 jobs:
+  configure:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          all='{
+            "include": [
+              {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","artifact":"unifi-protect-remux-linux-x86_64"},
+              {"os":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-gnu","artifact":"unifi-protect-remux-linux-aarch64"},
+              {"os":"macos-latest","target":"aarch64-apple-darwin","artifact":"unifi-protect-remux-macos-aarch64"},
+              {"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"unifi-protect-remux-windows-x86_64"}
+            ]
+          }'
+          if [ -z "$TARGET" ]; then
+            echo "matrix=$(echo "$all" | jq -c)" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=$(echo "$all" | jq -c --arg t "$TARGET" '{include: [.include[] | select(.target == $t)]}')" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TARGET: ${{ inputs.target }}
+
   build:
+    needs: configure
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: unifi-protect-remux-linux-x86_64
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            artifact: unifi-protect-remux-linux-aarch64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: unifi-protect-remux-macos-aarch64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: unifi-protect-remux-windows-x86_64
+      matrix: ${{ fromJSON(needs.configure.outputs.matrix) }}
 
     name: ${{ matrix.artifact }}
     runs-on: ${{ matrix.os }}
@@ -65,6 +86,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -82,19 +105,19 @@ jobs:
 
       - name: Build release binaries (Windows)
         if: runner.os == 'Windows'
-        run: cargo build --release --no-default-features
+        run: cargo build --release --no-default-features --target ${{ matrix.target }}
 
       - name: Build release binaries
         if: runner.os != 'Windows'
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
-        run: cargo nextest run --release --no-default-features --profile ci
+        run: cargo nextest run --release --no-default-features --target ${{ matrix.target }} --profile ci
 
       - name: Test
         if: runner.os != 'Windows'
-        run: cargo nextest run --release --profile ci
+        run: cargo nextest run --release --target ${{ matrix.target }} --profile ci
 
       - name: Publish test report
         if: always()
@@ -108,9 +131,9 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p staging
-          cp target/release/remux staging/
-          cp target/release/ubv-info staging/
-          cp target/release/ubv-anonymise staging/
+          cp target/${{ matrix.target }}/release/remux staging/
+          cp target/${{ matrix.target }}/release/ubv-info staging/
+          cp target/${{ matrix.target }}/release/ubv-anonymise staging/
           tar czf ${{ matrix.artifact }}.tar.gz -C staging .
 
       - name: Package (Windows)
@@ -118,9 +141,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force staging
-          Copy-Item target/release/remux.exe staging/
-          Copy-Item target/release/ubv-info.exe staging/
-          Copy-Item target/release/ubv-anonymise.exe staging/
+          Copy-Item target/${{ matrix.target }}/release/remux.exe staging/
+          Copy-Item target/${{ matrix.target }}/release/ubv-info.exe staging/
+          Copy-Item target/${{ matrix.target }}/release/ubv-anonymise.exe staging/
           # Bundle FFmpeg DLLs so users don't need a separate FFmpeg install
           Copy-Item "$env:FFMPEG_DIR\bin\*.dll" staging/
           Compress-Archive -Path staging/* -DestinationPath ${{ matrix.artifact }}.zip
