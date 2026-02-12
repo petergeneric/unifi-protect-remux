@@ -17,3 +17,5 @@ samples/
 
 # Local-only
 *.local
+
+dhat-heap.json
