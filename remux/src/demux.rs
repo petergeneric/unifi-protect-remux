@@ -78,7 +78,7 @@ pub fn demux_partition(
 fn write_video_frame(
     ubv_file: &mut File,
     frame: &RecordHeader,
-    writer: &mut BufWriter<File>,
+    writer: &mut impl Write,
     buffer: &mut [u8],
 ) -> io::Result<()> {
     let mut pos = 0u32;
@@ -120,11 +120,130 @@ fn write_video_frame(
 fn write_audio_frame(
     ubv_file: &mut File,
     frame: &RecordHeader,
-    writer: &mut BufWriter<File>,
+    writer: &mut impl Write,
     buffer: &mut [u8],
 ) -> io::Result<()> {
     ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
     ubv_file.read_exact(&mut buffer[..frame.data_size as usize])?;
     writer.write_all(&buffer[..frame.data_size as usize])?;
+    Ok(())
+}
+
+/// Demux video frames from a UBV file into an Annex B bitstream written to the given writer.
+///
+/// Writes a leading NAL start code, then each frame's NAL units separated by start codes.
+/// The `frames` slice should contain only video frames for the desired track.
+pub fn demux_video_frames(
+    ubv_path: &str,
+    frames: &[RecordHeader],
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    if frames.is_empty() {
+        return Ok(());
+    }
+
+    let mut ubv_file = File::open(ubv_path)?;
+
+    let max_size = frames
+        .iter()
+        .map(|f| f.data_size as usize)
+        .max()
+        .unwrap_or(0);
+    let mut buffer = vec![0u8; max_size];
+
+    writer.write_all(&NAL_START_CODE)?;
+    for frame in frames {
+        write_video_frame(&mut ubv_file, frame, writer, &mut buffer)?;
+    }
+
+    Ok(())
+}
+
+/// Demux audio frames from a UBV file as raw data written to the given writer.
+///
+/// The `frames` slice should contain only audio frames.
+pub fn demux_audio_frames(
+    ubv_path: &str,
+    frames: &[RecordHeader],
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    if frames.is_empty() {
+        return Ok(());
+    }
+
+    let mut ubv_file = File::open(ubv_path)?;
+
+    let max_size = frames
+        .iter()
+        .map(|f| f.data_size as usize)
+        .max()
+        .unwrap_or(0);
+    let mut buffer = vec![0u8; max_size];
+
+    for frame in frames {
+        write_audio_frame(&mut ubv_file, frame, writer, &mut buffer)?;
+    }
+
+    Ok(())
+}
+
+/// Read a single video frame from the UBV file into Annex B format.
+///
+/// Converts UBV's length-prefixed NAL units to Annex B by replacing each 4-byte
+/// length prefix with a 4-byte start code (00 00 00 01). Each NAL is preceded by
+/// a start code with no trailing start code — suitable for per-frame MP4 packet
+/// construction where the MOV muxer converts Annex B to length-prefixed internally.
+pub fn read_video_frame_annexb(
+    ubv_file: &mut File,
+    frame: &RecordHeader,
+    annexb_buf: &mut Vec<u8>,
+    read_buf: &mut [u8],
+) -> io::Result<()> {
+    annexb_buf.clear();
+
+    let mut pos = 0u32;
+    let frame_size = frame.data_size;
+    ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
+
+    while pos < frame_size {
+        // Read 4-byte NAL length prefix
+        let mut len_buf = [0u8; 4];
+        ubv_file.read_exact(&mut len_buf)?;
+        let nal_size = u32::from_be_bytes(len_buf);
+        pos += 4;
+
+        if pos + nal_size > frame_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "NAL read goes beyond frame: pos={}, nal_size={}, frame_size={}",
+                    pos, nal_size, frame_size
+                ),
+            ));
+        }
+
+        // Read NAL payload
+        ubv_file.read_exact(&mut read_buf[..nal_size as usize])?;
+        pos += nal_size;
+
+        // Write start code followed by NAL payload
+        annexb_buf.extend_from_slice(&NAL_START_CODE);
+        annexb_buf.extend_from_slice(&read_buf[..nal_size as usize]);
+    }
+
+    Ok(())
+}
+
+/// Read a single audio frame from the UBV file into the provided buffer.
+///
+/// The buffer is resized to fit the frame data.
+pub fn read_audio_frame_raw(
+    ubv_file: &mut File,
+    frame: &RecordHeader,
+    buffer: &mut Vec<u8>,
+) -> io::Result<()> {
+    buffer.resize(frame.data_size as usize, 0);
+    ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
+    ubv_file.read_exact(buffer)?;
     Ok(())
 }
