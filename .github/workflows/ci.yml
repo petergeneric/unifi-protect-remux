@@ -51,6 +51,7 @@ jobs:
           Expand-Archive ffmpeg.zip -DestinationPath .
           $ffmpegDir = (Resolve-Path "ffmpeg-n8.0-latest-win64-lgpl-shared-8.0").Path
           echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
+          echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
