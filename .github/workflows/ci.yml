@@ -16,6 +16,8 @@ jobs:
             name: macOS arm64
           - os: ubuntu-latest
             name: Ubuntu x86_64
+          - os: windows-latest
+            name: Windows x86_64
 
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -35,6 +37,20 @@ jobs:
           curl -L https://sourceforge.net/projects/avbuild/files/linux/ffmpeg-8.0-linux-clang-default.tar.xz/download -o ffmpeg.tar.xz
           tar -xf ffmpeg.tar.xz
           echo "FFMPEG_DIR=${PWD}/ffmpeg-8.0-linux-clang-default" >> "$GITHUB_ENV"
+
+      - name: Install FFmpeg and LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # LLVM for bindgen
+          choco install llvm --yes --no-progress
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+          # Pre-built FFmpeg 8 shared libs
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-win64-lgpl-shared-8.0.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath .
+          $ffmpegDir = (Resolve-Path "ffmpeg-n8.0-latest-win64-lgpl-shared-8.0").Path
+          echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
