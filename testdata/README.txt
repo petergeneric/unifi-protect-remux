@@ -1,0 +1,2 @@
+Test files in this folder have been run through `ubv-anonymise` to strip out AV essence, leaving only the .ubv headers
+As such they will not work with `remux`, it will be necessary to use live sample files.
