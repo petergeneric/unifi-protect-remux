@@ -181,13 +181,38 @@ pub fn analyse(
         frames.push(frame.header);
     }
 
-    // Rebase DTS values so first frame = 0, and build AnalysedTrack
+    // Rebase DTS values so first frame = 0, enforcing strict monotonicity.
+    // Camera firmware can produce duplicate or non-monotonic DTS at GOP boundaries;
+    // we bump any such values to prev + 1 (one tick at 90kHz = ~11µs, imperceptible).
     let to_analysed = |t: &TrackState| -> AnalysedTrack {
         let rebased: Vec<u64> = if t.dts_values.is_empty() {
             Vec::new()
         } else {
             let base = t.dts_values[0];
-            t.dts_values.iter().map(|&d| d.saturating_sub(base)).collect()
+            let mut result: Vec<u64> = Vec::with_capacity(t.dts_values.len());
+            let mut corrections = 0u64;
+            for &d in &t.dts_values {
+                let val = d.saturating_sub(base);
+                let val = if let Some(&prev) = result.last() {
+                    if val <= prev {
+                        corrections += 1;
+                        prev + 1
+                    } else {
+                        val
+                    }
+                } else {
+                    val
+                };
+                result.push(val);
+            }
+            if corrections > 0 {
+                log::warn!(
+                    "Track {}: corrected {} non-monotonic DTS value(s)",
+                    t.track_id,
+                    corrections,
+                );
+            }
+            result
         };
 
         let nominal_fps = if t.is_video {
@@ -352,7 +377,7 @@ mod tests {
         }
         assert_eq!(track.dts_values[0], 0, "first DTS should be rebased to 0");
         for w in track.dts_values.windows(2) {
-            assert!(w[1] >= w[0], "DTS not monotonic: {} < {}", w[1], w[0]);
+            assert!(w[1] > w[0], "DTS not strictly monotonic: {} >= {}", w[1], w[0]);
         }
         if expect_video {
             assert_eq!(track.clock_rate, 90000);
