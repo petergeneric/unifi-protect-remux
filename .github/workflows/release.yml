@@ -28,6 +28,9 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: unifi-protect-remux-macos-aarch64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: unifi-protect-remux-macos-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: unifi-protect-remux-windows-x86_64
@@ -127,19 +130,12 @@ jobs:
           Copy-Item "$env:FFMPEG_DIR\bin\*.dll" staging/
           Compress-Archive -Path staging/* -DestinationPath ${{ matrix.artifact }}.zip
 
-      - name: Upload artifact (Linux)
-        if: runner.os == 'Linux'
+      - name: Upload artifact (Unix)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.tar.gz
-
-      - name: Upload artifact (macOS)
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: staging/
 
       - name: Upload artifact (Windows)
         if: runner.os == 'Windows'
