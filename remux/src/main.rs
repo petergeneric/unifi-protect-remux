@@ -9,6 +9,7 @@ use std::path::Path;
 use chrono::SecondsFormat;
 use clap::{ArgAction, Parser};
 
+use ubv::format::PacketPosition;
 use ubv::partition::{Partition, PartitionEntry};
 use ubv::track::{is_video_track, track_info};
 
@@ -140,6 +141,20 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| io::Error::new(e.kind(), format!("Error opening UBV file {}: {}", ubv_path, e)))?;
         let ubv_file = ubv::reader::parse_ubv(&mut reader)
             .map_err(|e| format!("Error parsing UBV file {}: {}", ubv_path, e))?;
+
+        // Warn if any frame uses chunked packets (not yet supported)
+        let has_chunked = ubv_file.partitions.iter().any(|p| {
+            p.entries.iter().any(|e| matches!(e, PartitionEntry::Frame(f) if f.packet_position != PacketPosition::Single))
+        });
+        if has_chunked {
+            log::warn!(
+                "This file contains chunked (multi-packet) frames, which have not yet been \
+                 fully mapped. Output may be corrupt. If you would like to help improve the \
+                 project, please raise an issue at \
+                 https://github.com/petergeneric/unifi-protect-remux/issues/new?template=bug_report.md \
+                 and ideally attach the .ubv file (or the result of ubv-anonymise | gzip)."
+            );
+        }
 
         // Resolve video track: auto-detect from first partition if not specified
         let video_track = if args.video_track != 0 {

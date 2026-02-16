@@ -33,6 +33,8 @@ pub struct Frame {
     pub cts: i64,
     /// Wall-clock time in track clock rate units.
     pub wc: u64,
-    /// Packet position (Single, First, Middle, Last).
+    /// Position of this record within a (possibly chunked) frame.
+    /// See [`PacketPosition`] for the chunking/reassembly protocol.
+    /// All observed sample files contain only `Single` packets.
     pub packet_position: PacketPosition,
 }

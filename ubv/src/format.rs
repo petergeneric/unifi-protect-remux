@@ -81,7 +81,7 @@ impl FormatCode {
         self.byte4() & 0x01 != 0
     }
 
-    /// Packet position from bits 7-6.
+    /// Packet position from bits 7-6 (see [`PacketPosition`] for details).
     pub fn packet_position(self) -> PacketPosition {
         match (self.byte4() >> 6) & 0x03 {
             0b11 => PacketPosition::Single,
@@ -131,6 +131,26 @@ impl FormatCode {
     }
 }
 
+/// Position of a record within a (possibly multi-packet) frame.
+///
+/// When a video frame is too large for a single UBV record, it is split
+/// ("chunked") across multiple consecutive records on the same track.
+/// Bits 7-6 of byte 4 (the high byte of the format code) encode where
+/// each record sits in the sequence:
+///
+/// - `Single` (0b11) — the entire frame fits in one record (the common case).
+/// - `First`  (0b10) — first chunk; the keyframe flag on this record applies
+///   to the reassembled frame.
+/// - `Middle` (0b00) — continuation chunk.
+/// - `Last`   (0b01) — final chunk.
+///
+/// To reassemble a chunked frame, concatenate the DATA payloads from
+/// First → Middle(s) → Last in file order. The per-track sequence counter
+/// increments for each chunk, not each logical frame.
+///
+/// **Note:** All sample files observed to date contain only `Single` packets.
+/// The remux demuxer does not currently implement reassembly — chunked frames
+/// would produce corrupt output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 pub enum PacketPosition {
