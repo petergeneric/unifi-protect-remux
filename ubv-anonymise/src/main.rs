@@ -13,6 +13,10 @@ struct Args {
     #[arg(long)]
     version: bool,
 
+    /// Keep SmartEvent metadata (do not anonymise)
+    #[arg(long)]
+    keep_smart_events: bool,
+
     /// Input .ubv file
     input: Option<PathBuf>,
     /// Output .ubv file (anonymised copy)
@@ -78,6 +82,12 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     info.track_type,
                     track::TrackType::Jpeg | track::TrackType::Talkback
                 ) =>
+            {
+                true
+            }
+            Some(info)
+                if matches!(info.track_type, track::TrackType::SmartEvent)
+                    && !args.keep_smart_events =>
             {
                 true
             }
