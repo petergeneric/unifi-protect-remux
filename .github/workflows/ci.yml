@@ -18,8 +18,9 @@ jobs:
         include:
           - os: macos-latest
             name: macOS arm64
-          - os: macos-13
+          - os: macos-latest
             name: macOS x86_64
+            target: x86_64-apple-darwin
           - os: ubuntu-latest
             name: Ubuntu x86_64
           - os: windows-latest
@@ -33,7 +34,7 @@ jobs:
 
       - name: Install FFmpeg (macOS)
         if: runner.os == 'macOS'
-        run: brew install ffmpeg pkg-config
+        run: brew install nasm ffmpeg pkg-config
 
       - name: Install pre-built FFmpeg (Ubuntu x86_64)
         if: runner.os == 'Linux' && runner.arch == 'X64'
@@ -62,6 +63,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup cross-compile toolchain
+        if: matrix.target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
@@ -77,10 +82,10 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-cargo-
 
       - name: Build
-        run: cargo build --no-default-features
+        run: cargo build --no-default-features ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
       - name: Test
-        run: cargo nextest run --no-default-features --profile ci
+        run: cargo nextest run --no-default-features --profile ci ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
       - name: Publish test report
         if: always()
