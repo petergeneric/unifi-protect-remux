@@ -136,6 +136,14 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     for ubv_path in &args.files {
         log::info!("Analysing {}", ubv_path);
 
+        if ubv_path.contains("_2_rotating_") || ubv_path.contains("_timelapse_") {
+            log::warn!(
+                "File '{}' appears to be a rotating or timelapse recording, which is not currently supported. \
+                 Output may be missing data or incorrect.",
+                ubv_path
+            );
+        }
+
         // Parse the .ubv file
         let mut reader = ubv::reader::open_ubv(Path::new(ubv_path))
             .map_err(|e| io::Error::new(e.kind(), format!("Error opening UBV file {}: {}", ubv_path, e)))?;
