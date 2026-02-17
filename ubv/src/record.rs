@@ -37,6 +37,24 @@ pub struct RawRecord {
     pub payload: Option<Vec<u8>>,
 }
 
+/// Map an IO error during record parsing to the appropriate UbvError.
+///
+/// True unexpected-EOF errors (the most common failure) become `UnexpectedEof`
+/// with a file offset. All other IO errors are preserved with positional context.
+fn io_at_offset(offset: u64, context: &'static str) -> impl FnOnce(std::io::Error) -> UbvError {
+    move |e: std::io::Error| {
+        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+            UbvError::UnexpectedEof { offset }
+        } else {
+            UbvError::IoAtOffset {
+                offset,
+                context,
+                source: e,
+            }
+        }
+    }
+}
+
 /// Read the next record from the stream. Returns None at EOF.
 pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> {
     let file_offset = reader.stream_position().map_err(UbvError::Io)?;
@@ -46,7 +64,7 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     match reader.read_exact(&mut header) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(e) => return Err(UbvError::Io(e)),
+        Err(e) => return Err(io_at_offset(file_offset, "reading record header")(e)),
     }
 
     // Validate magic byte. A zero byte means we've hit zero-padded trailing
@@ -84,9 +102,7 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     let ext_header = &mut ext_header_buf[..extra_header_bytes];
     reader
         .read_exact(ext_header)
-        .map_err(|_| UbvError::UnexpectedEof {
-            offset: file_offset,
-        })?;
+        .map_err(io_at_offset(file_offset, "reading extended header"))?;
 
     // Parse fields from extended header based on format code flags
     let mut pos = 0;
@@ -133,9 +149,7 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     let mut size_buf = [0u8; 4];
     reader
         .read_exact(&mut size_buf)
-        .map_err(|_| UbvError::UnexpectedEof {
-            offset: file_offset,
-        })?;
+        .map_err(io_at_offset(file_offset, "reading SIZE field"))?;
     let data_size = u32::from_be_bytes(size_buf);
 
     let data_offset = file_offset + header_len as u64 + 4;
@@ -145,25 +159,23 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     // Capture payload for small records (enables partition header, clock sync, etc.)
     let payload = if data_size <= MAX_INLINE_PAYLOAD {
         let mut payload_buf = vec![0u8; data_size as usize];
-        reader.read_exact(&mut payload_buf).map_err(|_| {
-            UbvError::UnexpectedEof {
-                offset: file_offset,
-            }
-        })?;
+        reader
+            .read_exact(&mut payload_buf)
+            .map_err(io_at_offset(file_offset, "reading record payload"))?;
         // Still need to seek past padding and back_size
         // Note: the "extra padding" from bit 0 is stored internally in the packet
         // struct but is NOT written to disk. Only alignment padding appears on disk.
         // Seek past pad + back_size
         reader
             .seek(SeekFrom::Current(pad as i64 + 4))
-            .map_err(UbvError::Io)?;
+            .map_err(io_at_offset(file_offset, "seeking past padding/back-size"))?;
         Some(payload_buf)
     } else {
         // Seek past DATA + PAD + BACK_SIZE
         let skip = data_size as i64 + pad as i64 + 4; // +4 for BACK_SIZE
         reader
             .seek(SeekFrom::Current(skip))
-            .map_err(UbvError::Io)?;
+            .map_err(io_at_offset(file_offset, "seeking past large payload"))?;
         None
     };
 

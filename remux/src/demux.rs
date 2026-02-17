@@ -69,6 +69,17 @@ pub fn demux_partition(
     Ok(())
 }
 
+/// Wrap an IO error with frame-level context (track, file offset, size).
+fn frame_io_err(frame: &RecordHeader, context: &str, cause: io::Error) -> io::Error {
+    io::Error::new(
+        cause.kind(),
+        format!(
+            "{} (track={}, offset=0x{:X}, size={}): {}",
+            context, frame.track_id, frame.data_offset, frame.data_size, cause
+        ),
+    )
+}
+
 /// Iterate over length-prefixed NAL units in a video frame, calling `f` for each NAL payload.
 fn for_each_nal<F>(
     ubv_file: &mut File,
@@ -82,12 +93,16 @@ where
     let mut pos = 0u32;
     let frame_size = frame.data_size;
 
-    ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
+    ubv_file
+        .seek(SeekFrom::Start(frame.data_offset))
+        .map_err(|e| frame_io_err(frame, "Seek to video frame failed", e))?;
 
     while pos < frame_size {
         // Read 4-byte NAL length prefix
         let mut len_buf = [0u8; 4];
-        ubv_file.read_exact(&mut len_buf)?;
+        ubv_file
+            .read_exact(&mut len_buf)
+            .map_err(|e| frame_io_err(frame, "Reading NAL length prefix failed", e))?;
         let nal_size = u32::from_be_bytes(len_buf);
         pos += 4;
 
@@ -95,13 +110,16 @@ where
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "NAL read goes beyond frame: pos={}, nal_size={}, frame_size={}",
-                    pos, nal_size, frame_size
+                    "NAL unit extends beyond frame boundary (track={}, offset=0x{:X}, \
+                     frame_size={}, nal_offset={}, nal_size={})",
+                    frame.track_id, frame.data_offset, frame_size, pos, nal_size
                 ),
             ));
         }
 
-        ubv_file.read_exact(&mut read_buf[..nal_size as usize])?;
+        ubv_file
+            .read_exact(&mut read_buf[..nal_size as usize])
+            .map_err(|e| frame_io_err(frame, "Reading NAL payload failed", e))?;
         pos += nal_size;
 
         f(&read_buf[..nal_size as usize])?;
@@ -130,8 +148,12 @@ fn write_audio_frame(
     writer: &mut impl Write,
     buffer: &mut [u8],
 ) -> io::Result<()> {
-    ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
-    ubv_file.read_exact(&mut buffer[..frame.data_size as usize])?;
+    ubv_file
+        .seek(SeekFrom::Start(frame.data_offset))
+        .map_err(|e| frame_io_err(frame, "Seek to audio frame failed", e))?;
+    ubv_file
+        .read_exact(&mut buffer[..frame.data_size as usize])
+        .map_err(|e| frame_io_err(frame, "Reading audio frame failed", e))?;
     writer.write_all(&buffer[..frame.data_size as usize])?;
     Ok(())
 }
@@ -222,8 +244,12 @@ pub fn read_audio_frame_raw(
     buffer: &mut Vec<u8>,
 ) -> io::Result<()> {
     buffer.resize(frame.data_size as usize, 0);
-    ubv_file.seek(SeekFrom::Start(frame.data_offset))?;
-    ubv_file.read_exact(buffer)?;
+    ubv_file
+        .seek(SeekFrom::Start(frame.data_offset))
+        .map_err(|e| frame_io_err(frame, "Seek to audio frame failed", e))?;
+    ubv_file
+        .read_exact(buffer)
+        .map_err(|e| frame_io_err(frame, "Reading audio frame failed", e))?;
     Ok(())
 }
 

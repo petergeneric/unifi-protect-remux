@@ -58,8 +58,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let file = args.file.or(args.input).expect("file argument required");
-    let mut reader = ubv::reader::open_ubv(Path::new(&file))?;
-    let ubv = ubv::reader::parse_ubv(&mut reader)?;
+    let mut reader = ubv::reader::open_ubv(Path::new(&file))
+        .map_err(|e| format!("{}: error opening file: {}", file, e))?;
+    let ubv = ubv::reader::parse_ubv(&mut reader)
+        .map_err(|e| format!("{}: error parsing UBV: {}", file, e))?;
 
     if args.json {
         println!("{}", serde_json::to_string(&ubv)?);

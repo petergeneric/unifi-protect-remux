@@ -25,10 +25,16 @@ pub fn wc_ticks_to_millis(wc: u64, clock_rate: u32) -> u64 {
 }
 
 impl ClockSync {
-    /// Parse a clock sync from the record's DTS, clock rate, and 8-byte payload.
-    pub fn from_record(dts: u64, clock_rate: u32, payload: &[u8]) -> Result<Self> {
+    /// Parse a clock sync from the record's DTS, clock rate, file offset, and 8-byte payload.
+    pub fn from_record(
+        dts: u64,
+        clock_rate: u32,
+        record_offset: u64,
+        payload: &[u8],
+    ) -> Result<Self> {
         if payload.len() < 8 {
             return Err(UbvError::ShortPayload {
+                offset: record_offset,
                 expected: 8,
                 got: payload.len(),
             });
@@ -75,7 +81,7 @@ mod tests {
     #[test]
     fn test_clock_sync_from_record_old_file() {
         let payload = [0x64, 0x5d, 0xc6, 0x12, 0x34, 0xed, 0xce, 0x00];
-        let cs = ClockSync::from_record(1139129710, 1000, &payload).unwrap();
+        let cs = ClockSync::from_record(1139129710, 1000, 0, &payload).unwrap();
         assert_eq!(cs.sc_dts, 1139129710);
         assert_eq!(cs.sc_rate, 1000);
         assert_eq!(cs.wc_ms, 1683867154888);
@@ -113,7 +119,7 @@ mod tests {
     #[test]
     fn test_compute_wall_clock_new_file() {
         let payload = [0x69, 0x8b, 0xcc, 0x91, 0x20, 0xc8, 0x55, 0x80];
-        let cs = ClockSync::from_record(8578090739, 1000, &payload).unwrap();
+        let cs = ClockSync::from_record(8578090739, 1000, 0, &payload).unwrap();
         assert_eq!(cs.wc_ms, 1770769553550);
 
         let wc = cs.compute_wall_clock(772028166536, 90000);
@@ -126,8 +132,10 @@ mod tests {
     #[test]
     fn test_clock_sync_from_record_short_payload() {
         let payload = [0x64, 0x5d, 0xc6];
-        let result = ClockSync::from_record(0, 1000, &payload);
+        let result = ClockSync::from_record(0, 1000, 0x100, &payload);
         assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("0x100"), "expected offset in error, got: {}", msg);
     }
 
     #[test]

@@ -10,6 +10,15 @@ use ubv::track::is_video_track;
 
 const AVIO_BUF_SIZE: usize = 4096;
 
+/// Convert a raw FFmpeg AVERROR return code into a human-readable io::Error.
+fn averror(code: c_int, context: &str) -> io::Error {
+    let desc = ffmpeg::Error::from(code);
+    io::Error::new(
+        io::ErrorKind::Other,
+        format!("{}: {} (AVERROR {})", context, desc, code),
+    )
+}
+
 /// AVERROR_EOF: -(MKTAG('E','O','F',' '))
 const AVERROR_EOF: c_int = -(0x45 | (0x4F << 8) | (0x46 << 16) | (0x20 << 24));
 
@@ -64,10 +73,12 @@ pub fn probe_stream_params(
     frames: &[RecordHeader],
     track_id: u16,
 ) -> io::Result<ffmpeg::codec::Parameters> {
+    let track_kind = if is_video_track(track_id) { "video" } else { "audio" };
+
     if frames.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "No frames to probe",
+            format!("No {} frames to probe (track {})", track_kind, track_id),
         ));
     }
 
@@ -83,19 +94,37 @@ pub fn probe_stream_params(
     let probe_frames = &frames[..probe_count];
     let mut data = Vec::new();
     if is_video_track(track_id) {
-        demux::demux_video_frames(ubv_path, probe_frames, &mut data)?;
+        demux::demux_video_frames(ubv_path, probe_frames, &mut data)
+            .map_err(|e| io::Error::new(e.kind(), format!(
+                "Failed to demux {} frames for probing (track {}): {}",
+                track_kind, track_id, e
+            )))?;
     } else {
-        demux::demux_audio_frames(ubv_path, probe_frames, &mut data)?;
+        demux::demux_audio_frames(ubv_path, probe_frames, &mut data)
+            .map_err(|e| io::Error::new(e.kind(), format!(
+                "Failed to demux {} frames for probing (track {}): {}",
+                track_kind, track_id, e
+            )))?;
     }
 
     if data.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "Probed frames produced no data",
+            format!(
+                "Probed {} frames produced no data (track {}, {} frames demuxed)",
+                track_kind, track_id, probe_count
+            ),
         ));
     }
 
-    unsafe { probe_from_buffer(data, format_name) }
+    unsafe {
+        probe_from_buffer(data, format_name).map_err(|e| {
+            io::Error::new(e.kind(), format!(
+                "FFmpeg probe failed for {} track {} (format '{}'): {}",
+                track_kind, track_id, format_name, e
+            ))
+        })
+    }
 }
 
 /// Probe codec parameters from an in-memory buffer using FFmpeg AVIO.
@@ -186,20 +215,14 @@ unsafe fn do_probe(
         unsafe { avformat_open_input(&mut fmt_ctx, ptr::null(), input_fmt, ptr::null_mut()) };
     if ret < 0 {
         // fmt_ctx is already freed by avformat_open_input on error
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("avformat_open_input failed (error {})", ret),
-        ));
+        return Err(averror(ret, "avformat_open_input failed"));
     }
 
     // Probe stream info
     let ret = unsafe { avformat_find_stream_info(fmt_ctx, ptr::null_mut()) };
     if ret < 0 {
         unsafe { avformat_close_input(&mut fmt_ctx) };
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("avformat_find_stream_info failed (error {})", ret),
-        ));
+        return Err(averror(ret, "avformat_find_stream_info failed"));
     }
 
     if unsafe { (*fmt_ctx).nb_streams } == 0 {
@@ -218,10 +241,7 @@ unsafe fn do_probe(
     unsafe { avformat_close_input(&mut fmt_ctx) };
 
     if ret < 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("avcodec_parameters_copy failed (error {})", ret),
-        ));
+        return Err(averror(ret, "avcodec_parameters_copy failed"));
     }
 
     // Log probed parameters for diagnostics

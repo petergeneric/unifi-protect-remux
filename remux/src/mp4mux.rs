@@ -17,8 +17,18 @@ fn ensure_init() {
     });
 }
 
-fn ffmpeg_err(e: ffmpeg::Error) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, format!("FFmpeg error: {}", e))
+fn ffmpeg_err(context: &str) -> impl FnOnce(ffmpeg::Error) -> io::Error + '_ {
+    move |e: ffmpeg::Error| {
+        io::Error::new(io::ErrorKind::Other, format!("{}: {}", context, e))
+    }
+}
+
+/// Like `ffmpeg_err` but defers context string construction to the error path,
+/// avoiding a `format!` allocation on every successful frame.
+fn ffmpeg_err_lazy<F: FnOnce() -> String>(context: F) -> impl FnOnce(ffmpeg::Error) -> io::Error {
+    move |e: ffmpeg::Error| {
+        io::Error::new(io::ErrorKind::Other, format!("{}: {}", context(), e))
+    }
 }
 
 fn is_hevc(video_track_num: u16) -> bool {
@@ -57,9 +67,11 @@ fn write_header(octx: &mut format::context::Output, fast_start: bool) -> io::Res
     if fast_start {
         let mut opts = ffmpeg::Dictionary::new();
         opts.set("movflags", "faststart");
-        octx.write_header_with(opts).map_err(ffmpeg_err)?;
+        octx.write_header_with(opts)
+            .map_err(ffmpeg_err("Writing MP4 header (faststart)"))?;
     } else {
-        octx.write_header().map_err(ffmpeg_err)?;
+        octx.write_header()
+            .map_err(ffmpeg_err("Writing MP4 header"))?;
     }
     Ok(())
 }
@@ -148,13 +160,14 @@ pub fn stream_to_mp4(
     };
 
     // Create MP4 output
-    let mut octx = format::output(&mp4_file).map_err(ffmpeg_err)?;
+    let mut octx = format::output(&mp4_file)
+        .map_err(ffmpeg_err("Creating MP4 output file"))?;
 
     // Add video stream (index 0)
     {
         let mut ost = octx
             .add_stream(encoder::find(codec::Id::None))
-            .map_err(ffmpeg_err)?;
+            .map_err(ffmpeg_err("Adding video stream to MP4"))?;
         ost.set_parameters(video_params);
         ost.set_rate(rate);
         ost.set_avg_frame_rate(rate);
@@ -169,7 +182,7 @@ pub fn stream_to_mp4(
     if let Some(params) = audio_params {
         let mut ost = octx
             .add_stream(encoder::find(codec::Id::None))
-            .map_err(ffmpeg_err)?;
+            .map_err(ffmpeg_err("Adding audio stream to MP4"))?;
         ost.set_parameters(params);
         set_codec_tag(&mut ost, 0);
     }
@@ -183,7 +196,10 @@ pub fn stream_to_mp4(
     // extradata produced by probing. The MOV muxer detects the Annex B format and
     // converts both extradata and packet data to the length-prefixed format required
     // by the MP4 container (hvcC/avcC boxes and sample data).
-    let mut ubv_file = File::open(ubv_path)?;
+    let mut ubv_file = File::open(ubv_path)
+        .map_err(|e| io::Error::new(e.kind(), format!(
+            "Opening UBV file '{}' for frame reading: {}", ubv_path, e
+        )))?;
     {
         let max_frame = video_frames
             .iter()
@@ -203,7 +219,10 @@ pub fn stream_to_mp4(
                     frame,
                     &mut annexb_buf,
                     &mut read_buf,
-                )?;
+                )
+                .map_err(|e| io::Error::new(e.kind(), format!(
+                    "Reading video frame {}/{}: {}", i + 1, video_frames.len(), e
+                )))?;
                 let mut packet = ffmpeg::Packet::copy(&annexb_buf);
                 packet.set_pts(Some(i as i64));
                 packet.set_dts(Some(i as i64));
@@ -214,7 +233,10 @@ pub fn stream_to_mp4(
                 if frame.keyframe {
                     packet.set_flags(codec::packet::Flags::KEY);
                 }
-                packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
+                packet.write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| format!(
+                        "Writing video frame {}/{}", i + 1, video_frames.len()
+                    )))?;
             }
         } else {
             log::info!(
@@ -238,7 +260,10 @@ pub fn stream_to_mp4(
                     frame,
                     &mut annexb_buf,
                     &mut read_buf,
-                )?;
+                )
+                .map_err(|e| io::Error::new(e.kind(), format!(
+                    "Reading video frame {}/{}: {}", i + 1, video_frames.len(), e
+                )))?;
                 let (dts, duration) = compute_dts_duration(dts_values, i);
                 let mut packet = ffmpeg::Packet::copy(&annexb_buf);
                 packet.set_pts(Some(dts));
@@ -250,7 +275,10 @@ pub fn stream_to_mp4(
                 if frame.keyframe {
                     packet.set_flags(codec::packet::Flags::KEY);
                 }
-                packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
+                packet.write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| format!(
+                        "Writing video frame {}/{}", i + 1, video_frames.len()
+                    )))?;
             }
         }
     }
@@ -274,7 +302,10 @@ pub fn stream_to_mp4(
                 at.frame_count
             );
             for (i, frame) in audio_frames.iter().enumerate() {
-                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)?;
+                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)
+                    .map_err(|e| io::Error::new(e.kind(), format!(
+                        "Reading audio frame {}/{}: {}", i + 1, audio_frames.len(), e
+                    )))?;
                 let pts = i as i64 * samples_per_frame as i64;
                 let mut packet = ffmpeg::Packet::copy(&audio_buf);
                 packet.set_pts(Some(pts));
@@ -283,7 +314,10 @@ pub fn stream_to_mp4(
                 packet.rescale_ts(input_tb, ost_time_base);
                 packet.set_position(-1);
                 packet.set_stream(audio_stream_idx);
-                packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
+                packet.write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| format!(
+                        "Writing audio frame {}/{}", i + 1, audio_frames.len()
+                    )))?;
             }
         } else {
             let input_tb = Rational(1, at.clock_rate as i32);
@@ -302,7 +336,10 @@ pub fn stream_to_mp4(
                     );
                     break;
                 }
-                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)?;
+                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)
+                    .map_err(|e| io::Error::new(e.kind(), format!(
+                        "Reading audio frame {}/{}: {}", i + 1, audio_frames.len(), e
+                    )))?;
                 let (dts, duration) = compute_dts_duration(dts_values, i);
                 let mut packet = ffmpeg::Packet::copy(&audio_buf);
                 packet.set_pts(Some(dts));
@@ -311,11 +348,14 @@ pub fn stream_to_mp4(
                 packet.rescale_ts(input_tb, ost_time_base);
                 packet.set_position(-1);
                 packet.set_stream(audio_stream_idx);
-                packet.write_interleaved(&mut octx).map_err(ffmpeg_err)?;
+                packet.write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| format!(
+                        "Writing audio frame {}/{}", i + 1, audio_frames.len()
+                    )))?;
             }
         }
     }
 
-    octx.write_trailer().map_err(ffmpeg_err)?;
+    octx.write_trailer().map_err(ffmpeg_err("Writing MP4 trailer"))?;
     Ok(())
 }

@@ -51,29 +51,40 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let output = args.output.ok_or("OUTPUT is required unless --version is specified")?;
 
     if input.to_string_lossy().ends_with(".ubv.gz") {
-        return Err(
-            ".ubv.gz input is not supported for anonymisation; provide an uncompressed .ubv file"
-                .into(),
-        );
+        return Err(format!(
+            "'{}': .ubv.gz input is not supported for anonymisation; provide an uncompressed .ubv file",
+            input.display()
+        ).into());
     }
 
-    fs::copy(&input, &output)?;
+    fs::copy(&input, &output).map_err(|e| {
+        format!("Copying '{}' to '{}': {}", input.display(), output.display(), e)
+    })?;
 
-    let mut reader = open_ubv(&input)?;
-    let mut out = OpenOptions::new().write(true).open(&output)?;
+    let mut reader = open_ubv(&input).map_err(|e| {
+        format!("Opening input '{}': {}", input.display(), e)
+    })?;
+    let mut out = OpenOptions::new().write(true).open(&output).map_err(|e| {
+        format!("Opening output '{}' for writing: {}", output.display(), e)
+    })?;
 
     let mut records_zeroed: u64 = 0;
     let mut bytes_zeroed: u64 = 0;
+    let mut record_count: u64 = 0;
 
     loop {
         let rec = match record::read_record(&mut reader) {
             Ok(Some(r)) => r,
             Ok(None) => break,
             Err(e) => {
-                eprintln!("Warning: record parse error: {e}");
+                eprintln!(
+                    "Warning: record parse error after {} records: {e}",
+                    record_count
+                );
                 break;
             }
         };
+        record_count += 1;
 
         let should_zero = match track::track_info(rec.track_id) {
             Some(info) if info.is_video() || info.is_audio() => true,
@@ -96,7 +107,12 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         };
 
         if should_zero && rec.data_size > 0 {
-            zero_region(&mut out, rec.data_offset, rec.data_size)?;
+            zero_region(&mut out, rec.data_offset, rec.data_size).map_err(|e| {
+                format!(
+                    "Zeroing record #{} (track=0x{:04X}, offset=0x{:X}, size={}): {}",
+                    record_count, rec.track_id, rec.data_offset, rec.data_size, e
+                )
+            })?;
             records_zeroed += 1;
             bytes_zeroed += rec.data_size as u64;
         }

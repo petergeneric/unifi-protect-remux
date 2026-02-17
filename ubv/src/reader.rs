@@ -116,7 +116,7 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
             track::TrackType::ClockSync => {
                 // Parse clock sync from payload
                 if let Some(payload) = &rec.payload {
-                    let cs = ClockSync::from_record(rec.dts, rec.clock_rate, payload)?;
+                    let cs = ClockSync::from_record(rec.dts, rec.clock_rate, rec.file_offset, payload)?;
                     current_clock_sync = Some(cs);
 
                     if let Some(p) = current_partition.as_mut() {
