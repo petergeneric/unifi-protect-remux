@@ -47,6 +47,31 @@ fn set_codec_tag(ost: &mut ffmpeg::StreamMut, tag: u32) {
     }
 }
 
+/// Maximum DTS value that FFmpeg's MOV muxer supports (signed 32-bit integer).
+/// Exceeding this triggers an assertion failure in movenc.c.
+const MOV_DTS_MAX: u64 = i32::MAX as u64;
+
+/// Compute a reduced video timescale for the MOV muxer when the default would
+/// cause DTS values to exceed the signed 32-bit limit.
+///
+/// `max_dts_ticks` is the maximum DTS value in the original `clock_rate` units.
+/// By default FFmpeg's MOV muxer uses `clock_rate` as the video timescale, so
+/// the output DTS equals the input DTS. For recordings longer than ~6.6 hours
+/// at 90 kHz, these values overflow.
+///
+/// Returns `Some(reduced_timescale)` if the default would overflow, `None` otherwise.
+fn safe_mov_video_timescale(max_dts_ticks: u64, clock_rate: u32) -> Option<u32> {
+    if max_dts_ticks <= MOV_DTS_MAX || clock_rate == 0 {
+        return None;
+    }
+    // With reduced timescale ts, output DTS = max_dts_ticks * ts / clock_rate.
+    // We need: max_dts_ticks * ts / clock_rate <= MOV_DTS_MAX
+    // => ts <= MOV_DTS_MAX * clock_rate / max_dts_ticks
+    let ts = (MOV_DTS_MAX as u128 * clock_rate as u128 / max_dts_ticks as u128) as u32;
+    // 5% safety margin for rounding during FFmpeg's internal rescaling
+    Some((ts * 95 / 100).clamp(1, clock_rate))
+}
+
 /// Set timecode metadata on the output context if a start timecode is available.
 fn set_timecode_metadata(
     octx: &mut format::context::Output,
@@ -62,13 +87,23 @@ fn set_timecode_metadata(
     }
 }
 
-/// Write the output header, optionally with faststart movflag.
-fn write_header(octx: &mut format::context::Output, fast_start: bool) -> io::Result<()> {
-    if fast_start {
+/// Write the output header with muxer options (faststart, video_track_timescale).
+fn write_header(
+    octx: &mut format::context::Output,
+    fast_start: bool,
+    video_timescale: Option<u32>,
+) -> io::Result<()> {
+    let has_opts = fast_start || video_timescale.is_some();
+    if has_opts {
         let mut opts = ffmpeg::Dictionary::new();
-        opts.set("movflags", "faststart");
+        if fast_start {
+            opts.set("movflags", "faststart");
+        }
+        if let Some(ts) = video_timescale {
+            opts.set("video_track_timescale", &ts.to_string());
+        }
         octx.write_header_with(opts)
-            .map_err(ffmpeg_err("Writing MP4 header (faststart)"))?;
+            .map_err(ffmpeg_err("Writing MP4 header"))?;
     } else {
         octx.write_header()
             .map_err(ffmpeg_err("Writing MP4 header"))?;
@@ -187,8 +222,48 @@ pub fn stream_to_mp4(
         set_codec_tag(&mut ost, 0);
     }
 
+    // Check for MOV 32-bit DTS overflow on video track.
+    // In VFR mode, max DTS comes directly from the rebased DTS values.
+    // In CFR mode, the equivalent max DTS in clock_rate units is
+    // (num_frames - 1) * clock_rate / nominal_fps.
+    let video_max_dts = if cfr {
+        if video_frames.len() > 1 && nominal_fps > 0 {
+            (video_frames.len() as u64 - 1) * video_track.clock_rate as u64
+                / nominal_fps as u64
+        } else {
+            0
+        }
+    } else {
+        video_track.dts_values.last().copied().unwrap_or(0)
+    };
+    let video_timescale = safe_mov_video_timescale(video_max_dts, video_track.clock_rate);
+    if let Some(ts) = video_timescale {
+        log::info!(
+            "Video timescale reduced from {} to {} Hz to fit MOV 32-bit DTS limit",
+            video_track.clock_rate, ts
+        );
+    }
+
+    // Warn if audio DTS would also overflow (audio timescale is fixed to the
+    // sample rate in MOV, so we cannot reduce it via muxer options).
+    if let Some(at) = audio_track {
+        let audio_max_dts = if cfr {
+            let spf = audio_samples_per_frame(at.track_id) as u64;
+            if !audio_frames.is_empty() { (audio_frames.len() as u64 - 1) * spf } else { 0 }
+        } else {
+            at.dts_values.last().copied().unwrap_or(0)
+        };
+        if audio_max_dts > MOV_DTS_MAX {
+            log::warn!(
+                "Audio DTS values exceed MOV 32-bit limit ({} > {}); \
+                 output may be corrupt or fail to write",
+                audio_max_dts, MOV_DTS_MAX
+            );
+        }
+    }
+
     set_timecode_metadata(&mut octx, video_track, rate);
-    write_header(&mut octx, fast_start)?;
+    write_header(&mut octx, fast_start, video_timescale)?;
 
     // Write video packets
     //
@@ -358,4 +433,49 @@ pub fn stream_to_mp4(
 
     octx.write_trailer().map_err(ffmpeg_err("Writing MP4 trailer"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_timescale_not_needed_when_within_limit() {
+        // 1 hour at 90kHz: 3600 * 90000 = 324,000,000 < INT32_MAX
+        assert_eq!(safe_mov_video_timescale(324_000_000, 90000), None);
+    }
+
+    #[test]
+    fn safe_timescale_not_needed_at_boundary() {
+        assert_eq!(safe_mov_video_timescale(MOV_DTS_MAX, 90000), None);
+    }
+
+    #[test]
+    fn safe_timescale_reduces_for_long_recording() {
+        // ~25 hours at 90kHz: 90000 * 90000 = 8,100,000,000
+        let max_dts: u64 = 8_100_000_000;
+        let ts = safe_mov_video_timescale(max_dts, 90000).unwrap();
+        // Reduced timescale must produce output DTS within limit
+        let output_dts = max_dts as u128 * ts as u128 / 90000;
+        assert!(output_dts <= MOV_DTS_MAX as u128,
+            "output DTS {} exceeds limit {}", output_dts, MOV_DTS_MAX);
+        assert!(ts > 0);
+        assert!(ts < 90000);
+    }
+
+    #[test]
+    fn safe_timescale_handles_zero() {
+        assert_eq!(safe_mov_video_timescale(0, 90000), None);
+        assert_eq!(safe_mov_video_timescale(1000, 0), None);
+    }
+
+    #[test]
+    fn safe_timescale_extreme_duration() {
+        // 100 hours at 90kHz
+        let max_dts: u64 = 100 * 3600 * 90000;
+        let ts = safe_mov_video_timescale(max_dts, 90000).unwrap();
+        let output_dts = max_dts as u128 * ts as u128 / 90000;
+        assert!(output_dts <= MOV_DTS_MAX as u128);
+        assert!(ts > 0);
+    }
 }
