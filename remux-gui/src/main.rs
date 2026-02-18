@@ -74,10 +74,54 @@ impl Default for RemuxGuiApp {
 
 impl RemuxGuiApp {
     fn add_files(&mut self, paths: Vec<String>) {
+        let mut warned_paths = Vec::new();
+
         for path in paths {
             let lower = path.to_lowercase();
             if lower.ends_with(".ubv") || lower.ends_with(".ubv.gz") {
                 if !self.files.iter().any(|f| f.path == path) {
+                    if lower.contains("_2_rotating_") || lower.contains("_timelapse_") {
+                        warned_paths.push(path);
+                    } else {
+                        self.files.push(QueuedFile {
+                            path,
+                            status: FileStatus::Pending,
+                            output_files: Vec::new(),
+                            error: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        if !warned_paths.is_empty() {
+            let file_names: Vec<String> = warned_paths
+                .iter()
+                .map(|p| {
+                    std::path::Path::new(p)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| p.clone())
+                })
+                .collect();
+
+            let result = rfd::MessageDialog::new()
+                .set_title("Low-Resolution File Warning")
+                .set_description(format!(
+                    "The following file(s) appear to be low-resolution recordings \
+                     that do not contain the raw camera data:\n\n\
+                     {}\n\n\
+                     These files are unlikely to produce useful results, and the \
+                     remux tool does not fully support them.\n\n\
+                     Add them anyway?",
+                    file_names.join("\n")
+                ))
+                .set_level(rfd::MessageLevel::Warning)
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show();
+
+            if result == rfd::MessageDialogResult::Yes {
+                for path in warned_paths {
                     self.files.push(QueuedFile {
                         path,
                         status: FileStatus::Pending,
