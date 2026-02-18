@@ -7,7 +7,7 @@ authors.workspace = true
 description = "GUI for converting .ubv files to MP4"
 
 [dependencies]
-remux-lib = { path = "../remux-lib" }
+remux-lib = { path = "../remux-lib", default-features = false }
 ubv = { path = "../ubv" }
 eframe = "0.31"
 rfd = "0.15"

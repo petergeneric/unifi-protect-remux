@@ -8,7 +8,7 @@ description = "CLI to convert .ubv files to standard MP4"
 
 [dependencies]
 ubv = { path = "../ubv" }
-remux-lib = { path = "../remux-lib" }
+remux-lib = { path = "../remux-lib", default-features = false }
 clap = { version = "4", features = ["derive"] }
 log = "0.4"
 env_logger = "0.11"
