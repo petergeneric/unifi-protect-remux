@@ -1,6 +1,8 @@
 use clap::Parser;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, BufWriter, Read as _, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use ubv::reader::open_ubv;
 use ubv::record;
@@ -19,7 +21,7 @@ struct Args {
 
     /// Input .ubv file
     input: Option<PathBuf>,
-    /// Output .ubv file (anonymised copy)
+    /// Output .ubv file (anonymised copy); if omitted, writes anonymised-<name>.ubv.gz in the current directory
     output: Option<PathBuf>,
 }
 
@@ -36,6 +38,72 @@ fn zero_region(file: &mut File, offset: u64, size: u32) -> io::Result<()> {
     Ok(())
 }
 
+/// Derive a default output path: anonymised-<stem>.ubv.gz in the current directory.
+fn default_output_path(input: &PathBuf) -> PathBuf {
+    let stem = input
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy();
+    PathBuf::from(format!("anonymised-{stem}.ubv.gz"))
+}
+
+/// Gzip compress `src` to `dst`, then remove `src`.
+fn gzip_and_cleanup(src: &PathBuf, dst: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let src_size = fs::metadata(src)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    log::info!(
+        "Compressing {} ({:.1} MB) -> {}...",
+        src.display(),
+        src_size as f64 / (1024.0 * 1024.0),
+        dst.display()
+    );
+
+    let input = File::open(src)
+        .map_err(|e| format!("Opening '{}' for gzip compression: {}", src.display(), e))?;
+    let mut reader = BufReader::new(input);
+
+    let output = File::create(dst)
+        .map_err(|e| format!("Creating '{}': {}", dst.display(), e))?;
+    let mut encoder = GzEncoder::new(BufWriter::new(output), Compression::default());
+
+    let mut buf = [0u8; 65536];
+    let mut bytes_compressed: u64 = 0;
+    let mut last_log_mb: u64 = 0;
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        encoder.write_all(&buf[..n])?;
+        bytes_compressed += n as u64;
+
+        let current_mb = bytes_compressed / (100 * 1024 * 1024);
+        if current_mb > last_log_mb {
+            log::info!(
+                "Compressing: {:.0} MB processed...",
+                bytes_compressed as f64 / (1024.0 * 1024.0)
+            );
+            last_log_mb = current_mb;
+        }
+    }
+    encoder.finish()?;
+
+    let dst_size = fs::metadata(dst)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    log::info!(
+        "Compressed {:.1} MB -> {:.1} MB",
+        src_size as f64 / (1024.0 * 1024.0),
+        dst_size as f64 / (1024.0 * 1024.0)
+    );
+
+    fs::remove_file(src)
+        .map_err(|e| format!("Removing temp file '{}': {}", src.display(), e))?;
+
+    Ok(())
+}
+
 fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.version {
         ubv::version::print_cli_version_banner(
@@ -48,7 +116,16 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let input = args.input.ok_or("INPUT is required unless --version is specified")?;
-    let output = args.output.ok_or("OUTPUT is required unless --version is specified")?;
+
+    let gzip_output = args.output.is_none();
+    let output = args.output.unwrap_or_else(|| default_output_path(&input));
+
+    // When gzipping, anonymise to a temp .ubv file first, then compress
+    let working_file = if gzip_output {
+        output.with_extension("")
+    } else {
+        output.clone()
+    };
 
     if input.to_string_lossy().ends_with(".ubv.gz") {
         return Err(format!(
@@ -57,17 +134,19 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         ).into());
     }
 
-    fs::copy(&input, &output).map_err(|e| {
-        format!("Copying '{}' to '{}': {}", input.display(), output.display(), e)
+    log::info!("Copying {} -> {}...", input.display(), working_file.display());
+    fs::copy(&input, &working_file).map_err(|e| {
+        format!("Copying '{}' to '{}': {}", input.display(), working_file.display(), e)
     })?;
 
     let mut reader = open_ubv(&input).map_err(|e| {
         format!("Opening input '{}': {}", input.display(), e)
     })?;
-    let mut out = OpenOptions::new().write(true).open(&output).map_err(|e| {
-        format!("Opening output '{}' for writing: {}", output.display(), e)
+    let mut out = OpenOptions::new().write(true).open(&working_file).map_err(|e| {
+        format!("Opening output '{}' for writing: {}", working_file.display(), e)
     })?;
 
+    log::info!("Anonymising records...");
     let mut records_zeroed: u64 = 0;
     let mut bytes_zeroed: u64 = 0;
     let mut record_count: u64 = 0;
@@ -118,20 +197,33 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!(
+    log::info!(
         "Anonymised {} records, zeroed {} bytes ({:.1} MB)",
         records_zeroed,
         bytes_zeroed,
         bytes_zeroed as f64 / (1024.0 * 1024.0)
     );
 
+    // Close the output file before gzip reads it
+    drop(out);
+
+    if gzip_output {
+        gzip_and_cleanup(&working_file, &output)?;
+    }
+
+    log::info!("Done, wrote {}", output.display());
+
     Ok(())
 }
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp(None)
+        .init();
+
     let args = Args::parse();
     if let Err(e) = run(args) {
-        eprintln!("Error: {e}");
+        log::error!("{e}");
         std::process::exit(1);
     }
 }

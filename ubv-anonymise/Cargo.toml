@@ -9,3 +9,6 @@ description = "CLI to anonymise .ubv files by nulling all AV essence (which also
 [dependencies]
 ubv = { path = "../ubv" }
 clap = { version = "4", features = ["derive"] }
+flate2 = "1"
+log = "0.4"
+env_logger = "0.11"
