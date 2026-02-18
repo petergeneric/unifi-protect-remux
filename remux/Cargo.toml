@@ -17,4 +17,4 @@ ffmpeg-sys-next = "8"
 
 [features]
 default = ["ffmpeg-static"]
-ffmpeg-static = ["ffmpeg-next/static", "ffmpeg-next/build", "ffmpeg-sys-next/build-march-generic"]
+ffmpeg-static = ["ffmpeg-next/static", "ffmpeg-next/build", "ffmpeg-sys-next/build-portable"]
