@@ -8,14 +8,12 @@ description = "CLI to convert .ubv files to standard MP4"
 
 [dependencies]
 ubv = { path = "../ubv" }
+remux-lib = { path = "../remux-lib" }
 clap = { version = "4", features = ["derive"] }
-chrono = "0.4"
 log = "0.4"
 env_logger = "0.11"
 glob = "0.3"
-ffmpeg-next = "8"
-ffmpeg-sys-next = "8"
 
 [features]
 default = ["ffmpeg-static"]
-ffmpeg-static = ["ffmpeg-next/static", "ffmpeg-next/build", "ffmpeg-sys-next/build-portable"]
+ffmpeg-static = ["remux-lib/ffmpeg-static"]

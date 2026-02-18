@@ -1,0 +1,18 @@
+[package]
+name = "remux-lib"
+version.workspace = true
+edition.workspace = true
+license = "AGPL-3.0-only"
+authors.workspace = true
+description = "Core remux logic for converting .ubv files to MP4"
+
+[dependencies]
+ubv = { path = "../ubv" }
+chrono = "0.4"
+log = "0.4"
+ffmpeg-next = "8"
+ffmpeg-sys-next = "8"
+
+[features]
+default = ["ffmpeg-static"]
+ffmpeg-static = ["ffmpeg-next/static", "ffmpeg-next/build", "ffmpeg-sys-next/build-portable"]

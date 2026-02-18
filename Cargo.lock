@@ -599,12 +599,21 @@ checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
 name = "remux"
 version = "4.1.3"
 dependencies = [
- "chrono",
  "clap",
  "env_logger",
+ "glob",
+ "log",
+ "remux-lib",
+ "ubv",
+]
+
+[[package]]
+name = "remux-lib"
+version = "4.1.3"
+dependencies = [
+ "chrono",
  "ffmpeg-next",
  "ffmpeg-sys-next",
- "glob",
  "log",
  "ubv",
 ]
