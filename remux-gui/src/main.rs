@@ -11,10 +11,15 @@ fn main() -> eframe::Result {
         .format_timestamp(None)
         .init();
 
+    let icon =
+        eframe::icon_data::from_png_bytes(include_bytes!("../../assets/appicon.png"))
+            .expect("Failed to decode app icon");
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(icon),
         ..Default::default()
     };
 
