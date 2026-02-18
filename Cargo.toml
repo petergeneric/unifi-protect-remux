@@ -3,7 +3,7 @@ members = ["ubv", "ubv-info", "remux", "remux-lib", "remux-gui", "ubv-anonymise"
 resolver = "2"
 
 [workspace.package]
-version = "4.1.3"
+version = "4.1.4"
 edition = "2024"
 authors = ["Peter <code@peter.works>"]
 
