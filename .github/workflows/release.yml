@@ -109,11 +109,21 @@ jobs:
           path: target/nextest/ci/junit.xml
           reporter: java-junit
 
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir -p staging
           cp target/${{ matrix.target }}/release/remux staging/
+          cp target/${{ matrix.target }}/release/ubv-info staging/
+          cp target/${{ matrix.target }}/release/ubv-anonymise staging/
+          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p staging
+          cp target/${{ matrix.target }}/release/remux staging/
+          cp target/${{ matrix.target }}/release/remux-gui staging/
           cp target/${{ matrix.target }}/release/ubv-info staging/
           cp target/${{ matrix.target }}/release/ubv-anonymise staging/
           tar czf ${{ matrix.artifact }}.tar.gz -C staging .
@@ -124,6 +134,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force staging
           Copy-Item target/${{ matrix.target }}/release/remux.exe staging/
+          Copy-Item target/${{ matrix.target }}/release/remux-gui.exe staging/
           Copy-Item target/${{ matrix.target }}/release/ubv-info.exe staging/
           Copy-Item target/${{ matrix.target }}/release/ubv-anonymise.exe staging/
           # Bundle FFmpeg DLLs so users don't need a separate FFmpeg install
