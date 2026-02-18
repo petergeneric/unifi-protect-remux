@@ -67,7 +67,19 @@ pub fn compute_nominal_fps(dts_values: &[u64], clock_rate: u32) -> u32 {
     }
 
     let fps = (clock_rate as u64 + median / 2) / median; // rounded division
-    (fps as u32).max(1)
+    let fps = (fps as u32).max(1);
+
+    if fps > 120 {
+        log::warn!(
+            "WARNING: FRAMERATE DETECTION PRODUCED A DUBIOUS VALUE ({} fps). \
+             DEFAULTING TO 30 fps. YOU MAY WISH TO SPECIFY THE FRAMERATE MANUALLY \
+             USING --force-rate",
+            fps,
+        );
+        return 30;
+    }
+
+    fps
 }
 
 /// Generate a non-drop-frame timecode string (HH:MM:SS:FF) from a start time and framerate.
@@ -323,6 +335,21 @@ mod tests {
             t += 6000 + (i % 3) as u64 - 1;
         }
         assert_eq!(compute_nominal_fps(&dts, 90000), 15);
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_caps_dubious_value() {
+        // All-identical DTS → rebased to 0,1,2,... → median delta 1 → 90000 fps
+        // Should be capped to 30
+        let dts: Vec<u64> = (0..100).collect();
+        assert_eq!(compute_nominal_fps(&dts, 90000), 30);
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_120fps_not_capped() {
+        // 90000 Hz clock, 120fps => delta = 750 ticks
+        let dts: Vec<u64> = (0..100).map(|i| i * 750).collect();
+        assert_eq!(compute_nominal_fps(&dts, 90000), 120);
     }
 
     #[test]
