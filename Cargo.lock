@@ -3616,6 +3616,7 @@ name = "ubv-info"
 version = "4.1.3"
 dependencies = [
  "clap",
+ "flate2",
  "libc",
  "schemars",
  "serde_json",

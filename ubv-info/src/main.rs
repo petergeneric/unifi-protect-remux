@@ -1,6 +1,9 @@
+use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use ubv::clock::wc_ticks_to_millis;
 use ubv::partition::PartitionEntry;
 
@@ -20,8 +23,12 @@ struct Args {
     track_filter: Option<u16>,
 
     /// Output as JSON
-    #[arg(long)]
+    #[arg(long, conflicts_with = "inspect")]
     json: bool,
+
+    /// Write a .metadata.json.gz inspection file
+    #[arg(long, conflicts_with = "json")]
+    inspect: bool,
 
     /// Print JSON schema for the output format and exit
     #[arg(long)]
@@ -65,6 +72,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.json {
         println!("{}", serde_json::to_string(&ubv)?);
+        return Ok(());
+    }
+
+    if args.inspect {
+        let output_path = format!("{}.metadata.json.gz", file);
+        let json = serde_json::to_string(&ubv)?;
+        let out_file = std::fs::File::create(&output_path)
+            .map_err(|e| format!("{}: error creating file: {}", output_path, e))?;
+        let mut encoder = GzEncoder::new(out_file, Compression::best());
+        encoder
+            .write_all(json.as_bytes())
+            .map_err(|e| format!("{}: error writing: {}", output_path, e))?;
+        encoder
+            .finish()
+            .map_err(|e| format!("{}: error finishing gzip: {}", output_path, e))?;
+        eprintln!("Wrote {}", output_path);
         return Ok(());
     }
 
