@@ -21,7 +21,13 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "UBV Remux",
         options,
-        Box::new(|_cc| Ok(Box::new(RemuxGuiApp::default()))),
+        Box::new(|cc| {
+            let mut style = (*cc.egui_ctx.style()).clone();
+            style.interaction.selectable_labels = false;
+            style.interaction.multi_widget_text_select = false;
+            cc.egui_ctx.set_style(style);
+            Ok(Box::new(RemuxGuiApp::default()))
+        }),
     )
 }
 
@@ -299,108 +305,88 @@ impl eframe::App for RemuxGuiApp {
                     {
                         self.show_settings = !self.show_settings;
                     }
-                    if ui
-                        .selectable_label(self.show_about, "About")
-                        .clicked()
-                    {
-                        self.show_about = !self.show_about;
-                    }
+                    ui.menu_button("Help", |ui| {
+                        if ui.button("About").clicked() {
+                            self.show_about = true;
+                            ui.close_menu();
+                        }
+                    });
                 });
             });
             ui.add_space(2.0);
         });
 
-        // -- About window (separate OS window) --
+        // -- About window --
         if self.show_about {
-            let about_vp = egui::ViewportId::from_hash_of("about_viewport");
-            let close_id = egui::Id::new("about_close_requested");
-
-            ctx.show_viewport_deferred(
-                about_vp,
-                egui::ViewportBuilder::default()
-                    .with_title("About UBV Remux")
-                    .with_inner_size([380.0, 280.0])
-                    .with_resizable(false),
-                move |ctx, _class| {
-                    let should_close = ctx.input(|i| {
-                        let vp = i.viewport();
-                        vp.close_requested() || vp.focused.is_some_and(|f| !f)
+            let mut open = self.show_about;
+            egui::Window::new("About UBV Remux")
+                .open(&mut open)
+                .resizable(false)
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.add_space(8.0);
+                    ui.vertical_centered(|ui| {
+                        ui.heading("UBV Remux");
                     });
-                    if should_close {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        ctx.data_mut(|d| d.insert_temp(close_id, true));
-                    }
+                    ui.add_space(8.0);
 
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        ui.add_space(8.0);
-                        ui.vertical_centered(|ui| {
-                            ui.heading("UBV Remux");
+                    egui::Grid::new("about_grid")
+                        .num_columns(2)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.strong("Version:");
+                            ui.label(env!("CARGO_PKG_VERSION"));
+                            ui.end_row();
+
+                            let release = env!("RELEASE_VERSION");
+                            if !release.is_empty() {
+                                ui.strong("Release:");
+                                ui.label(release);
+                                ui.end_row();
+                            }
+
+                            let commit = env!("GIT_COMMIT");
+                            if !commit.is_empty() {
+                                ui.strong("Git commit:");
+                                let short = if commit.len() > 10 {
+                                    &commit[..10]
+                                } else {
+                                    commit
+                                };
+                                ui.label(egui::RichText::new(short).monospace());
+                                ui.end_row();
+                            }
+
+                            ui.strong("License:");
+                            ui.label("AGPL-3.0-only");
+                            ui.end_row();
                         });
-                        ui.add_space(8.0);
 
-                        egui::Grid::new("about_grid")
-                            .num_columns(2)
-                            .spacing([12.0, 4.0])
-                            .show(ui, |ui| {
-                                ui.strong("Version:");
-                                ui.label(env!("CARGO_PKG_VERSION"));
-                                ui.end_row();
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(4.0);
 
-                                let release = env!("RELEASE_VERSION");
-                                if !release.is_empty() {
-                                    ui.strong("Release:");
-                                    ui.label(release);
-                                    ui.end_row();
-                                }
+                    ui.label("Copyright (c) Peter Wright 2020-2026");
 
-                                let commit = env!("GIT_COMMIT");
-                                if !commit.is_empty() {
-                                    ui.strong("Git commit:");
-                                    let short = if commit.len() > 10 {
-                                        &commit[..10]
-                                    } else {
-                                        commit
-                                    };
-                                    ui.label(egui::RichText::new(short).monospace());
-                                    ui.end_row();
-                                }
+                    ui.add_space(4.0);
 
-                                ui.strong("License:");
-                                ui.label("AGPL-3.0-only");
-                                ui.end_row();
-                            });
+                    ui.hyperlink_to(
+                        "github.com/petergeneric/unifi-protect-remux",
+                        "https://github.com/petergeneric/unifi-protect-remux",
+                    );
 
-                        ui.add_space(8.0);
-                        ui.separator();
-                        ui.add_space(4.0);
+                    ui.add_space(4.0);
 
-                        ui.label("Copyright (c) Peter Wright 2020-2026");
-
-                        ui.add_space(4.0);
-
-                        ui.hyperlink_to(
-                            "github.com/petergeneric/unifi-protect-remux",
-                            "https://github.com/petergeneric/unifi-protect-remux",
-                        );
-
-                        ui.add_space(4.0);
-
-                        ui.label(
-                            egui::RichText::new(
-                                "Converts Ubiquiti .ubv video files to standard MP4 \
-                                 via remuxing.",
-                            )
-                            .weak(),
-                        );
-                    });
-                },
-            );
-
-            // Pick up close signal written by the deferred viewport callback
-            if ctx.data(|d| d.get_temp::<bool>(close_id).unwrap_or(false)) {
-                self.show_about = false;
-                ctx.data_mut(|d| d.remove_temp::<bool>(close_id));
-            }
+                    ui.label(
+                        egui::RichText::new(
+                            "Converts Ubiquiti .ubv video files to standard MP4 \
+                             via remuxing.",
+                        )
+                        .weak(),
+                    );
+                });
+            self.show_about = open;
         }
 
         // -- Settings side panel --
