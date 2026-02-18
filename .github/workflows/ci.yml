@@ -37,7 +37,7 @@ jobs:
         if: runner.os == 'Linux' && runner.arch == 'X64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang pkg-config libxv-dev libc++-dev
+          sudo apt-get install -y clang pkg-config libxv-dev libc++-dev nasm
           curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-linux64-lgpl-shared-8.0.tar.xz -o ffmpeg.tar.xz
           tar -xf ffmpeg.tar.xz
           echo "FFMPEG_DIR=${PWD}/ffmpeg-n8.0-latest-linux64-lgpl-shared-8.0" >> "$GITHUB_ENV"
