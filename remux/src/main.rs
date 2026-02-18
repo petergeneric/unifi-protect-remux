@@ -118,6 +118,40 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     remux_cli(args)
 }
 
+/// Expand glob patterns in the file list. On Unix the shell normally expands
+/// globs before the process sees them, but on Windows `cmd.exe` and PowerShell
+/// pass the literal pattern (e.g. `*.ubv`) to the program. This function
+/// ensures consistent behaviour across platforms.
+fn expand_globs(patterns: &[String]) -> Vec<String> {
+    let mut result = Vec::new();
+    for pattern in patterns {
+        // Only attempt glob expansion if the argument contains metacharacters
+        // AND does not match an existing file on disk (so that filenames
+        // containing '[', '?' etc. are handled correctly).
+        let has_glob_chars = pattern.contains('*') || pattern.contains('?') || pattern.contains('[');
+        if has_glob_chars && !Path::new(pattern).exists() {
+            match glob::glob(pattern) {
+                Ok(paths) => {
+                    let mut matched = false;
+                    for entry in paths.flatten() {
+                        result.push(entry.to_string_lossy().to_string());
+                        matched = true;
+                    }
+                    if !matched {
+                        // No matches — keep the original so the user gets a
+                        // meaningful "file not found" error downstream.
+                        result.push(pattern.clone());
+                    }
+                }
+                Err(_) => result.push(pattern.clone()),
+            }
+        } else {
+            result.push(pattern.clone());
+        }
+    }
+    result
+}
+
 fn validate_args(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.files.is_empty() {
         return Err("Expected at least one .ubv file as input!".into());
@@ -176,8 +210,9 @@ impl std::fmt::Display for DeferredError {
 
 fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut errors: Vec<DeferredError> = Vec::new();
+    let files = expand_globs(&args.files);
 
-    for ubv_path in &args.files {
+    for ubv_path in &files {
         if let Err(e) = process_file(args, ubv_path, &mut errors) {
             if args.fail_fast {
                 return Err(e);
