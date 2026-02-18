@@ -2958,9 +2958,12 @@ version = "4.1.3"
 dependencies = [
  "eframe",
  "env_logger",
+ "flate2",
  "log",
  "remux-lib",
  "rfd",
+ "serde_json",
+ "ubv",
 ]
 
 [[package]]

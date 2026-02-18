@@ -8,8 +8,11 @@ description = "GUI for converting .ubv files to MP4"
 
 [dependencies]
 remux-lib = { path = "../remux-lib" }
+ubv = { path = "../ubv" }
 eframe = "0.31"
 rfd = "0.15"
+serde_json = "1"
+flate2 = "1"
 log = "0.4"
 env_logger = "0.11"
 

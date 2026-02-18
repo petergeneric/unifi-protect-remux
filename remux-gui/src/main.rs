@@ -4,7 +4,7 @@ use std::sync::mpsc;
 
 use eframe::egui;
 use remux_lib::{LogLevel, ProgressEvent, RemuxConfig};
-use worker::WorkerMessage;
+use worker::{DiagnosticsMessage, WorkerMessage};
 
 fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -52,6 +52,8 @@ struct RemuxGuiApp {
     config: RemuxConfig,
     processing: bool,
     progress_rx: Option<mpsc::Receiver<WorkerMessage>>,
+    diagnostics_rx: Option<mpsc::Receiver<DiagnosticsMessage>>,
+    diagnostics_processing: bool,
     show_settings: bool,
     show_about: bool,
     log_lines: Vec<(LogLevel, String)>,
@@ -69,6 +71,8 @@ impl Default for RemuxGuiApp {
             },
             processing: false,
             progress_rx: None,
+            diagnostics_rx: None,
+            diagnostics_processing: false,
             show_settings: false,
             show_about: false,
             log_lines: Vec::new(),
@@ -239,6 +243,71 @@ impl RemuxGuiApp {
             }
         }
     }
+
+    fn start_diagnostics(&mut self) {
+        if self.files.is_empty() || self.processing || self.diagnostics_processing {
+            return;
+        }
+
+        self.log_lines.clear();
+        self.output_files.clear();
+
+        let file_paths: Vec<String> = self.files.iter().map(|f| f.path.clone()).collect();
+        for f in &mut self.files {
+            f.status = FileStatus::Pending;
+            f.output_files.clear();
+            f.error = None;
+        }
+
+        let (tx, rx) = mpsc::channel();
+        self.diagnostics_rx = Some(rx);
+        self.diagnostics_processing = true;
+
+        worker::spawn_diagnostics(file_paths, tx);
+    }
+
+    fn poll_diagnostics(&mut self) {
+        let messages: Vec<DiagnosticsMessage> = match &self.diagnostics_rx {
+            Some(rx) => rx.try_iter().collect(),
+            None => return,
+        };
+
+        for msg in messages {
+            match msg {
+                DiagnosticsMessage::FileStarted { file_index } => {
+                    if let Some(f) = self.files.get_mut(file_index) {
+                        f.status = FileStatus::Processing;
+                    }
+                    self.log_lines.push((
+                        LogLevel::Info,
+                        format!("Producing diagnostics for file {}...", file_index + 1),
+                    ));
+                }
+                DiagnosticsMessage::FileCompleted {
+                    file_index,
+                    output_path,
+                } => {
+                    if let Some(f) = self.files.get_mut(file_index) {
+                        f.status = FileStatus::Completed;
+                        f.output_files.push(output_path.clone());
+                    }
+                    self.output_files.push(output_path);
+                }
+                DiagnosticsMessage::FileFailed { file_index, error } => {
+                    if let Some(f) = self.files.get_mut(file_index) {
+                        f.status = FileStatus::Failed;
+                        f.error = Some(error.clone());
+                    }
+                    self.log_lines.push((LogLevel::Error, error));
+                }
+                DiagnosticsMessage::Done => {
+                    self.diagnostics_processing = false;
+                    self.diagnostics_rx = None;
+                    return;
+                }
+            }
+        }
+    }
 }
 
 /// Format a file status into a display string.
@@ -249,9 +318,9 @@ fn status_label(file: &QueuedFile) -> String {
         FileStatus::Completed if !file.output_files.is_empty() => {
             let n = file.output_files.len();
             if n == 1 {
-                "Done (1 MP4)".to_string()
+                "Done (1 file)".to_string()
             } else {
-                format!("Done ({} MP4s)", n)
+                format!("Done ({} files)", n)
             }
         }
         FileStatus::Completed => "Done".to_string(),
@@ -279,6 +348,10 @@ impl eframe::App for RemuxGuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.processing {
             self.poll_worker();
+            ctx.request_repaint();
+        }
+        if self.diagnostics_processing {
+            self.poll_diagnostics();
             ctx.request_repaint();
         }
 
@@ -442,9 +515,10 @@ impl eframe::App for RemuxGuiApp {
         egui::TopBottomPanel::bottom("actions").show(ctx, |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
+                let busy = self.processing || self.diagnostics_processing;
                 if ui
                     .add_enabled(
-                        !self.processing && !self.files.is_empty(),
+                        !busy && !self.files.is_empty(),
                         egui::Button::new("Start"),
                     )
                     .clicked()
@@ -452,7 +526,16 @@ impl eframe::App for RemuxGuiApp {
                     self.start_processing();
                 }
                 if ui
-                    .add_enabled(!self.processing, egui::Button::new("Clear"))
+                    .add_enabled(
+                        !busy && !self.files.is_empty(),
+                        egui::Button::new("Produce Diagnostics"),
+                    )
+                    .clicked()
+                {
+                    self.start_diagnostics();
+                }
+                if ui
+                    .add_enabled(!busy, egui::Button::new("Clear"))
                     .clicked()
                 {
                     self.files.clear();
@@ -460,7 +543,7 @@ impl eframe::App for RemuxGuiApp {
                     self.output_files.clear();
                 }
 
-                if self.processing {
+                if busy {
                     ui.spinner();
                 }
             });
