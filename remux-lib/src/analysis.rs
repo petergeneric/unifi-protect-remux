@@ -228,7 +228,7 @@ pub fn analyse(
         };
 
         let nominal_fps = if t.is_video {
-            compute_nominal_fps(&rebased, t.clock_rate)
+            compute_nominal_fps(&t.dts_values, t.clock_rate)
         } else {
             // Audio: nominal_fps = clock_rate (sample rate) for informational purposes
             t.clock_rate
@@ -338,9 +338,15 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_nominal_fps_all_identical_raw_dts() {
+        // All-identical raw DTS → all deltas are 0 → all filtered out → returns 1
+        let dts: Vec<u64> = vec![5000; 100];
+        assert_eq!(compute_nominal_fps(&dts, 90000), 1);
+    }
+
+    #[test]
     fn test_compute_nominal_fps_caps_dubious_value() {
-        // All-identical DTS → rebased to 0,1,2,... → median delta 1 → 90000 fps
-        // Should be capped to 30
+        // Deltas of exactly 1 tick at 90kHz → 90000 fps, capped to 30
         let dts: Vec<u64> = (0..100).collect();
         assert_eq!(compute_nominal_fps(&dts, 90000), 30);
     }
