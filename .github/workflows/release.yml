@@ -25,12 +25,6 @@ jobs:
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             artifact: unifi-protect-remux-linux-aarch64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: unifi-protect-remux-macos-aarch64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: unifi-protect-remux-macos-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: unifi-protect-remux-windows-x86_64
@@ -46,10 +40,6 @@ jobs:
       - name: Install build deps (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential nasm pkg-config
-
-      - name: Install build deps (macOS)
-        if: runner.os == 'macOS'
-        run: brew install nasm pkg-config openssl brotli
 
       - name: Install FFmpeg and LLVM (Windows)
         if: runner.os == 'Windows'
@@ -108,14 +98,6 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Build C# GUI (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          RID=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "osx-arm64" || echo "osx-x64")
-          mkdir -p "remux-gui-cs/RemuxGui/native/$RID"
-          cp "target/${{ matrix.target }}/release/libremux_ffi.dylib" "remux-gui-cs/RemuxGui/native/$RID/"
-          dotnet publish remux-gui-cs/RemuxGui/RemuxGui.csproj -c Release -r "$RID" --self-contained -o "publish/$RID"
-
       - name: Test (Windows)
         if: runner.os == 'Windows'
         run: cargo nextest run --release --no-default-features --target ${{ matrix.target }} --profile ci
@@ -140,22 +122,6 @@ jobs:
           cp target/${{ matrix.target }}/release/ubv-info staging/
           cp target/${{ matrix.target }}/release/ubv-anonymise staging/
           tar czf ${{ matrix.artifact }}.tar.gz -C staging .
-
-      - name: Package (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p staging
-          cp target/${{ matrix.target }}/release/remux staging/
-          cp target/${{ matrix.target }}/release/ubv-info staging/
-          cp target/${{ matrix.target }}/release/ubv-anonymise staging/
-          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
-
-          RID=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "osx-arm64" || echo "osx-x64")
-          ARCH=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "aarch64" || echo "x86_64")
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          mkdir -p staging-gui
-          scripts/create-macos-app.sh "publish/$RID" staging-gui "$VERSION"
-          tar czf "gui-macos-unsigned-${ARCH}.tar.gz" --exclude '*.dSYM' -C staging-gui .
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -192,13 +158,6 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.tar.gz
 
-      - name: Upload artifact (macOS GUI)
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: gui-macos-unsigned-${{ contains(matrix.target, 'aarch64') && 'aarch64' || 'x86_64' }}
-          path: gui-macos-unsigned-${{ contains(matrix.target, 'aarch64') && 'aarch64' || 'x86_64' }}.tar.gz
-
       - name: Upload artifact (Windows zip)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -223,14 +182,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.tar.gz
-
-      - name: Upload release asset (macOS GUI)
-        if: runner.os == 'macOS' && steps.tag.outputs.tag != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ARCH=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "aarch64" || echo "x86_64")
-          gh release upload "${{ steps.tag.outputs.tag }}" "gui-macos-unsigned-${ARCH}.tar.gz"
 
       - name: Upload release asset (Windows zip)
         if: runner.os == 'Windows' && steps.tag.outputs.tag != ''
