@@ -148,10 +148,14 @@ jobs:
           cp target/${{ matrix.target }}/release/remux staging/
           cp target/${{ matrix.target }}/release/ubv-info staging/
           cp target/${{ matrix.target }}/release/ubv-anonymise staging/
+          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
+
           RID=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "osx-arm64" || echo "osx-x64")
+          ARCH=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "aarch64" || echo "x86_64")
           VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          scripts/create-macos-app.sh "publish/$RID" staging "$VERSION"
-          tar czf ${{ matrix.artifact }}.tar.gz --exclude '*.dSYM' -C staging .
+          mkdir -p staging-gui
+          scripts/create-macos-app.sh "publish/$RID" staging-gui "$VERSION"
+          tar czf "gui-macos-unsigned-${ARCH}.tar.gz" --exclude '*.dSYM' -C staging-gui .
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -183,6 +187,13 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.tar.gz
 
+      - name: Upload artifact (macOS GUI)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-macos-unsigned-${{ contains(matrix.target, 'aarch64') && 'aarch64' || 'x86_64' }}
+          path: gui-macos-unsigned-${{ contains(matrix.target, 'aarch64') && 'aarch64' || 'x86_64' }}.tar.gz
+
       - name: Upload artifact (Windows zip)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -207,6 +218,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.tar.gz
+
+      - name: Upload release asset (macOS GUI)
+        if: runner.os == 'macOS' && steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARCH=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "aarch64" || echo "x86_64")
+          gh release upload "${{ steps.tag.outputs.tag }}" "gui-macos-unsigned-${ARCH}.tar.gz"
 
       - name: Upload release asset (Windows zip)
         if: runner.os == 'Windows' && steps.tag.outputs.tag != ''
