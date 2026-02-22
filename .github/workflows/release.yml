@@ -181,7 +181,8 @@ jobs:
           $nsisDir = "${env:ProgramFiles(x86)}\NSIS"
           Expand-Archive installer\nsis-plugins\EnVar_plugin.zip -DestinationPath $nsisDir
           $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          & "$nsisDir\makensis.exe" /DSTAGING_DIR=staging /DVERSION=$version installer\windows.nsi
+          $stagingDir = (Resolve-Path staging).Path
+          & "$nsisDir\makensis.exe" /DSTAGING_DIR=$stagingDir /DVERSION=$version installer\windows.nsi
           Rename-Item unifi-protect-remux-windows-x86_64-setup.exe gui-unsigned-windows-x86_64.exe
 
       - name: Upload artifact (Unix)
