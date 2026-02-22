@@ -4,8 +4,13 @@
              Name="UBV Remux"
              RequestedThemeVariant="Default">
     <Application.Resources>
-        <SolidColorBrush x:Key="NavActiveBg" Color="#266C8CFF" />
-        <SolidColorBrush x:Key="NavActiveFg" Color="#6C8CFF" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="/Icons.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <SolidColorBrush x:Key="NavActiveBg" Color="#266C8CFF" />
+            <SolidColorBrush x:Key="NavActiveFg" Color="#6C8CFF" />
+        </ResourceDictionary>
     </Application.Resources>
     <Application.Styles>
         <FluentTheme />

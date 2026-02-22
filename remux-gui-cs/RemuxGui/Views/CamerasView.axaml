@@ -49,13 +49,15 @@
                                              FontSize="12" Margin="8,0,8,0"
                                              Watermark="Enter camera name..."
                                              VerticalAlignment="Center" />
-                                    <Button Grid.Column="2" Content="&#x2715;"
-                                            FontSize="12" Padding="6,2"
+                                    <Button Grid.Column="2"
+                                            Padding="6,2"
                                             Background="Transparent" BorderThickness="0"
                                             Cursor="Hand" VerticalAlignment="Center"
                                             HorizontalAlignment="Center"
                                             Command="{Binding #CamerasList.((vm:MainViewModel)DataContext).RemoveCameraCommand}"
-                                            CommandParameter="{Binding}" />
+                                            CommandParameter="{Binding}">
+                                        <PathIcon Width="10" Height="10" Data="{StaticResource IconClose}" />
+                                    </Button>
                                 </Grid>
                             </Border>
                         </DataTemplate>

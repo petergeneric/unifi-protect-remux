@@ -45,7 +45,8 @@
                             CommandParameter="0"
                             Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <TextBlock Text="&#x25F2;" FontSize="15" VerticalAlignment="Center" />
+                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                      Data="{StaticResource IconFolder}" />
                             <TextBlock Text="Files" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -54,7 +55,8 @@
                             CommandParameter="1"
                             Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <TextBlock Text="&#x2699;" FontSize="15" VerticalAlignment="Center" />
+                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                      Data="{StaticResource IconCog}" />
                             <TextBlock Text="Settings" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -63,7 +65,8 @@
                             CommandParameter="2"
                             Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <TextBlock Text="&#x2630;" FontSize="15" VerticalAlignment="Center" />
+                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                      Data="{StaticResource IconClipboardText}" />
                             <TextBlock Text="Log" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -72,7 +75,8 @@
                             CommandParameter="3"
                             Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <TextBlock Text="&#x25A3;" FontSize="15" VerticalAlignment="Center" />
+                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                      Data="{StaticResource IconVideo}" />
                             <TextBlock Text="Cameras" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>

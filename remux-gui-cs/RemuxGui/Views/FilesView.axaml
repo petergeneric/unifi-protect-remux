@@ -112,13 +112,14 @@
                                 <DockPanel Margin="4,4">
                                     <!-- Remove button (visible on hover) -->
                                     <Button DockPanel.Dock="Right" Classes="remove-btn"
-                                            Content="&#x2715;" FontSize="12"
                                             Padding="6,2" Margin="4,0,0,0"
                                             VerticalAlignment="Center"
                                             Background="Transparent" BorderThickness="0"
                                             Cursor="Hand"
                                             Command="{Binding #FileList.((vm:MainViewModel)DataContext).RemoveFileCommand}"
-                                            CommandParameter="{Binding}" />
+                                            CommandParameter="{Binding}">
+                                        <PathIcon Width="10" Height="10" Data="{StaticResource IconClose}" />
+                                    </Button>
                                     <!-- Status badge -->
                                     <Border DockPanel.Dock="Right"
                                             CornerRadius="3" Padding="8,2" Margin="10,0,0,0"
