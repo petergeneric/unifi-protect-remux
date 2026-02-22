@@ -52,18 +52,36 @@ pub fn extract_thumbnail(input_path: &str, output_path: &str, max_width: u32) ->
             continue;
         }
         if decoder.receive_frame(&mut decoded).is_ok() {
-            let mut scaled = ffmpeg::frame::Video::empty();
-            scaler
-                .run(&decoded, &mut scaled)
-                .map_err(|e| io_err(format!("Scaling: {}", e)))?;
-
-            let jpeg = unsafe { encode_mjpeg(&mut scaled, dst_w, dst_h)? };
-            std::fs::write(output_path, &jpeg)?;
-            return Ok(());
+            return scale_and_encode(&mut scaler, &mut decoded, dst_w, dst_h, output_path);
         }
     }
 
+    // Flush the decoder to retrieve any buffered frames (e.g. H.264/HEVC
+    // with B-frames may buffer the first packets before producing output).
+    decoder.send_eof().ok();
+    if decoder.receive_frame(&mut decoded).is_ok() {
+        return scale_and_encode(&mut scaler, &mut decoded, dst_w, dst_h, output_path);
+    }
+
     Err(io_err_s("No video frames decoded"))
+}
+
+/// Scale a decoded frame, encode as JPEG, and write to disk.
+fn scale_and_encode(
+    scaler: &mut ffmpeg::software::scaling::Context,
+    decoded: &mut ffmpeg::frame::Video,
+    dst_w: u32,
+    dst_h: u32,
+    output_path: &str,
+) -> io::Result<()> {
+    let mut scaled = ffmpeg::frame::Video::empty();
+    scaler
+        .run(decoded, &mut scaled)
+        .map_err(|e| io_err(format!("Scaling: {}", e)))?;
+
+    let jpeg = unsafe { encode_mjpeg(&mut scaled, dst_w, dst_h)? };
+    std::fs::write(output_path, &jpeg)?;
+    Ok(())
 }
 
 /// Compute scaled dimensions preserving aspect ratio, clamped to even values.

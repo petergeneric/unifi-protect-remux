@@ -12,6 +12,16 @@ use ubv::track::{is_audio_track, track_info, TrackType};
 
 static FFMPEG_INIT: Once = Once::new();
 
+/// On x86/x86_64, `ffi::va_list` is `[__va_list_tag; 1]` but FFmpeg function
+/// signatures (including callback types) expect `*mut __va_list_tag`. In C the
+/// array decays to a pointer automatically; in Rust we must match the expected
+/// pointer type explicitly.
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+type VaListFmt = *mut ffi::__va_list_tag;
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
+type VaListFmt = ffi::va_list;
+
 /// Custom FFmpeg log callback that routes messages through Rust's `log` crate.
 ///
 /// Custom callbacks bypass FFmpeg's built-in level filtering, so we check
@@ -25,7 +35,7 @@ unsafe extern "C" fn ffmpeg_log_callback(
     ptr: *mut libc::c_void,
     level: libc::c_int,
     fmt: *const libc::c_char,
-    vl: ffi::va_list,
+    vl: VaListFmt,
 ) {
     // Custom callbacks bypass FFmpeg's own level filter, so replicate it here.
     if level > unsafe { ffi::av_log_get_level() } {

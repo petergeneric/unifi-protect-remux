@@ -656,17 +656,25 @@ public partial class MainViewModel : ViewModelBase
             var error = RemuxNative.ExtractThumbnail(mp4Path, thumbPath);
             if (error != null) return;
 
+            // Read into memory so the file is not held open by the Bitmap
+            byte[] thumbBytes;
+            try
+            {
+                thumbBytes = File.ReadAllBytes(thumbPath);
+            }
+            finally
+            {
+                try { File.Delete(thumbPath); } catch { }
+            }
+
             Dispatcher.UIThread.Post(() =>
             {
                 try
                 {
-                    qf.Thumbnail = new Avalonia.Media.Imaging.Bitmap(thumbPath);
+                    using var ms = new MemoryStream(thumbBytes);
+                    qf.Thumbnail = new Avalonia.Media.Imaging.Bitmap(ms);
                 }
                 catch { }
-                finally
-                {
-                    try { File.Delete(thumbPath); } catch { }
-                }
             });
         }
         catch
