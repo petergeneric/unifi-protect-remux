@@ -14,6 +14,10 @@ static FFMPEG_INIT: Once = Once::new();
 
 /// Custom FFmpeg log callback that routes messages through Rust's `log` crate.
 ///
+/// Custom callbacks bypass FFmpeg's built-in level filtering, so we check
+/// `av_log_get_level()` ourselves. Everything that passes is logged at INFO
+/// to ensure it actually appears — FFmpeg's own log level controls verbosity.
+///
 /// # Safety
 /// Called by FFmpeg's internal logging system. Uses `av_log_format_line2` to
 /// safely format the variadic arguments into a fixed buffer.
@@ -23,19 +27,8 @@ unsafe extern "C" fn ffmpeg_log_callback(
     fmt: *const libc::c_char,
     vl: ffi::va_list,
 ) {
-    // Map FFmpeg log level to Rust log level; ignore messages above our threshold.
-    let rust_level = match level {
-        ffi::AV_LOG_PANIC | ffi::AV_LOG_FATAL => log::Level::Error,
-        ffi::AV_LOG_ERROR => log::Level::Error,
-        ffi::AV_LOG_WARNING => log::Level::Warn,
-        ffi::AV_LOG_INFO => log::Level::Info,
-        ffi::AV_LOG_VERBOSE => log::Level::Debug,
-        ffi::AV_LOG_DEBUG | ffi::AV_LOG_TRACE => log::Level::Trace,
-        _ => return,
-    };
-
-    // Early-out if this level is filtered by the Rust logger.
-    if !log::log_enabled!(rust_level) {
+    // Custom callbacks bypass FFmpeg's own level filter, so replicate it here.
+    if level > unsafe { ffi::av_log_get_level() } {
         return;
     }
 
@@ -65,7 +58,7 @@ unsafe extern "C" fn ffmpeg_log_callback(
         return;
     }
 
-    log::log!(target: "ffmpeg", rust_level, "{}", msg);
+    log::info!(target: "ffmpeg", "{}", msg);
 }
 
 fn ensure_init() {
