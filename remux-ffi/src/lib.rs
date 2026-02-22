@@ -68,6 +68,7 @@ struct FfiRemuxConfig {
     output_folder: Option<String>,
     mp4: Option<bool>,
     video_track: Option<u16>,
+    base_name: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -172,6 +173,7 @@ fn ffi_config_to_remux_config(ffi: &FfiRemuxConfig) -> RemuxConfig {
             .unwrap_or(defaults.output_folder),
         mp4: ffi.mp4.unwrap_or(defaults.mp4),
         video_track: ffi.video_track.unwrap_or(defaults.video_track),
+        base_name: ffi.base_name.clone(),
     }
 }
 

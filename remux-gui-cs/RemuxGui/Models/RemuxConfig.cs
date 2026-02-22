@@ -26,4 +26,8 @@ public class RemuxConfig
 
     [JsonPropertyName("video_track")]
     public ushort VideoTrack { get; set; } = 0;
+
+    [JsonPropertyName("base_name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BaseName { get; set; }
 }

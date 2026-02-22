@@ -171,6 +171,7 @@ fn args_to_config(args: &Args) -> RemuxConfig {
         output_folder: args.output_folder.clone(),
         mp4: args.mp4,
         video_track: args.video_track,
+        base_name: None,
     }
 }
 

@@ -302,6 +302,23 @@ public partial class MainViewModel : ViewModelBase
         SelectedFile ??= Files.FirstOrDefault();
     }
 
+    private static string? SanitizeBaseName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        var invalid = System.IO.Path.GetInvalidFileNameChars();
+        var sanitized = new System.Text.StringBuilder(name.Length);
+        foreach (var c in name)
+        {
+            if (Array.IndexOf(invalid, c) < 0)
+                sanitized.Append(c);
+        }
+
+        var result = sanitized.ToString().Trim();
+        return result.Length > 0 ? result : null;
+    }
+
     private RemuxConfig BuildConfig()
     {
         return new RemuxConfig
@@ -346,6 +363,7 @@ public partial class MainViewModel : ViewModelBase
         IsProcessing = true;
         var config = BuildConfig();
         var filePaths = Files.Select(f => f.Path).ToList();
+        var baseNames = Files.Select(f => SanitizeBaseName(f.CameraName)).ToList();
 
         await Task.Run(() =>
         {
@@ -356,7 +374,7 @@ public partial class MainViewModel : ViewModelBase
                 if (token.IsCancellationRequested)
                     break;
 
-                ProcessSingleFile(filePaths[i], config, i);
+                ProcessSingleFile(filePaths[i], config, i, baseNames[i]);
             }
         });
 
@@ -376,6 +394,7 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var path = SelectedFile.Path;
+        var baseName = SanitizeBaseName(SelectedFile.CameraName);
 
         SelectedFile.Status = FileStatus.Pending;
         SelectedFile.OutputFiles.Clear();
@@ -391,7 +410,7 @@ public partial class MainViewModel : ViewModelBase
         await Task.Run(() =>
         {
             RemuxNative.Init();
-            ProcessSingleFile(path, config, fileIndex);
+            ProcessSingleFile(path, config, fileIndex, baseName);
         });
 
         _cts?.Dispose();
@@ -399,8 +418,9 @@ public partial class MainViewModel : ViewModelBase
         IsProcessing = false;
     }
 
-    private void ProcessSingleFile(string path, RemuxConfig config, int fileIndex)
+    private void ProcessSingleFile(string path, RemuxConfig config, int fileIndex, string? baseName = null)
     {
+        config.BaseName = baseName;
         ProgressCallback callback = (jsonPtr, idx) =>
         {
             if (jsonPtr == IntPtr.Zero) return;
