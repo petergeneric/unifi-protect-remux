@@ -14,18 +14,6 @@ using RemuxGui.Models;
 
 namespace RemuxGui.ViewModels;
 
-public partial class LogEntry : ObservableObject
-{
-    public string Level { get; }
-    public string Message { get; }
-
-    public LogEntry(string level, string message)
-    {
-        Level = level;
-        Message = message;
-    }
-}
-
 public partial class MainViewModel : ViewModelBase
 {
     public ObservableCollection<QueuedFile> Files { get; } = new();
@@ -55,13 +43,15 @@ public partial class MainViewModel : ViewModelBase
     private bool _fastStart;
 
     [ObservableProperty]
-    private string _outputFolder = "SRC-FOLDER";
+    private string _outputFolder = RemuxConfig.DefaultOutputFolder;
 
     [ObservableProperty]
     private bool _mp4Output = true;
 
     [ObservableProperty]
     private decimal _videoTrack;
+
+    private CancellationTokenSource? _cts;
 
     public bool IsBusy => IsProcessing || IsDiagnosticsProcessing;
     public bool CanStart => !IsBusy && Files.Count > 0;
@@ -149,11 +139,10 @@ public partial class MainViewModel : ViewModelBase
         };
     }
 
-    [RelayCommand(CanExecute = nameof(CanStart))]
-    private async Task Start()
+    private bool TryBeginProcessing()
     {
         if (IsBusy || Files.Count == 0)
-            return;
+            return false;
 
         LogLines.Clear();
         OutputFiles.Clear();
@@ -165,6 +154,18 @@ public partial class MainViewModel : ViewModelBase
             f.Error = null;
         }
 
+        return true;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private async Task Start()
+    {
+        if (!TryBeginProcessing())
+            return;
+
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+
         IsProcessing = true;
         var config = BuildConfig();
         var filePaths = Files.Select(f => f.Path).ToList();
@@ -175,6 +176,9 @@ public partial class MainViewModel : ViewModelBase
 
             for (int i = 0; i < filePaths.Count; i++)
             {
+                if (token.IsCancellationRequested)
+                    break;
+
                 var fileIndex = i;
                 var path = filePaths[i];
 
@@ -225,32 +229,32 @@ public partial class MainViewModel : ViewModelBase
             }
         });
 
+        _cts?.Dispose();
+        _cts = null;
         IsProcessing = false;
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task Diagnostics()
     {
-        if (IsBusy || Files.Count == 0)
+        if (!TryBeginProcessing())
             return;
 
-        LogLines.Clear();
-        OutputFiles.Clear();
-
-        foreach (var f in Files)
-        {
-            f.Status = FileStatus.Pending;
-            f.OutputFiles.Clear();
-            f.Error = null;
-        }
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
 
         IsDiagnosticsProcessing = true;
         var filePaths = Files.Select(f => f.Path).ToList();
 
         await Task.Run(() =>
         {
+            RemuxNative.Init();
+
             for (int i = 0; i < filePaths.Count; i++)
             {
+                if (token.IsCancellationRequested)
+                    break;
+
                 var fileIndex = i;
                 var path = filePaths[i];
 
@@ -287,7 +291,15 @@ public partial class MainViewModel : ViewModelBase
             }
         });
 
+        _cts?.Dispose();
+        _cts = null;
         IsDiagnosticsProcessing = false;
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        _cts?.Cancel();
     }
 
     [RelayCommand]
@@ -297,12 +309,6 @@ public partial class MainViewModel : ViewModelBase
         Files.Clear();
         LogLines.Clear();
         OutputFiles.Clear();
-    }
-
-    [RelayCommand]
-    private void ToggleSettings()
-    {
-        ShowSettings = !ShowSettings;
     }
 
     private void HandleProgressEvent(int fileIndex, ProgressEvent evt)
