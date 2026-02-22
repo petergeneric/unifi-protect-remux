@@ -1,3 +1,4 @@
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -20,6 +21,8 @@ public partial class QueuedFile : ObservableObject
     public long? FileSize { get; }
     public string? FileSizeLabel { get; }
     public string? MacAddress { get; }
+    public DateTimeOffset? FileTimestamp { get; }
+    public string? FileTimestampLabel { get; }
 
     [ObservableProperty]
     private FileStatus _status = FileStatus.Pending;
@@ -40,6 +43,9 @@ public partial class QueuedFile : ObservableObject
         Path = path;
         FileName = System.IO.Path.GetFileName(path);
         MacAddress = ExtractMac(FileName);
+        FileTimestamp = ExtractTimestamp(FileName);
+        if (FileTimestamp is DateTimeOffset ts)
+            FileTimestampLabel = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         OutputFiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(StatusLabel));
 
         try
@@ -93,6 +99,26 @@ public partial class QueuedFile : ObservableObject
         var prefix = fileName[..12].ToUpperInvariant();
         if (prefix.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F')))
             return prefix;
+
+        return null;
+    }
+
+    private static DateTimeOffset? ExtractTimestamp(string fileName)
+    {
+        // Strip extensions: .ubv or .ubv.gz
+        var name = fileName;
+        if (name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+            name = name[..^3];
+        if (name.EndsWith(".ubv", StringComparison.OrdinalIgnoreCase))
+            name = name[..^4];
+
+        var lastUnderscore = name.LastIndexOf('_');
+        if (lastUnderscore < 0)
+            return null;
+
+        var segment = name[(lastUnderscore + 1)..];
+        if (long.TryParse(segment, out var millis) && millis > 1_000_000_000_000L && millis < 10_000_000_000_000L)
+            return DateTimeOffset.FromUnixTimeMilliseconds(millis);
 
         return null;
     }
