@@ -165,6 +165,16 @@ jobs:
           Copy-Item "$env:FFMPEG_DIR\bin\*.dll" staging/
           Compress-Archive -Path staging/* -DestinationPath ${{ matrix.artifact }}.zip
 
+      - name: Build NSIS installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis --yes --no-progress
+          $nsisDir = "${env:ProgramFiles(x86)}\NSIS"
+          Expand-Archive installer\nsis-plugins\EnVar_plugin.zip -DestinationPath $nsisDir
+          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          & "$nsisDir\makensis.exe" /DSTAGING_DIR=staging /DVERSION=$version installer\windows.nsi
+
       - name: Upload artifact (Unix)
         if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
@@ -172,12 +182,19 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.tar.gz
 
-      - name: Upload artifact (Windows)
+      - name: Upload artifact (Windows zip)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.zip
+
+      - name: Upload artifact (Windows installer)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-setup
+          path: unifi-protect-remux-windows-x86_64-setup.exe
 
       - name: Determine release tag
         id: tag
@@ -190,9 +207,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.tar.gz
 
-      - name: Upload release asset (Windows)
+      - name: Upload release asset (Windows zip)
         if: runner.os == 'Windows' && steps.tag.outputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.zip
+
+      - name: Upload release asset (Windows installer)
+        if: runner.os == 'Windows' && steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: gh release upload "${{ steps.tag.outputs.tag }}" unifi-protect-remux-windows-x86_64-setup.exe
