@@ -12,14 +12,15 @@ use ubv::track::{is_audio_track, track_info, TrackType};
 
 static FFMPEG_INIT: Once = Once::new();
 
-/// On x86/x86_64, `ffi::va_list` is `[__va_list_tag; 1]` but FFmpeg function
-/// signatures (including callback types) expect `*mut __va_list_tag`. In C the
-/// array decays to a pointer automatically; in Rust we must match the expected
-/// pointer type explicitly.
-#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+/// On Unix x86/x86_64, `ffi::va_list` is `[__va_list_tag; 1]` but FFmpeg
+/// function signatures (including callback types) expect `*mut __va_list_tag`.
+/// In C the array decays to a pointer automatically; in Rust we must match the
+/// expected pointer type explicitly. On Windows `va_list` is already a simple
+/// pointer and `__va_list_tag` does not exist.
+#[cfg(all(unix, any(target_arch = "x86_64", target_arch = "x86")))]
 type VaListFmt = *mut ffi::__va_list_tag;
 
-#[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
+#[cfg(not(all(unix, any(target_arch = "x86_64", target_arch = "x86"))))]
 type VaListFmt = ffi::va_list;
 
 /// Custom FFmpeg log callback that routes messages through Rust's `log` crate.
