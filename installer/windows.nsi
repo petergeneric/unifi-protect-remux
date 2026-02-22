@@ -49,7 +49,7 @@
 ; General
 ;-----------------------------------------------------------------------------
 Name "${PRODUCT_NAME} ${VERSION}"
-OutFile "unifi-protect-remux-windows-x86_64-setup.exe"
+OutFile "cli-windows-x86_64-setup.exe"
 InstallDir "$PROGRAMFILES64\UBV Remux"
 InstallDirRegKey HKLM "${UNINSTALL_REG_KEY}" "InstallLocation"
 RequestExecutionLevel admin

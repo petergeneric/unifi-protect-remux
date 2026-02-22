@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: unifi-protect-remux-linux-aarch64-legacy
+    name: cli-linux-aarch64-legacy
     runs-on: ubuntu-24.04-arm
     container: debian:bullseye
 
@@ -60,13 +60,13 @@ jobs:
           cp target/release/remux staging/
           cp target/release/ubv-info staging/
           cp target/release/ubv-anonymise staging/
-          tar czf unifi-protect-remux-linux-aarch64-legacy.tar.gz -C staging .
+          tar czf cli-linux-aarch64-legacy.tar.gz -C staging .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: unifi-protect-remux-linux-aarch64-legacy
-          path: unifi-protect-remux-linux-aarch64-legacy.tar.gz
+          name: cli-linux-aarch64-legacy
+          path: cli-linux-aarch64-legacy.tar.gz
 
       - name: Determine release tag
         id: tag
@@ -78,4 +78,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          gh release upload "${{ steps.tag.outputs.tag }}" unifi-protect-remux-linux-aarch64-legacy.tar.gz
+          gh release upload "${{ steps.tag.outputs.tag }}" cli-linux-aarch64-legacy.tar.gz

@@ -24,11 +24,11 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            artifact: unifi-protect-remux-macos-aarch64
+            artifact: cli-macos-aarch64
             rid: osx-arm64
             arch: aarch64
           - target: x86_64-apple-darwin
-            artifact: unifi-protect-remux-macos-x86_64
+            artifact: cli-macos-x86_64
             rid: osx-x64
             arch: x86_64
 

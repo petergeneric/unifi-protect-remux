@@ -2,16 +2,17 @@
 
 This is a free, open source tool that converts Ubiquiti's proprietary .ubv files into standard .MP4 files with H.264/HEVC video and AAC audio. The conversion is a "remux": no transcoding takes place, the exact same video and audio essence are simply copied into a different, industry standard container; because of this the process is reasonably fast and not CPU intensive even on a low spec ARM machine.
 
+![Remux GUI Screenshot](assets/screenshot.png)
 
 # Getting Started
 
 Use the following instructions to get the unifi-protect-remux tool working:
 
-1. Go to the [github releases page](https://github.com/petergeneric/unifi-protect-remux/releases) and download the latest remux x86_64 binary (get the binary appropriate to your system - if you want to run on Ubiquiti hardware you'll need to use the linux `aarch64-legacy.tar.gz` file)
-2. Upload this to your server and extract with ```tar -xaf unifi-protect-remux-*.tar.gz```
-3. Transfer .ubv files from your NVR to your x86 server (on cloudkey v2, .ubv files are found under /srv/unifi-protect/video).
-4. Run: ```./remux *.ubv```
-5. By default, both audio and video will be extracted. If you do not want audio, add "--with-audio=false" to your command
+1. Go to the [github releases page](https://github.com/petergeneric/unifi-protect-remux/releases) and download the version you need for your machine. If you're not sure, you probably want the `gui` release. The `cli` releases are for using at the command-line and for automated use. Download the package that you want for your operating system and CPU architecture. If you want to run on Ubiquiti hardware you'll need to use the linux `aarch64-legacy.tar.gz` cli tools file. The Windows GUI installer includes the command-line tools.
+2. If using on ubiquiti hardware, upload via SSH to the cloudkey/nvr/etc. and extract with ```tar -xaf cli-*.tar.gz```
+3. Otherwise, transfer .ubv files from your NVR to the machine you will be running the remux on. See *Source Media: Live Systems* below if you're not sure where to find the video files.
+4. If using command-line tools, run: ```./remux *.ubv```. If using the GUI, drag the .ubc files in
+5. By default, both audio and video will be extracted. If you do not want audio, consult Settings (or --help text) for more information.
 
 ## Paid assistance available
 
