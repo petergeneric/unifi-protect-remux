@@ -149,8 +149,9 @@ jobs:
           cp target/${{ matrix.target }}/release/ubv-info staging/
           cp target/${{ matrix.target }}/release/ubv-anonymise staging/
           RID=$([[ "${{ matrix.target }}" == *aarch64* ]] && echo "osx-arm64" || echo "osx-x64")
-          cp -r "publish/$RID/" staging/RemuxGui/
-          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          scripts/create-macos-app.sh "publish/$RID" staging "$VERSION"
+          tar czf ${{ matrix.artifact }}.tar.gz --exclude '*.dSYM' -C staging .
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
