@@ -197,8 +197,16 @@ jobs:
 
             # --- Sign .app bundle ---
             echo "=== Signing .app bundle ==="
-            echo "  Signing Mach-O files inside bundle..."
-            find -L "$APP_BUNDLE/Contents/MacOS" -type f \( -name '*.dylib' -o -perm +111 \) | while read -r macho; do
+            echo "  Signing dylibs inside bundle..."
+            find -L "$APP_BUNDLE/Contents/MacOS" -type f -name '*.dylib' | while read -r macho; do
+              echo "    $(basename "$macho")"
+              codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
+                --keychain "$SIGNING_KEYCHAIN" --timestamp \
+                --entitlements "$ENTITLEMENTS" "$macho"
+            done
+
+            echo "  Signing executables inside bundle..."
+            find -L "$APP_BUNDLE/Contents/MacOS" -type f -perm +111 ! -name '*.dylib' | while read -r macho; do
               echo "    $(basename "$macho")"
               codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
                 --keychain "$SIGNING_KEYCHAIN" --timestamp \
