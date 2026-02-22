@@ -6,45 +6,66 @@ set -euo pipefail
 # Signs CLI binaries in the release tarballs and builds signed .dmg
 # installers from the unsigned GUI tarballs.
 #
-# Usage: macos-notarise.sh [--debug] [search_dir]
+# Usage: macos-notarise.sh [--debug] <tarball>...
 #
 #   --debug   Skip signing, notarization and stapling (test the repack/dmg flow only)
 #
-# Expects to find some or all of:
-#   unifi-protect-remux-macos-aarch64.tar.gz   (CLI tools)
-#   unifi-protect-remux-macos-x86_64.tar.gz    (CLI tools)
-#   gui-unsigned-macos-aarch64.tar.gz           (.app bundle)
-#   gui-unsigned-macos-x86_64.tar.gz            (.app bundle)
+# Tarballs are classified by filename:
+#   unifi-protect-remux-macos-*.tar.gz  → CLI archive (signed and repacked)
+#   gui-unsigned-macos-*.tar.gz         → GUI archive (signed, .dmg built)
 
 # --- Parse arguments ---
 
 DEBUG=false
-SEARCH_DIR="."
+declare -a INPUT_FILES=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --debug) DEBUG=true; shift ;;
-        *) SEARCH_DIR="$1"; shift ;;
+        *) INPUT_FILES+=("$1"); shift ;;
     esac
 done
 
-# --- Configuration ---
+if [[ ${#INPUT_FILES[@]} -eq 0 ]]; then
+    echo "Usage: $(basename "$0") [--debug] <tarball>..." >&2
+    exit 1
+fi
 
-KEYCHAIN_SERVICE="unifi-protect-remux-notarize"
-BUNDLE_ID="works.peter.ubv-remux"
-APP_NAME="UBV Remux"
+# --- Classify input files ---
 
-CLI_ARCHIVES=(
-    "unifi-protect-remux-macos-x86_64.tar.gz"
-    "unifi-protect-remux-macos-aarch64.tar.gz"
-)
-GUI_ARCHIVES=(
-    "gui-unsigned-macos-x86_64.tar.gz:x86_64"
-    "gui-unsigned-macos-aarch64.tar.gz:aarch64"
-)
 CLI_BINARIES=(remux ubv-info ubv-anonymise)
-
+APP_NAME="UBV Remux"
+KEYCHAIN_SERVICE="unifi-protect-remux-notarize"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+declare -a CLI_PATHS=()
+declare -a GUI_PATHS=()
+declare -a GUI_ARCHS=()
+
+for f in "${INPUT_FILES[@]}"; do
+    if [[ ! -f "$f" ]]; then
+        echo "ERROR: File not found: $f" >&2
+        exit 1
+    fi
+    base="$(basename "$f")"
+    case "$base" in
+        unifi-protect-remux-macos-*.tar.gz)
+            CLI_PATHS+=("$f")
+            ;;
+        gui-unsigned-macos-*.tar.gz)
+            # Extract architecture from filename: gui-unsigned-macos-<arch>.tar.gz
+            arch="${base#gui-unsigned-macos-}"
+            arch="${arch%.tar.gz}"
+            GUI_PATHS+=("$f")
+            GUI_ARCHS+=("$arch")
+            ;;
+        *)
+            echo "ERROR: Unrecognised tarball: $base" >&2
+            echo "Expected unifi-protect-remux-macos-*.tar.gz or gui-unsigned-macos-*.tar.gz" >&2
+            exit 1
+            ;;
+    esac
+done
 
 # --- Retrieve credentials and signing identity (skip in debug mode) ---
 
@@ -73,22 +94,6 @@ else
     echo "  Signing identity: $IDENTITY"
 fi
 
-# --- Check for archives ---
-
-found_any=false
-for archive in "${CLI_ARCHIVES[@]}"; do
-    [[ -f "$SEARCH_DIR/$archive" ]] && found_any=true
-done
-for entry in "${GUI_ARCHIVES[@]}"; do
-    archive="${entry%%:*}"
-    [[ -f "$SEARCH_DIR/$archive" ]] && found_any=true
-done
-
-if [[ "$found_any" == false ]]; then
-    echo "ERROR: No matching archives found in $SEARCH_DIR" >&2
-    exit 1
-fi
-
 # --- Create working directory ---
 
 WORKDIR="$(mktemp -d)"
@@ -112,19 +117,15 @@ PLIST
 
 # --- Process CLI archives ---
 
-for archive in "${CLI_ARCHIVES[@]}"; do
-    archive_path="$SEARCH_DIR/$archive"
-    if [[ ! -f "$archive_path" ]]; then
-        echo "Skipping $archive (not found)"
-        continue
-    fi
+declare -a CLI_UNPACK_DIRS=()
 
+for archive_path in "${CLI_PATHS[@]}"; do
     echo ""
-    echo "=== Processing CLI archive: $archive ==="
+    echo "=== Processing CLI archive: $(basename "$archive_path") ==="
 
-    slug="${archive%.tar.gz}"
-    unpack_dir="$WORKDIR/$slug"
+    unpack_dir="$WORKDIR/cli-${#CLI_UNPACK_DIRS[@]}"
     mkdir -p "$unpack_dir"
+    CLI_UNPACK_DIRS+=("$unpack_dir")
 
     echo "Unpacking..."
     tar xzf "$archive_path" -C "$unpack_dir"
@@ -144,40 +145,31 @@ done
 # --- Process GUI archives ---
 
 declare -a APP_BUNDLE_PATHS=()
-declare -a GUI_OUTPUT_DIRS=()
-declare -a GUI_ARCHS=()
+declare -a GUI_UNPACK_DIRS=()
 
-for entry in "${GUI_ARCHIVES[@]}"; do
-    archive="${entry%%:*}"
-    arch="${entry##*:}"
-    archive_path="$SEARCH_DIR/$archive"
-
-    if [[ ! -f "$archive_path" ]]; then
-        echo "Skipping $archive (not found)"
-        continue
-    fi
+for i in "${!GUI_PATHS[@]}"; do
+    archive_path="${GUI_PATHS[$i]}"
+    arch="${GUI_ARCHS[$i]}"
 
     echo ""
-    echo "=== Processing GUI archive: $archive ==="
+    echo "=== Processing GUI archive: $(basename "$archive_path") ==="
 
     unpack_dir="$WORKDIR/gui-$arch"
     mkdir -p "$unpack_dir"
+    GUI_UNPACK_DIRS+=("$unpack_dir")
 
     echo "Unpacking..."
     tar xzf "$archive_path" -C "$unpack_dir"
 
     APP_DIR="$unpack_dir/${APP_NAME}.app"
     if [[ ! -d "$APP_DIR" ]]; then
-        echo "ERROR: Expected ${APP_NAME}.app in $archive" >&2
+        echo "ERROR: Expected ${APP_NAME}.app in $(basename "$archive_path")" >&2
         exit 1
     fi
 
     APP_BUNDLE_PATHS+=("$APP_DIR")
-    GUI_OUTPUT_DIRS+=("$unpack_dir")
-    GUI_ARCHS+=("$arch")
 
     if [[ "$DEBUG" == false ]]; then
-        # Sign all native libraries inside the .app bundle (dylibs first, then main executable)
         echo "  Signing native libraries in ${APP_NAME}.app..."
         find "$APP_DIR/Contents/MacOS" -name '*.dylib' -exec \
             codesign --force --options runtime --sign "$IDENTITY" --timestamp \
@@ -201,19 +193,13 @@ if [[ "$DEBUG" == false ]]; then
     NOTARIZE_STAGING="$WORKDIR/notarize-staging"
     mkdir -p "$NOTARIZE_STAGING"
 
-    # Add signed CLI binaries
-    for archive in "${CLI_ARCHIVES[@]}"; do
-        slug="${archive%.tar.gz}"
-        unpack_dir="$WORKDIR/$slug"
-        [[ -d "$unpack_dir" ]] || continue
-        cp -a "$unpack_dir" "$NOTARIZE_STAGING/$slug"
+    for i in "${!CLI_UNPACK_DIRS[@]}"; do
+        cp -a "${CLI_UNPACK_DIRS[$i]}" "$NOTARIZE_STAGING/cli-$i"
     done
 
-    # Add signed .app bundles
     for i in "${!GUI_ARCHS[@]}"; do
         arch="${GUI_ARCHS[$i]}"
         app_dir="${APP_BUNDLE_PATHS[$i]}"
-        [[ -d "$app_dir" ]] || continue
         mkdir -p "$NOTARIZE_STAGING/gui-$arch"
         cp -a "$app_dir" "$NOTARIZE_STAGING/gui-$arch/"
     done
@@ -229,7 +215,6 @@ if [[ "$DEBUG" == false ]]; then
 
     echo "Notarization complete."
 
-    # Staple notarization tickets to .app bundles
     echo ""
     echo "=== Stapling ==="
     for app_dir in "${APP_BUNDLE_PATHS[@]}"; do
@@ -240,88 +225,90 @@ fi
 
 # --- Repack CLI archives ---
 
-echo ""
-echo "=== Repacking CLI archives ==="
-
-for archive in "${CLI_ARCHIVES[@]}"; do
-    slug="${archive%.tar.gz}"
-    unpack_dir="$WORKDIR/$slug"
-    [[ -d "$unpack_dir" ]] || continue
-
-    archive_path="$(cd "$SEARCH_DIR" && pwd)/$archive"
-    backup="${archive_path}.unsigned"
-
-    echo "Backing up original to ${archive}.unsigned"
-    mv "$archive_path" "$backup"
-
-    echo "Creating signed $archive"
-    tar czf "$archive_path" -C "$unpack_dir" .
-
-    echo "Done: $archive"
-done
-
-# --- Build GUI .dmg files ---
-
-VOLICON="$SCRIPT_DIR/../assets/appicon.icns"
-
-echo ""
-echo "=== Building .dmg files ==="
-
-for i in "${!GUI_ARCHS[@]}"; do
-    arch="${GUI_ARCHS[$i]}"
-    app_dir="${APP_BUNDLE_PATHS[$i]}"
-    dmg_name="gui-macos-${arch}.dmg"
-    dmg_path="$(cd "$SEARCH_DIR" && pwd)/$dmg_name"
-
-    echo "Building $dmg_name..."
-
-    dmg_staging="$WORKDIR/dmg-$arch"
-    mkdir -p "$dmg_staging"
-    cp -a "$app_dir" "$dmg_staging/"
-
-    create-dmg \
-        --volname "$APP_NAME" \
-        --volicon "$VOLICON" \
-        --window-size 600 400 \
-        --icon-size 128 \
-        --icon "${APP_NAME}.app" 150 185 \
-        --app-drop-link 450 185 \
-        --hide-extension "${APP_NAME}.app" \
-        --no-internet-enable \
-        --skip-jenkins \
-        "$dmg_path" \
-        "$dmg_staging"
-
-    echo "Done: $dmg_name"
-done
-
-# --- Notarize .dmg files (skip in debug mode) ---
-
-if [[ "$DEBUG" == false && ${#GUI_ARCHS[@]} -gt 0 ]]; then
+if [[ ${#CLI_PATHS[@]} -gt 0 ]]; then
     echo ""
-    echo "=== Notarizing .dmg files ==="
+    echo "=== Repacking CLI archives ==="
 
-    for i in "${!GUI_ARCHS[@]}"; do
-        arch="${GUI_ARCHS[$i]}"
-        dmg_name="gui-macos-${arch}.dmg"
-        dmg_path="$(cd "$SEARCH_DIR" && pwd)/$dmg_name"
+    for i in "${!CLI_PATHS[@]}"; do
+        archive_path="$(cd "$(dirname "${CLI_PATHS[$i]}")" && pwd)/$(basename "${CLI_PATHS[$i]}")"
+        unpack_dir="${CLI_UNPACK_DIRS[$i]}"
+        backup="${archive_path}.unsigned"
 
-        echo "Submitting $dmg_name to Apple notary service..."
-        xcrun notarytool submit "$dmg_path" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
+        echo "Backing up original to $(basename "$archive_path").unsigned"
+        mv "$archive_path" "$backup"
 
-        echo "  Stapling $dmg_name..."
-        xcrun stapler staple "$dmg_path"
+        echo "Creating signed $(basename "$archive_path")"
+        tar czf "$archive_path" -C "$unpack_dir" .
 
-        echo "Done: $dmg_name"
+        echo "Done: $(basename "$archive_path")"
     done
 fi
 
+# --- Build GUI .dmg files ---
+
+if [[ ${#GUI_ARCHS[@]} -gt 0 ]]; then
+    VOLICON="$SCRIPT_DIR/../assets/appicon.icns"
+
+    echo ""
+    echo "=== Building .dmg files ==="
+
+    for i in "${!GUI_ARCHS[@]}"; do
+        arch="${GUI_ARCHS[$i]}"
+        app_dir="${APP_BUNDLE_PATHS[$i]}"
+        dmg_name="gui-macos-${arch}.dmg"
+        output_dir="$(cd "$(dirname "${GUI_PATHS[$i]}")" && pwd)"
+        dmg_path="$output_dir/$dmg_name"
+
+        echo "Building $dmg_name..."
+
+        dmg_staging="$WORKDIR/dmg-$arch"
+        mkdir -p "$dmg_staging"
+        cp -a "$app_dir" "$dmg_staging/"
+
+        create-dmg \
+            --volname "$APP_NAME" \
+            --volicon "$VOLICON" \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "${APP_NAME}.app" 150 185 \
+            --app-drop-link 450 185 \
+            --hide-extension "${APP_NAME}.app" \
+            --no-internet-enable \
+            --skip-jenkins \
+            "$dmg_path" \
+            "$dmg_staging"
+
+        echo "Done: $dmg_name"
+    done
+
+    # Notarize .dmg files (skip in debug mode)
+    if [[ "$DEBUG" == false ]]; then
+        echo ""
+        echo "=== Notarizing .dmg files ==="
+
+        for i in "${!GUI_ARCHS[@]}"; do
+            arch="${GUI_ARCHS[$i]}"
+            dmg_name="gui-macos-${arch}.dmg"
+            output_dir="$(cd "$(dirname "${GUI_PATHS[$i]}")" && pwd)"
+            dmg_path="$output_dir/$dmg_name"
+
+            echo "Submitting $dmg_name to Apple notary service..."
+            xcrun notarytool submit "$dmg_path" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --wait
+
+            echo "  Stapling $dmg_name..."
+            xcrun stapler staple "$dmg_path"
+
+            echo "Done: $dmg_name"
+        done
+    fi
+fi
+
 echo ""
-echo "All done. Output is in $SEARCH_DIR"
-if [[ "$DEBUG" == false ]]; then
+echo "All done."
+if [[ "$DEBUG" == false && ${#CLI_PATHS[@]} -gt 0 ]]; then
     echo "Original unsigned CLI archives saved with .unsigned suffix."
 fi
