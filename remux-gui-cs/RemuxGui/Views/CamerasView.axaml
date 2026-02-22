@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RemuxGui.ViewModels"
+             xmlns:models="using:RemuxGui.Models"
+             x:Class="RemuxGui.Views.CamerasView"
+             x:DataType="vm:MainViewModel">
+
+    <DockPanel>
+        <!-- Top toolbar -->
+        <Border DockPanel.Dock="Top" Padding="16,10"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+            <TextBlock Text="My Cameras" FontSize="18" FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- Description -->
+        <Border DockPanel.Dock="Top" Padding="16,10"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+            <TextBlock Text="MAC addresses are automatically collected from added .ubv files. Assign a friendly name and it will appear in the file list and detail panel. Only named cameras are saved."
+                       TextWrapping="Wrap" FontSize="12"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Padding="16">
+            <StackPanel Spacing="8">
+                <!-- Column headers -->
+                <Grid ColumnDefinitions="160,*,40" Margin="12,0,12,4"
+                      IsVisible="{Binding Cameras.Count}">
+                    <TextBlock Grid.Column="0" Text="MAC Address" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                    <TextBlock Grid.Column="1" Text="Friendly Name" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Margin="8,0,0,0" />
+                </Grid>
+
+                <!-- Camera entries -->
+                <ItemsControl x:Name="CamerasList" ItemsSource="{Binding Cameras}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:CameraEntry">
+                            <Border CornerRadius="6" Padding="12,8" Margin="0,2"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+                                <Grid ColumnDefinitions="160,*,40">
+                                    <TextBlock Grid.Column="0" Text="{Binding MacAddressFormatted}"
+                                               FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                               FontSize="12"
+                                               VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding FriendlyName}"
+                                             FontSize="12" Margin="8,0,8,0"
+                                             Watermark="Enter camera name..."
+                                             VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Content="&#x2715;"
+                                            FontSize="12" Padding="6,2"
+                                            Background="Transparent" BorderThickness="0"
+                                            Cursor="Hand" VerticalAlignment="Center"
+                                            HorizontalAlignment="Center"
+                                            Command="{Binding #CamerasList.((vm:MainViewModel)DataContext).RemoveCameraCommand}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Empty state -->
+                <TextBlock Text="No cameras detected yet. Add .ubv files to automatically discover cameras."
+                           FontSize="13"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Margin="0,16"
+                           IsVisible="{Binding !Cameras.Count}"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

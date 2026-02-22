@@ -67,6 +67,15 @@
                             <TextBlock Text="Log" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+                    <Button Classes="nav-item"
+                            Command="{Binding SetViewCommand}"
+                            CommandParameter="3"
+                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#x25A3;" FontSize="15" VerticalAlignment="Center" />
+                            <TextBlock Text="Cameras" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -76,6 +85,7 @@
             <views:FilesView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}" />
             <views:SettingsView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}" />
             <views:LogView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}" />
+            <views:CamerasView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}" />
         </Grid>
     </DockPanel>
 </Window>

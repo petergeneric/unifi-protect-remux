@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -21,6 +23,7 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<LogEntry> LogLines { get; } = new();
     public ObservableCollection<string> OutputFiles { get; } = new();
     public ObservableCollection<LogEntry> FilteredLogLines { get; } = new();
+    public ObservableCollection<CameraEntry> Cameras { get; } = new();
 
     [ObservableProperty]
     private bool _isProcessing;
@@ -130,8 +133,10 @@ public partial class MainViewModel : ViewModelBase
         };
 
         LogLines.CollectionChanged += OnLogLinesChanged;
+        Cameras.CollectionChanged += (_, _) => RefreshAllCameraNames();
 
         LoadVersionString();
+        LoadCameras();
     }
 
     private void LoadVersionString()
@@ -259,7 +264,10 @@ public partial class MainViewModel : ViewModelBase
             }
             else
             {
-                Files.Add(new QueuedFile(path));
+                var qf = new QueuedFile(path);
+                EnsureCameraEntry(qf.MacAddress);
+                qf.CameraName = LookupCameraName(qf.MacAddress);
+                Files.Add(qf);
             }
         }
 
@@ -274,7 +282,10 @@ public partial class MainViewModel : ViewModelBase
     {
         foreach (var path in paths)
         {
-            Files.Add(new QueuedFile(path));
+            var qf = new QueuedFile(path);
+            EnsureCameraEntry(qf.MacAddress);
+            qf.CameraName = LookupCameraName(qf.MacAddress);
+            Files.Add(qf);
         }
 
         SelectedFile ??= Files.FirstOrDefault();
@@ -469,6 +480,104 @@ public partial class MainViewModel : ViewModelBase
 
         if (SelectedFile == file)
             SelectedFile = Files.Count > 0 ? Files[Math.Min(idx, Files.Count - 1)] : null;
+    }
+
+    // --- Camera management ---
+
+    private static string CamerasFilePath => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "RemuxGui", "cameras.json");
+
+    [RelayCommand]
+    private void RemoveCamera(CameraEntry? entry)
+    {
+        if (entry == null) return;
+        entry.PropertyChanged -= OnCameraEntryPropertyChanged;
+        Cameras.Remove(entry);
+        SaveCameras();
+    }
+
+    private void EnsureCameraEntry(string? mac)
+    {
+        if (string.IsNullOrEmpty(mac)) return;
+        if (Cameras.Any(c => string.Equals(c.MacAddress, mac, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var entry = new CameraEntry(mac, "");
+        entry.PropertyChanged += OnCameraEntryPropertyChanged;
+        Cameras.Add(entry);
+    }
+
+    private void OnCameraEntryPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(CameraEntry.FriendlyName))
+        {
+            RefreshAllCameraNames();
+            SaveCameras();
+        }
+    }
+
+    private string? LookupCameraName(string? mac)
+    {
+        if (string.IsNullOrEmpty(mac)) return null;
+        foreach (var cam in Cameras)
+        {
+            if (string.Equals(cam.MacAddress, mac, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(cam.FriendlyName))
+                return cam.FriendlyName;
+        }
+        return null;
+    }
+
+    private void RefreshAllCameraNames()
+    {
+        foreach (var file in Files)
+            file.CameraName = LookupCameraName(file.MacAddress);
+    }
+
+    private void LoadCameras()
+    {
+        try
+        {
+            var path = CamerasFilePath;
+            if (!File.Exists(path)) return;
+
+            var json = File.ReadAllText(path);
+            var data = JsonSerializer.Deserialize(json, AppJsonContext.Default.CameraData);
+            if (data?.Cameras == null) return;
+
+            foreach (var dto in data.Cameras)
+            {
+                var entry = new CameraEntry(dto.Mac, dto.Name);
+                entry.PropertyChanged += OnCameraEntryPropertyChanged;
+                Cameras.Add(entry);
+            }
+        }
+        catch
+        {
+            // Ignore errors loading cameras
+        }
+    }
+
+    private void SaveCameras()
+    {
+        try
+        {
+            var data = new CameraData();
+            foreach (var cam in Cameras.Where(c => !string.IsNullOrWhiteSpace(c.FriendlyName)))
+                data.Cameras.Add(new CameraDataEntry { Mac = cam.MacAddress, Name = cam.FriendlyName });
+
+            var dir = System.IO.Path.GetDirectoryName(CamerasFilePath);
+            if (dir != null)
+                Directory.CreateDirectory(dir);
+
+            var json = JsonSerializer.Serialize(data, AppJsonContext.Default.CameraData);
+            File.WriteAllText(CamerasFilePath, json);
+        }
+        catch
+        {
+            // Ignore errors saving cameras
+        }
     }
 
     private void HandleProgressEvent(int fileIndex, ProgressEvent evt)
