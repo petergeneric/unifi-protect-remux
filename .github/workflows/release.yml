@@ -156,7 +156,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force staging
+          New-Item -ItemType Directory -Force staging/RemuxGui
           Copy-Item target/${{ matrix.target }}/release/remux.exe staging/
           Copy-Item target/${{ matrix.target }}/release/ubv-info.exe staging/
           Copy-Item target/${{ matrix.target }}/release/ubv-anonymise.exe staging/
