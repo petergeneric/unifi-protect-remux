@@ -76,7 +76,7 @@ public static partial class RemuxNative
     private static partial void remux_free_string(IntPtr s);
 
     /// <summary>
-    /// Read a UTF-8 string from a Rust-allocated pointer, then free it.
+    /// Read a UTF-8 string from a native pointer, then free it.
     /// Returns null if the pointer is IntPtr.Zero.
     /// </summary>
     private static string? ReadAndFreeString(IntPtr ptr)
@@ -90,24 +90,6 @@ public static partial class RemuxNative
         finally
         {
             remux_free_string(ptr);
-        }
-    }
-
-    /// <summary>
-    /// Read a UTF-8 string from a Rust-allocated error pointer, then free it.
-    /// Returns null if the pointer is IntPtr.Zero.
-    /// </summary>
-    private static string? ReadAndFreeError(IntPtr errorPtr)
-    {
-        if (errorPtr == IntPtr.Zero)
-            return null;
-        try
-        {
-            return Marshal.PtrToStringUTF8(errorPtr);
-        }
-        finally
-        {
-            remux_free_string(errorPtr);
         }
     }
 
@@ -149,7 +131,7 @@ public static partial class RemuxNative
     {
         var configJson = JsonSerializer.Serialize(config, AppJsonContext.Default.RemuxConfig);
         var resultPtr = remux_process_file(ubvPath, configJson, callback, fileIndex, out var errorPtr);
-        var error = ReadAndFreeError(errorPtr);
+        var error = ReadAndFreeString(errorPtr);
         var result = ReadAndFreeString(resultPtr);
         return (result, error);
     }
@@ -157,7 +139,7 @@ public static partial class RemuxNative
     public static (string? outputPath, string? error) ProduceDiagnostics(string ubvPath)
     {
         var resultPtr = remux_produce_diagnostics(ubvPath, out var errorPtr);
-        var error = ReadAndFreeError(errorPtr);
+        var error = ReadAndFreeString(errorPtr);
         var resultJson = ReadAndFreeString(resultPtr);
 
         if (resultJson != null)
