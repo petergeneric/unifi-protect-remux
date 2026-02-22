@@ -3,6 +3,7 @@ use std::io;
 use std::sync::Once;
 
 extern crate ffmpeg_next as ffmpeg;
+extern crate ffmpeg_sys_next as ffi;
 use ffmpeg::{codec, encoder, format, Rational};
 
 use crate::analysis::{generate_timecode, AnalysedPartition, AnalysedTrack};
@@ -11,9 +12,68 @@ use ubv::track::{is_audio_track, track_info, TrackType};
 
 static FFMPEG_INIT: Once = Once::new();
 
+/// Custom FFmpeg log callback that routes messages through Rust's `log` crate.
+///
+/// # Safety
+/// Called by FFmpeg's internal logging system. Uses `av_log_format_line2` to
+/// safely format the variadic arguments into a fixed buffer.
+unsafe extern "C" fn ffmpeg_log_callback(
+    ptr: *mut libc::c_void,
+    level: libc::c_int,
+    fmt: *const libc::c_char,
+    vl: ffi::va_list,
+) {
+    // Map FFmpeg log level to Rust log level; ignore messages above our threshold.
+    let rust_level = match level {
+        ffi::AV_LOG_PANIC | ffi::AV_LOG_FATAL => log::Level::Error,
+        ffi::AV_LOG_ERROR => log::Level::Error,
+        ffi::AV_LOG_WARNING => log::Level::Warn,
+        ffi::AV_LOG_INFO => log::Level::Info,
+        ffi::AV_LOG_VERBOSE => log::Level::Debug,
+        ffi::AV_LOG_DEBUG | ffi::AV_LOG_TRACE => log::Level::Trace,
+        _ => return,
+    };
+
+    // Early-out if this level is filtered by the Rust logger.
+    if !log::log_enabled!(rust_level) {
+        return;
+    }
+
+    let mut buf = [0u8; 1024];
+    let mut print_prefix: libc::c_int = 1;
+    let written = unsafe {
+        ffi::av_log_format_line2(
+            ptr,
+            level,
+            fmt,
+            vl,
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len() as libc::c_int,
+            &mut print_prefix,
+        )
+    };
+    if written < 0 {
+        return;
+    }
+
+    let len = (written as usize).min(buf.len() - 1);
+    // Trim trailing whitespace/newlines that FFmpeg appends.
+    let msg = std::str::from_utf8(&buf[..len])
+        .unwrap_or_default()
+        .trim_end();
+    if msg.is_empty() {
+        return;
+    }
+
+    log::log!(target: "ffmpeg", rust_level, "{}", msg);
+}
+
 fn ensure_init() {
     FFMPEG_INIT.call_once(|| {
         ffmpeg::init().expect("Failed to initialise FFmpeg");
+        unsafe {
+            ffi::av_log_set_callback(Some(ffmpeg_log_callback));
+        }
     });
 }
 

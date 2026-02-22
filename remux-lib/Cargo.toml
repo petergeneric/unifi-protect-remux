@@ -9,6 +9,7 @@ description = "Core remux logic for converting .ubv files to MP4"
 [dependencies]
 ubv = { path = "../ubv" }
 chrono = "0.4"
+libc = "0.2"
 log = "0.4"
 ffmpeg-next = "8"
 ffmpeg-sys-next = "8"
