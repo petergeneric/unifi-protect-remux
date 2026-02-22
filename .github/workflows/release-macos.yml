@@ -111,8 +111,10 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
           # Extract signing identity
+          echo "Available codesigning identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-            | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/' || true)
           if [[ -z "$IDENTITY" ]]; then
             echo "ERROR: No 'Developer ID Application' identity found after import" >&2
             exit 1
@@ -196,7 +198,7 @@ jobs:
             # --- Sign .app bundle ---
             echo "=== Signing .app bundle ==="
             echo "  Signing Mach-O files inside bundle..."
-            find "$APP_BUNDLE/Contents/MacOS" -type f \( -name '*.dylib' -o -perm +111 \) | while read -r macho; do
+            find -L "$APP_BUNDLE/Contents/MacOS" -type f \( -name '*.dylib' -o -perm +111 \) | while read -r macho; do
               echo "    $(basename "$macho")"
               codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
                 --keychain "$SIGNING_KEYCHAIN" --timestamp \
