@@ -108,8 +108,7 @@ public partial class MainWindow : Window
 
     private async void OnHelpClick(object? sender, RoutedEventArgs e)
     {
-        var about = new AboutWindow();
-        await about.ShowDialog(this);
+        await AboutWindow.ShowAbout(this);
     }
 
     private async System.Threading.Tasks.Task ShowLowResWarning(List<string> warnedPaths)

@@ -43,8 +43,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
             && desktop.MainWindow != null)
         {
-            var about = new AboutWindow();
-            await about.ShowDialog(desktop.MainWindow);
+            await AboutWindow.ShowAbout(desktop.MainWindow);
         }
     }
 }
