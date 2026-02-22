@@ -11,6 +11,21 @@
 ;       ├── RemuxGui.exe
 ;       └── ...
 ;
+; Installed layout differs — CLI tools go into a cli/ subdirectory so that
+; only executables end up on PATH (not Uninstall.exe or icons):
+;   $INSTDIR/
+;   ├── Uninstall.exe
+;   ├── resource/
+;   │   └── ubv-document.ico
+;   ├── cli/
+;   │   ├── remux.exe
+;   │   ├── ubv-info.exe
+;   │   ├── ubv-anonymise.exe
+;   │   └── *.dll
+;   └── gui/
+;       ├── RemuxGui.exe
+;       └── ...
+;
 ; Build:
 ;   makensis /DSTAGING_DIR=staging /DVERSION=4.1.4 installer\windows.nsi
 
@@ -84,7 +99,9 @@ VIAddVersionKey "LegalCopyright" "AGPL-3.0-only"
 
 ; Core files — always installed (not optional)
 Section "-Core Files" SEC_CORE
-  SetOutPath "$INSTDIR"
+  ; CLI executables and FFmpeg DLLs go into a subdirectory so that only
+  ; actual tools end up on PATH (not Uninstall.exe or ubv-document.ico).
+  SetOutPath "$INSTDIR\cli"
 
   ; CLI executables
   File "${STAGING_DIR}\remux.exe"
@@ -94,7 +111,8 @@ Section "-Core Files" SEC_CORE
   ; FFmpeg shared libraries
   File "${STAGING_DIR}\*.dll"
 
-  ; Uninstaller
+  ; Uninstaller (in install root, not on PATH)
+  SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   ; Add/Remove Programs registry entries
@@ -116,12 +134,12 @@ SectionEnd
 
 ; Component 1: Remux GUI
 Section "Remux GUI" SEC_GUI
-  SetOutPath "$INSTDIR\RemuxGui"
+  SetOutPath "$INSTDIR\gui"
   File /r "${STAGING_DIR}\RemuxGui\*.*"
 
   ; Start Menu shortcut
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk" "$INSTDIR\RemuxGui\RemuxGui.exe" "" "$INSTDIR\RemuxGui\RemuxGui.exe" 0
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk" "$INSTDIR\gui\RemuxGui.exe" "" "$INSTDIR\gui\RemuxGui.exe" 0
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
 SectionEnd
 
@@ -129,11 +147,32 @@ SectionEnd
 Section "Add to PATH" SEC_PATH
   ; Modify current user's PATH
   EnVar::SetHKCU
-  EnVar::AddValue "PATH" "$INSTDIR"
-  EnVar::AddValue "PATH" "$INSTDIR\RemuxGui"
+  EnVar::AddValue "PATH" "$INSTDIR\cli"
+  EnVar::AddValue "PATH" "$INSTDIR\gui"
 
   ; Record that we modified PATH so the uninstaller knows
   WriteRegStr HKLM "${UNINSTALL_REG_KEY}" "AddedToPath" "1"
+SectionEnd
+
+; Component 3: Associate .ubv files with Remux GUI
+Section "Associate .ubv files" SEC_ASSOC
+  ; Install the document icon
+  SetOutPath "$INSTDIR\resource"
+  File "..\assets\ubv-document.ico"
+
+  ; Register the ProgID
+  WriteRegStr HKLM "Software\Classes\UBVRemux.ubv" "" "UBV Video Recording"
+  WriteRegStr HKLM "Software\Classes\UBVRemux.ubv\DefaultIcon" "" "$INSTDIR\resource\ubv-document.ico"
+  WriteRegStr HKLM "Software\Classes\UBVRemux.ubv\shell\open\command" "" '"$INSTDIR\gui\RemuxGui.exe" "%1"'
+
+  ; Associate .ubv extension with our ProgID
+  WriteRegStr HKLM "Software\Classes\.ubv" "" "UBVRemux.ubv"
+
+  ; Notify Explorer that file associations have changed
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+
+  ; Record that we added the association so the uninstaller knows
+  WriteRegStr HKLM "${UNINSTALL_REG_KEY}" "AddedFileAssoc" "1"
 SectionEnd
 
 ;-----------------------------------------------------------------------------
@@ -142,18 +181,30 @@ SectionEnd
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_GUI} "Install the graphical interface for UBV Remux. Creates a Start Menu shortcut."
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_PATH} "Add the install directory to your user PATH so CLI tools (remux, ubv-info, ubv-anonymise) can be run from any terminal."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_ASSOC} "Associate .ubv files with Remux GUI so they open in the application when double-clicked."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ;-----------------------------------------------------------------------------
 ; Uninstaller
 ;-----------------------------------------------------------------------------
 Section "Uninstall"
+  ; Remove file association if it was added during install
+  ReadRegStr $0 HKLM "${UNINSTALL_REG_KEY}" "AddedFileAssoc"
+  StrCmp $0 "1" 0 assoc_done
+    ; Only remove .ubv key if it still points to our ProgID
+    ReadRegStr $1 HKLM "Software\Classes\.ubv" ""
+    StrCmp $1 "UBVRemux.ubv" 0 +2
+      DeleteRegKey HKLM "Software\Classes\.ubv"
+    DeleteRegKey HKLM "Software\Classes\UBVRemux.ubv"
+    System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+  assoc_done:
+
   ; Remove PATH entries if they were added during install
   ReadRegStr $0 HKLM "${UNINSTALL_REG_KEY}" "AddedToPath"
   StrCmp $0 "1" 0 +4
     EnVar::SetHKCU
-    EnVar::DeleteValue "PATH" "$INSTDIR\RemuxGui"
-    EnVar::DeleteValue "PATH" "$INSTDIR"
+    EnVar::DeleteValue "PATH" "$INSTDIR\gui"
+    EnVar::DeleteValue "PATH" "$INSTDIR\cli"
 
   ; Remove Start Menu shortcuts
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk"
@@ -161,13 +212,13 @@ Section "Uninstall"
   RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
 
   ; Remove GUI files
-  RMDir /r "$INSTDIR\RemuxGui"
+  RMDir /r "$INSTDIR\gui"
 
-  ; Remove core files
-  Delete "$INSTDIR\remux.exe"
-  Delete "$INSTDIR\ubv-info.exe"
-  Delete "$INSTDIR\ubv-anonymise.exe"
-  Delete "$INSTDIR\*.dll"
+  ; Remove CLI files
+  RMDir /r "$INSTDIR\cli"
+
+  ; Remove resource and root files
+  RMDir /r "$INSTDIR\resource"
   Delete "$INSTDIR\Uninstall.exe"
 
   ; Remove install directory (only if empty)

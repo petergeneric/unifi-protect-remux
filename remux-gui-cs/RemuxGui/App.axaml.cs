@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -19,10 +20,19 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            var viewModel = new MainViewModel();
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainViewModel()
+                DataContext = viewModel
             };
+
+            if (desktop.Args is { Length: > 0 })
+            {
+                var ubvPaths = desktop.Args
+                    .Where(a => a.EndsWith(".ubv", StringComparison.OrdinalIgnoreCase)
+                             || a.EndsWith(".ubv.gz", StringComparison.OrdinalIgnoreCase));
+                viewModel.AddFiles(ubvPaths);
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
