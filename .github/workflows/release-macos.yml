@@ -8,6 +8,10 @@ on:
       tag:
         description: "Existing tag to attach assets to (leave empty for build-only test)"
         required: false
+      sign:
+        description: "Code sign and notarize (uncheck to test build logic only)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -71,6 +75,11 @@ jobs:
           APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
         run: |
           set -euo pipefail
+          if [[ "${{ inputs.sign }}" == "false" ]]; then
+            echo "Signing disabled via workflow input — will produce unsigned output"
+            echo "CODESIGN_ENABLED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
           if [[ -z "${DEVELOPER_ID_CERT_P12:-}" ]]; then
             echo "No signing certificate configured — will produce unsigned output"
             echo "CODESIGN_ENABLED=false" >> "$GITHUB_ENV"
