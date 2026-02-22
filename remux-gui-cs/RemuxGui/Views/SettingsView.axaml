@@ -1,0 +1,140 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RemuxGui.ViewModels"
+             x:Class="RemuxGui.Views.SettingsView"
+             x:DataType="vm:MainViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.card-header">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="LetterSpacing" Value="1" />
+        </Style>
+        <Style Selector="TextBlock.setting-label">
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="TextBlock.setting-desc">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+        </Style>
+        <Style Selector="Border.settings-card">
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+        <!-- Top toolbar -->
+        <Border DockPanel.Dock="Top" Padding="16,10">
+            <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- Settings cards -->
+        <ScrollViewer Padding="16">
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                  Margin="0" HorizontalAlignment="Stretch">
+                <Grid.Styles>
+                    <Style Selector="Grid > Border.settings-card">
+                        <Setter Property="Margin" Value="8" />
+                    </Style>
+                </Grid.Styles>
+
+                <!-- Streams card -->
+                <Border Grid.Row="0" Grid.Column="0" Classes="settings-card">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="STREAMS" Classes="card-header" />
+
+                        <DockPanel>
+                            <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding WithVideo}"
+                                          VerticalAlignment="Center" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Extract video" Classes="setting-label" />
+                                <TextBlock Text="Include video stream in output" Classes="setting-desc" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <DockPanel>
+                            <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding WithAudio}"
+                                          VerticalAlignment="Center" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Extract audio" Classes="setting-label" />
+                                <TextBlock Text="Include audio stream in output" Classes="setting-desc" />
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Output Format card -->
+                <Border Grid.Row="0" Grid.Column="1" Classes="settings-card">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="OUTPUT FORMAT" Classes="card-header" />
+
+                        <DockPanel>
+                            <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding Mp4Output}"
+                                          VerticalAlignment="Center" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="MP4 container" Classes="setting-label" />
+                                <TextBlock Text="Output as .mp4 (otherwise raw streams)" Classes="setting-desc" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <DockPanel>
+                            <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding FastStart}"
+                                          VerticalAlignment="Center" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Fast start" Classes="setting-label" />
+                                <TextBlock Text="Move moov atom to front for streaming" Classes="setting-desc" />
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Output Location card -->
+                <Border Grid.Row="1" Grid.Column="0" Classes="settings-card">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="OUTPUT LOCATION" Classes="card-header" />
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Output folder" Classes="setting-label" />
+                            <TextBlock Text="Directory for generated files" Classes="setting-desc" />
+                            <DockPanel Margin="0,4,0,0">
+                                <Button DockPanel.Dock="Right" Content="..."
+                                        Click="OnBrowseOutputFolder"
+                                        Margin="6,0,0,0" Padding="10,4" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding OutputFolder}" VerticalAlignment="Center"
+                                         FontSize="12" />
+                            </DockPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Advanced card -->
+                <Border Grid.Row="1" Grid.Column="1" Classes="settings-card">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="ADVANCED" Classes="card-header" />
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Framerate override" Classes="setting-label" />
+                            <TextBlock Text="Force a specific framerate (0 = auto-detect)" Classes="setting-desc" />
+                            <NumericUpDown Value="{Binding ForceRate}" Minimum="0" Maximum="240"
+                                           FormatString="0" Increment="1" Margin="0,4,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Video track" Classes="setting-label" />
+                            <TextBlock Text="Select specific video track (0 = auto)" Classes="setting-desc" />
+                            <NumericUpDown Value="{Binding VideoTrack}" Minimum="0" Maximum="65535"
+                                           FormatString="0" Increment="1" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

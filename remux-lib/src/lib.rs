@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod demux;
 pub mod mp4mux;
 pub mod probe;
+pub mod thumbnail;
 
 use std::io;
 use std::path::Path;
@@ -25,6 +26,9 @@ pub struct RemuxConfig {
     pub mp4: bool,
     /// Video track number (7 = H.264, 1003 = HEVC, 1004 = AV1, 0 = auto-detect).
     pub video_track: u16,
+    /// Override the base output filename (without extension or timecode).
+    /// When `None`, the base name is derived from the input .ubv filename.
+    pub base_name: Option<String>,
 }
 
 impl Default for RemuxConfig {
@@ -37,6 +41,7 @@ impl Default for RemuxConfig {
             output_folder: "./".to_string(),
             mp4: true,
             video_track: 0,
+            base_name: None,
         }
     }
 }
@@ -324,15 +329,20 @@ where
             }
         };
 
-        // Strip extension and trailing Unifi timestamp component
-        let base_filename = Path::new(ubv_path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
+        // Use config.base_name if provided, otherwise strip extension and
+        // trailing Unifi timestamp component from the input filename.
+        let base_filename = if let Some(ref name) = config.base_name {
+            name.clone()
+        } else {
+            let stem = Path::new(ubv_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
 
-        let base_filename = match base_filename.rfind('_') {
-            Some(idx) => base_filename[..idx].to_string(),
-            None => base_filename,
+            match stem.rfind('_') {
+                Some(idx) => stem[..idx].to_string(),
+                None => stem,
+            }
         };
 
         // Get start timecode for filename

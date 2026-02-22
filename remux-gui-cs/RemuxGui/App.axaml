@@ -3,8 +3,28 @@
              x:Class="RemuxGui.App"
              Name="UBV Remux"
              RequestedThemeVariant="Default">
+    <Application.Resources>
+        <SolidColorBrush x:Key="NavActiveBg" Color="#266C8CFF" />
+        <SolidColorBrush x:Key="NavActiveFg" Color="#6C8CFF" />
+    </Application.Resources>
     <Application.Styles>
         <FluentTheme />
+
+        <!-- Nav item button style -->
+        <Style Selector="Button.nav-item">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.nav-item:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListLowBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+        </Style>
     </Application.Styles>
     <NativeMenu.Menu>
         <NativeMenu>

@@ -3,6 +3,7 @@ use std::io;
 use std::sync::Once;
 
 extern crate ffmpeg_next as ffmpeg;
+extern crate ffmpeg_sys_next as ffi;
 use ffmpeg::{codec, encoder, format, Rational};
 
 use crate::analysis::{generate_timecode, AnalysedPartition, AnalysedTrack};
@@ -11,9 +12,71 @@ use ubv::track::{is_audio_track, track_info, TrackType};
 
 static FFMPEG_INIT: Once = Once::new();
 
+/// On x86/x86_64, `ffi::va_list` is `[__va_list_tag; 1]` but FFmpeg function
+/// signatures (including callback types) expect `*mut __va_list_tag`. In C the
+/// array decays to a pointer automatically; in Rust we must match the expected
+/// pointer type explicitly.
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+type VaListFmt = *mut ffi::__va_list_tag;
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
+type VaListFmt = ffi::va_list;
+
+/// Custom FFmpeg log callback that routes messages through Rust's `log` crate.
+///
+/// Custom callbacks bypass FFmpeg's built-in level filtering, so we check
+/// `av_log_get_level()` ourselves. Everything that passes is logged at INFO
+/// to ensure it actually appears — FFmpeg's own log level controls verbosity.
+///
+/// # Safety
+/// Called by FFmpeg's internal logging system. Uses `av_log_format_line2` to
+/// safely format the variadic arguments into a fixed buffer.
+unsafe extern "C" fn ffmpeg_log_callback(
+    ptr: *mut libc::c_void,
+    level: libc::c_int,
+    fmt: *const libc::c_char,
+    vl: VaListFmt,
+) {
+    // Custom callbacks bypass FFmpeg's own level filter, so replicate it here.
+    if level > unsafe { ffi::av_log_get_level() } {
+        return;
+    }
+
+    let mut buf = [0u8; 1024];
+    let mut print_prefix: libc::c_int = 1;
+    let written = unsafe {
+        ffi::av_log_format_line2(
+            ptr,
+            level,
+            fmt,
+            vl,
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len() as libc::c_int,
+            &mut print_prefix,
+        )
+    };
+    if written < 0 {
+        return;
+    }
+
+    let len = (written as usize).min(buf.len() - 1);
+    // Trim trailing whitespace/newlines that FFmpeg appends.
+    let msg = std::str::from_utf8(&buf[..len])
+        .unwrap_or_default()
+        .trim_end();
+    if msg.is_empty() {
+        return;
+    }
+
+    log::info!(target: "ffmpeg", "{}", msg);
+}
+
 fn ensure_init() {
     FFMPEG_INIT.call_once(|| {
         ffmpeg::init().expect("Failed to initialise FFmpeg");
+        unsafe {
+            ffi::av_log_set_callback(Some(ffmpeg_log_callback));
+        }
     });
 }
 

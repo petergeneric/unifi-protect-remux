@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -10,6 +11,12 @@ namespace RemuxGui.Views;
 
 public partial class AboutWindow : Window
 {
+    public static async Task ShowAbout(Window owner)
+    {
+        var about = new AboutWindow();
+        await about.ShowDialog(owner);
+    }
+
     public AboutWindow()
     {
         InitializeComponent();

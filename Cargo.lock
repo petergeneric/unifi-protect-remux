@@ -627,6 +627,7 @@ dependencies = [
  "chrono",
  "ffmpeg-next",
  "ffmpeg-sys-next",
+ "libc",
  "log",
  "ubv",
 ]
