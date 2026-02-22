@@ -28,6 +28,7 @@ public partial class QueuedFile : ObservableObject
     {
         Path = path;
         FileName = System.IO.Path.GetFileName(path);
+        OutputFiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(StatusLabel));
     }
 
     public string StatusLabel => Status switch
