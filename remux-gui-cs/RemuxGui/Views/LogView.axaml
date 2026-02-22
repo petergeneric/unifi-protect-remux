@@ -22,9 +22,7 @@
 
     <DockPanel>
         <!-- Top toolbar -->
-        <Border DockPanel.Dock="Top" Padding="16,10"
-                BorderThickness="0,0,0,1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+        <Border DockPanel.Dock="Top" Padding="16,10">
             <DockPanel>
                 <TextBlock Text="Log" FontSize="18" FontWeight="SemiBold"
                            VerticalAlignment="Center" />
