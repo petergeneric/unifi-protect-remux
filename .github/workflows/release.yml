@@ -183,7 +183,7 @@ jobs:
           $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
           $stagingDir = (Resolve-Path staging).Path
           & "$nsisDir\makensis.exe" /DSTAGING_DIR=$stagingDir /DVERSION=$version installer\windows.nsi
-          Rename-Item unifi-protect-remux-windows-x86_64-setup.exe gui-unsigned-windows-x86_64.exe
+          Rename-Item installer\unifi-protect-remux-windows-x86_64-setup.exe gui-unsigned-windows-x86_64.exe
 
       - name: Upload artifact (Unix)
         if: runner.os != 'Windows'
