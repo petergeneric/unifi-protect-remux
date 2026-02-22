@@ -13,8 +13,6 @@
     <Window.Resources>
         <conv:StatusColorConverter x:Key="StatusColorConverter" />
         <conv:LogLevelColorConverter x:Key="LogLevelColorConverter" />
-        <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
-        <conv:InverseBoolConverter x:Key="InverseBool" />
     </Window.Resources>
 
     <Window.Styles>
@@ -77,6 +75,9 @@
                             Padding="16,6" />
                     <Button Content="Clear" Command="{Binding ClearCommand}"
                             IsEnabled="{Binding !IsBusy}"
+                            Padding="16,6" />
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"
+                            IsVisible="{Binding IsBusy}"
                             Padding="16,6" />
                 </StackPanel>
             </DockPanel>
@@ -182,9 +183,7 @@
                                        FontSize="12" VerticalAlignment="Center"
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
                                 <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}{0} file(s)">
-                                        <Binding Path="Files.Count" />
-                                    </MultiBinding>
+                                    <Binding Path="Files.Count" StringFormat="{}{0} file(s)" />
                                 </TextBlock.Text>
                             </TextBlock>
                         </DockPanel>
@@ -237,9 +236,7 @@
                                                            Foreground="{Binding Level, Converter={StaticResource LogLevelColorConverter}}"
                                                            Width="42">
                                                     <TextBlock.Text>
-                                                        <MultiBinding StringFormat="[{0}]">
-                                                            <Binding Path="Level" />
-                                                        </MultiBinding>
+                                                        <Binding Path="Level" StringFormat="[{0}]" />
                                                     </TextBlock.Text>
                                                 </TextBlock>
                                                 <TextBlock FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
