@@ -84,7 +84,7 @@ jobs:
           path: target/nextest/ci/junit.xml
           reporter: java-junit
 
-      - name: Package
+      - name: Stage CLI binaries
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force staging
@@ -93,15 +93,20 @@ jobs:
           Copy-Item target/x86_64-pc-windows-msvc/release/ubv-anonymise.exe staging/
           # Bundle FFmpeg DLLs so users don't need a separate FFmpeg install
           Copy-Item "$env:FFMPEG_DIR\bin\*.dll" staging/
-          Compress-Archive -Path staging/* -DestinationPath cli-windows-x86_64.zip
 
+      - name: Upload artifact (CLI)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-windows-x86_64
+          path: staging/
+
+      - name: Stage GUI and build installer
+        shell: pwsh
+        run: |
           # Add GUI to staging for the NSIS installer
           New-Item -ItemType Directory -Force staging/RemuxGui
           Copy-Item -Recurse publish/win-x64/* staging/RemuxGui/
 
-      - name: Build NSIS installer
-        shell: pwsh
-        run: |
           choco install nsis --yes --no-progress
           $nsisDir = "${env:ProgramFiles(x86)}\NSIS"
           Expand-Archive installer\nsis-plugins\EnVar_plugin.zip -DestinationPath $nsisDir
@@ -109,12 +114,6 @@ jobs:
           $stagingDir = (Resolve-Path staging).Path
           & "$nsisDir\makensis.exe" /DSTAGING_DIR=$stagingDir /DVERSION=$version installer\windows.nsi
           Move-Item installer\cli-windows-x86_64-setup.exe gui-unsigned-windows-x86_64.exe
-
-      - name: Upload artifact (zip)
-        uses: actions/upload-artifact@v4
-        with:
-          name: cli-windows-x86_64
-          path: cli-windows-x86_64.zip
 
       - name: Upload artifact (GUI installer)
         uses: actions/upload-artifact@v4
@@ -126,6 +125,11 @@ jobs:
         id: tag
         shell: bash
         run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release archive
+        if: steps.tag.outputs.tag != ''
+        shell: pwsh
+        run: Compress-Archive -Path staging/remux.exe,staging/ubv-info.exe,staging/ubv-anonymise.exe,staging/*.dll -DestinationPath cli-windows-x86_64.zip
 
       - name: Upload release asset (zip)
         if: steps.tag.outputs.tag != ''

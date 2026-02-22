@@ -280,12 +280,14 @@ jobs:
 
             xcrun stapler staple "gui-macos-${{ matrix.arch }}.dmg"
             echo "GUI_OUTPUT=gui-macos-${{ matrix.arch }}.dmg" >> "$GITHUB_ENV"
+            echo "GUI_ARTIFACT_PATH=gui-macos-${{ matrix.arch }}.dmg" >> "$GITHUB_ENV"
             echo "GUI_ARTIFACT_NAME=gui-macos-${{ matrix.arch }}" >> "$GITHUB_ENV"
           else
             # --- Unsigned fallback: tarball ---
             echo "=== Creating unsigned GUI tarball ==="
             tar czf "gui-macos-unsigned-${{ matrix.arch }}.tar.gz" --exclude '*.dSYM' -C staging-gui .
             echo "GUI_OUTPUT=gui-macos-unsigned-${{ matrix.arch }}.tar.gz" >> "$GITHUB_ENV"
+            echo "GUI_ARTIFACT_PATH=staging-gui/" >> "$GITHUB_ENV"
             echo "GUI_ARTIFACT_NAME=gui-macos-unsigned-${{ matrix.arch }}" >> "$GITHUB_ENV"
           fi
 
@@ -293,13 +295,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          path: staging/
 
       - name: Upload artifact (GUI)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.GUI_ARTIFACT_NAME }}
-          path: ${{ env.GUI_OUTPUT }}
+          path: ${{ env.GUI_ARTIFACT_PATH }}
 
       - name: Determine release tag
         id: tag

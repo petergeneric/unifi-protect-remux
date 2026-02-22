@@ -60,17 +60,20 @@ jobs:
           cp target/release/remux staging/
           cp target/release/ubv-info staging/
           cp target/release/ubv-anonymise staging/
-          tar czf cli-linux-aarch64-legacy.tar.gz -C staging .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cli-linux-aarch64-legacy
-          path: cli-linux-aarch64-legacy.tar.gz
+          path: staging/
 
       - name: Determine release tag
         id: tag
         run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release archive
+        if: steps.tag.outputs.tag != ''
+        run: tar czf cli-linux-aarch64-legacy.tar.gz -C staging .
 
       - name: Upload release asset
         if: steps.tag.outputs.tag != ''

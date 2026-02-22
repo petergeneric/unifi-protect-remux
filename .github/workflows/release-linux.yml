@@ -81,17 +81,20 @@ jobs:
           cp target/${{ matrix.target }}/release/remux staging/
           cp target/${{ matrix.target }}/release/ubv-info staging/
           cp target/${{ matrix.target }}/release/ubv-anonymise staging/
-          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          path: staging/
 
       - name: Determine release tag
         id: tag
         run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release archive
+        if: steps.tag.outputs.tag != ''
+        run: tar czf ${{ matrix.artifact }}.tar.gz -C staging .
 
       - name: Upload release asset
         if: steps.tag.outputs.tag != ''
