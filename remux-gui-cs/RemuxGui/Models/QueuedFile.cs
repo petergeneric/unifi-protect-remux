@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
+using System.IO;
 
 namespace RemuxGui.Models;
 
@@ -15,12 +16,17 @@ public partial class QueuedFile : ObservableObject
 {
     public string Path { get; }
     public string FileName { get; }
+    public long? FileSize { get; }
+    public string? FileSizeLabel { get; }
 
     [ObservableProperty]
     private FileStatus _status = FileStatus.Pending;
 
     [ObservableProperty]
     private string? _error;
+
+    [ObservableProperty]
+    private int? _partitionCount;
 
     public ObservableCollection<string> OutputFiles { get; } = new();
 
@@ -29,6 +35,20 @@ public partial class QueuedFile : ObservableObject
         Path = path;
         FileName = System.IO.Path.GetFileName(path);
         OutputFiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(StatusLabel));
+
+        try
+        {
+            var info = new FileInfo(path);
+            if (info.Exists)
+            {
+                FileSize = info.Length;
+                FileSizeLabel = FormatFileSize(info.Length);
+            }
+        }
+        catch
+        {
+            // Ignore errors reading file info
+        }
     }
 
     public string StatusLabel => Status switch
@@ -45,5 +65,16 @@ public partial class QueuedFile : ObservableObject
     partial void OnStatusChanged(FileStatus value)
     {
         OnPropertyChanged(nameof(StatusLabel));
+    }
+
+    public static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} B";
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024.0:F0} KB";
+        if (bytes < 1024L * 1024 * 1024)
+            return $"{bytes / (1024.0 * 1024):F0} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
     }
 }

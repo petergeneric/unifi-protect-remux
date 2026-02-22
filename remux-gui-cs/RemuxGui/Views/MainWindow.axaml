@@ -2,276 +2,80 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RemuxGui.ViewModels"
         xmlns:conv="using:RemuxGui.Converters"
-        xmlns:models="using:RemuxGui.Models"
+        xmlns:views="using:RemuxGui.Views"
         x:Class="RemuxGui.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="UBV Remux"
-        Width="860" Height="640"
-        MinWidth="560" MinHeight="450"
+        Width="1000" Height="640"
+        MinWidth="700" MinHeight="480"
         DragDrop.AllowDrop="True">
 
     <Window.Resources>
-        <conv:StatusColorConverter x:Key="StatusColorConverter" />
-        <conv:LogLevelColorConverter x:Key="LogLevelColorConverter" />
+        <conv:ViewIndexConverter x:Key="ViewIndexConverter" />
     </Window.Resources>
 
-    <Window.Styles>
-        <!-- Section header style -->
-        <Style Selector="TextBlock.section-header">
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-            <Setter Property="Margin" Value="0,0,0,6" />
-        </Style>
-
-        <!-- File row hover effect -->
-        <Style Selector="Border.file-row">
-            <Setter Property="CornerRadius" Value="4" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Background" Value="Transparent" />
-        </Style>
-        <Style Selector="Border.file-row:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListLowBrush}" />
-        </Style>
-
-        <!-- Settings group label -->
-        <Style Selector="TextBlock.settings-label">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-            <Setter Property="Margin" Value="0,0,0,4" />
-        </Style>
-    </Window.Styles>
-
     <DockPanel>
-        <!-- Bottom action bar -->
-        <Border DockPanel.Dock="Bottom"
-                Padding="16,10"
-                BorderThickness="0,1,0,0"
+        <!-- Left Sidebar -->
+        <Border DockPanel.Dock="Left" Width="200"
+                BorderThickness="0,0,1,0"
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
             <DockPanel>
-                <!-- Right side: progress indicator -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="Processing..."
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                               FontSize="12"
-                               IsVisible="{Binding IsProcessing}" />
-                    <TextBlock Text="Running diagnostics..."
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                               FontSize="12"
-                               IsVisible="{Binding IsDiagnosticsProcessing}" />
-                    <ProgressBar IsIndeterminate="True" Width="120" Height="4"
-                                 IsVisible="{Binding IsBusy}" VerticalAlignment="Center" />
-                </StackPanel>
+                <!-- Brand header -->
+                <Border DockPanel.Dock="Top" Padding="16,14"
+                        BorderThickness="0,0,0,1"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+                    <TextBlock Text="UBV Remux" FontSize="17" FontWeight="SemiBold" />
+                </Border>
 
-                <!-- Left side: action buttons -->
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Content="Remux" Command="{Binding StartCommand}"
-                            Classes="accent"
-                            Padding="20,6" />
-                    <Button Content="Diagnostics" Command="{Binding DiagnosticsCommand}"
-                            Padding="16,6" />
-                    <Button Content="Clear" Command="{Binding ClearCommand}"
-                            IsEnabled="{Binding !IsBusy}"
-                            Padding="16,6" />
-                    <Button Content="Cancel" Command="{Binding CancelCommand}"
-                            IsVisible="{Binding IsBusy}"
-                            Padding="16,6" />
+                <!-- Version footer -->
+                <Border DockPanel.Dock="Bottom" Padding="16,10"
+                        BorderThickness="0,1,0,0"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        x:Name="VersionFooter">
+                    <TextBlock Text="{Binding VersionString}"
+                               FontSize="11"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Cursor="Hand" />
+                </Border>
+
+                <!-- Nav items -->
+                <StackPanel Margin="8,8" Spacing="2">
+                    <Button Classes="nav-item"
+                            Command="{Binding SetViewCommand}"
+                            CommandParameter="0"
+                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#x25F2;" FontSize="15" VerticalAlignment="Center" />
+                            <TextBlock Text="Files" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="nav-item"
+                            Command="{Binding SetViewCommand}"
+                            CommandParameter="1"
+                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#x2699;" FontSize="15" VerticalAlignment="Center" />
+                            <TextBlock Text="Settings" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="nav-item"
+                            Command="{Binding SetViewCommand}"
+                            CommandParameter="2"
+                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#x2630;" FontSize="15" VerticalAlignment="Center" />
+                            <TextBlock Text="Log" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <!-- Settings panel (right side) -->
-        <Border DockPanel.Dock="Right" Width="260" Padding="16"
-                BorderThickness="1,0,0,0"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                IsVisible="{Binding ShowSettings}">
-            <DockPanel>
-                <!-- Settings header -->
-                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-                    <TextBlock Text="Settings" FontSize="15" FontWeight="SemiBold"
-                               VerticalAlignment="Center" />
-                    <Button DockPanel.Dock="Right" Content="Done"
-                            HorizontalAlignment="Right"
-                            Click="OnCloseSettings"
-                            Padding="12,4" FontSize="12" />
-                </DockPanel>
-
-                <ScrollViewer>
-                    <StackPanel Spacing="16">
-                        <!-- Streams group -->
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="STREAMS" Classes="section-header" />
-                            <CheckBox Content="Extract audio" IsChecked="{Binding WithAudio}" />
-                            <CheckBox Content="Extract video" IsChecked="{Binding WithVideo}" />
-                        </StackPanel>
-
-                        <!-- Output group -->
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="OUTPUT" Classes="section-header" />
-                            <CheckBox Content="MP4 output" IsChecked="{Binding Mp4Output}" />
-                            <CheckBox Content="Fast start (moov at front)" IsChecked="{Binding FastStart}" />
-
-                            <TextBlock Text="Output folder" Classes="settings-label" Margin="0,6,0,4" />
-                            <DockPanel>
-                                <Button DockPanel.Dock="Right" Content="..." Click="OnBrowseOutputFolder"
-                                        Margin="6,0,0,0" Padding="10,4" VerticalAlignment="Center" />
-                                <TextBox Text="{Binding OutputFolder}" VerticalAlignment="Center"
-                                         FontSize="12" />
-                            </DockPanel>
-                        </StackPanel>
-
-                        <!-- Advanced group -->
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="ADVANCED" Classes="section-header" />
-
-                            <TextBlock Text="Force framerate (0 = auto)" Classes="settings-label" />
-                            <NumericUpDown Value="{Binding ForceRate}" Minimum="0" Maximum="240"
-                                           FormatString="0" Increment="1" />
-
-                            <TextBlock Text="Video track (0 = auto)" Classes="settings-label" Margin="0,6,0,4" />
-                            <NumericUpDown Value="{Binding VideoTrack}" Minimum="0" Maximum="65535"
-                                           FormatString="0" Increment="1" />
-                        </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
-            </DockPanel>
-        </Border>
-
-        <!-- Main content area -->
-        <DockPanel Margin="16">
-            <!-- Toolbar row -->
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-                <TextBlock Text="UBV Remux" FontSize="20" FontWeight="SemiBold"
-                           VerticalAlignment="Center" />
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6"
-                            HorizontalAlignment="Right">
-                    <Button Content="About" Click="OnHelpClick" Padding="12,4" FontSize="12" />
-                    <ToggleButton Content="Settings" IsChecked="{Binding ShowSettings}"
-                                  Padding="12,4" FontSize="12" />
-                </StackPanel>
-            </DockPanel>
-
-            <!-- Drop zone / file input area -->
-            <Border DockPanel.Dock="Top"
-                    BorderThickness="1" CornerRadius="8" Padding="20,16"
-                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                    Margin="0,0,0,12"
-                    x:Name="DropZone">
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="Browse..."
-                            Click="OnBrowseFiles" IsEnabled="{Binding !IsProcessing}"
-                            VerticalAlignment="Center" Padding="16,6" />
-                    <TextBlock Text="Drop .ubv files here or click Browse to add files"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-                </DockPanel>
-            </Border>
-
-            <!-- Scrollable content below drop zone -->
-            <ScrollViewer>
-                <StackPanel Spacing="16">
-
-                    <!-- File list -->
-                    <StackPanel IsVisible="{Binding Files.Count}" Spacing="0">
-                        <DockPanel Margin="0,0,0,6">
-                            <TextBlock Text="FILES" Classes="section-header" Margin="0" />
-                            <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right"
-                                       FontSize="12" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
-                                <TextBlock.Text>
-                                    <Binding Path="Files.Count" StringFormat="{}{0} file(s)" />
-                                </TextBlock.Text>
-                            </TextBlock>
-                        </DockPanel>
-                        <Border BorderThickness="1" CornerRadius="6"
-                                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                ClipToBounds="True">
-                            <ItemsControl ItemsSource="{Binding Files}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="models:QueuedFile">
-                                        <Border Classes="file-row"
-                                                BorderThickness="0,0,0,1"
-                                                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
-                                            <DockPanel>
-                                                <!-- Status badge -->
-                                                <Border DockPanel.Dock="Right"
-                                                        CornerRadius="3" Padding="8,2" Margin="10,0,0,0"
-                                                        VerticalAlignment="Center"
-                                                        Background="{Binding Status, Converter={StaticResource StatusColorConverter}}">
-                                                    <TextBlock Text="{Binding StatusLabel}"
-                                                               FontSize="11" FontWeight="SemiBold"
-                                                               Foreground="White" />
-                                                </Border>
-                                                <!-- File name -->
-                                                <TextBlock Text="{Binding FileName}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           VerticalAlignment="Center"
-                                                           FontSize="13" />
-                                            </DockPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Border>
-                    </StackPanel>
-
-                    <!-- Log output -->
-                    <StackPanel IsVisible="{Binding LogLines.Count}" Spacing="0">
-                        <TextBlock Text="LOG" Classes="section-header" />
-                        <Border BorderThickness="1" CornerRadius="6" Padding="10,8"
-                                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
-                            <ScrollViewer MaxHeight="200" x:Name="LogScrollViewer">
-                                <ItemsControl ItemsSource="{Binding LogLines}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <DockPanel Margin="0,1">
-                                                <TextBlock DockPanel.Dock="Left"
-                                                           FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
-                                                           FontSize="11"
-                                                           Foreground="{Binding Level, Converter={StaticResource LogLevelColorConverter}}"
-                                                           Width="42">
-                                                    <TextBlock.Text>
-                                                        <Binding Path="Level" StringFormat="[{0}]" />
-                                                    </TextBlock.Text>
-                                                </TextBlock>
-                                                <TextBlock FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
-                                                           FontSize="11"
-                                                           TextWrapping="Wrap"
-                                                           Margin="4,0,0,0"
-                                                           Text="{Binding Message}" />
-                                            </DockPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                        </Border>
-                    </StackPanel>
-
-                    <!-- Output files -->
-                    <StackPanel IsVisible="{Binding OutputFiles.Count}" Spacing="0">
-                        <TextBlock Text="OUTPUT FILES" Classes="section-header" />
-                        <Border BorderThickness="1" CornerRadius="6" Padding="10,8"
-                                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
-                            <ItemsControl ItemsSource="{Binding OutputFiles}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}"
-                                                   FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
-                                                   FontSize="11" Margin="0,2"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Border>
-                    </StackPanel>
-
-                </StackPanel>
-            </ScrollViewer>
-        </DockPanel>
+        <!-- Content area: three views, visibility-toggled -->
+        <Grid>
+            <views:FilesView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}" />
+            <views:SettingsView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}" />
+            <views:LogView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}" />
+        </Grid>
     </DockPanel>
 </Window>

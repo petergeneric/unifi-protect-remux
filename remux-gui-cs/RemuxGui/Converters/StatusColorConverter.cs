@@ -8,10 +8,10 @@ namespace RemuxGui.Converters;
 
 public class StatusColorConverter : IValueConverter
 {
-    private static readonly IBrush FailedBrush = new SolidColorBrush(Color.FromRgb(200, 60, 60));
-    private static readonly IBrush ProcessingBrush = new SolidColorBrush(Color.FromRgb(180, 140, 20));
-    private static readonly IBrush CompletedBrush = new SolidColorBrush(Color.FromRgb(40, 160, 60));
-    private static readonly IBrush PendingBrush = new SolidColorBrush(Color.FromRgb(110, 110, 120));
+    private static readonly IBrush FailedBrush = new SolidColorBrush(Color.Parse("#C83C3C"));
+    private static readonly IBrush ProcessingBrush = new SolidColorBrush(Color.Parse("#B48C14"));
+    private static readonly IBrush CompletedBrush = new SolidColorBrush(Color.Parse("#28A03C"));
+    private static readonly IBrush PendingBrush = new SolidColorBrush(Color.Parse("#6E6E78"));
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {

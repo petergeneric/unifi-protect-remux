@@ -1,0 +1,239 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RemuxGui.ViewModels"
+             xmlns:conv="using:RemuxGui.Converters"
+             xmlns:models="using:RemuxGui.Models"
+             x:Class="RemuxGui.Views.FilesView"
+             x:DataType="vm:MainViewModel">
+
+    <UserControl.Resources>
+        <conv:StatusColorConverter x:Key="StatusColorConverter" />
+        <conv:StatusForegroundConverter x:Key="StatusForegroundConverter" />
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.section-header">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style Selector="TextBlock.detail-label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+        </Style>
+        <Style Selector="TextBlock.detail-value">
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <!-- Hide remove button by default, show on row hover -->
+        <Style Selector="ListBoxItem Button.remove-btn">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="ListBoxItem:pointerover Button.remove-btn">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+        <!-- Top toolbar -->
+        <Border DockPanel.Dock="Top" Padding="16,10"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+            <DockPanel>
+                <TextBlock Text="Files" FontSize="18" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+
+                <!-- Right: progress indicator -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="Processing..."
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               FontSize="12"
+                               IsVisible="{Binding IsProcessing}" />
+                    <TextBlock Text="Running diagnostics..."
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               FontSize="12"
+                               IsVisible="{Binding IsDiagnosticsProcessing}" />
+                    <ProgressBar IsIndeterminate="True" Width="120" Height="4"
+                                 IsVisible="{Binding IsBusy}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- Cancel button (visible when busy) -->
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsVisible="{Binding IsBusy}" Padding="16,6" Margin="16,0,0,0"
+                        VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+
+        <!-- Bottom action bar with Remux -->
+        <Border DockPanel.Dock="Bottom" Padding="16,10"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+            <Button Content="Remux" Command="{Binding StartCommand}"
+                    Classes="accent" Padding="24,8"
+                    ToolTip.Tip="Convert queued .ubv files into standard MP4 files" />
+        </Border>
+
+        <!-- Two-pane layout -->
+        <Grid ColumnDefinitions="*,320">
+            <!-- Left pane: file list with inline drop prompt -->
+            <Border Grid.Column="0" Margin="16"
+                    BorderThickness="1" CornerRadius="6"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+                <DockPanel>
+                    <!-- Footer: drop / browse prompt -->
+                    <Border DockPanel.Dock="Bottom"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            Padding="14,10"
+                            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                            Cursor="Hand"
+                            x:Name="BrowseFooter">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Browse..."
+                                    Click="OnBrowseFiles" IsEnabled="{Binding !IsProcessing}"
+                                    VerticalAlignment="Center" Padding="14,5" FontSize="12" />
+                            <TextBlock Text="Drop .ubv files here or click Browse"
+                                       VerticalAlignment="Center" FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                        </DockPanel>
+                    </Border>
+
+                    <!-- File list -->
+                    <ListBox x:Name="FileList"
+                             ItemsSource="{Binding Files}"
+                             SelectedItem="{Binding SelectedFile}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:QueuedFile">
+                                <DockPanel Margin="4,4">
+                                    <!-- Remove button (visible on hover) -->
+                                    <Button DockPanel.Dock="Right" Classes="remove-btn"
+                                            Content="&#x2715;" FontSize="12"
+                                            Padding="6,2" Margin="4,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Background="Transparent" BorderThickness="0"
+                                            Cursor="Hand"
+                                            Command="{Binding #FileList.((vm:MainViewModel)DataContext).RemoveFileCommand}"
+                                            CommandParameter="{Binding}" />
+                                    <!-- Status badge -->
+                                    <Border DockPanel.Dock="Right"
+                                            CornerRadius="3" Padding="8,2" Margin="10,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Background="{Binding Status, Converter={StaticResource StatusColorConverter}}">
+                                        <TextBlock Text="{Binding StatusLabel}"
+                                                   FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{Binding Status, Converter={StaticResource StatusForegroundConverter}}" />
+                                    </Border>
+                                    <!-- File info -->
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding FileName}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   FontSize="13" />
+                                        <TextBlock Text="{Binding FileSizeLabel}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                                   IsVisible="{Binding FileSizeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- Right pane: detail panel -->
+            <Border Grid.Column="1"
+                    BorderThickness="1,0,0,0"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    IsVisible="{Binding SelectedFile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <DockPanel Margin="16">
+                    <!-- Header -->
+                    <TextBlock DockPanel.Dock="Top" Text="File Details"
+                               FontSize="15" FontWeight="SemiBold"
+                               Margin="0,0,0,12" />
+
+                    <!-- Actions at bottom -->
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8"
+                                Margin="0,12,0,0">
+                        <Button Content="Diagnostics"
+                                Command="{Binding DiagnosticsCommand}"
+                                Padding="16,6"
+                                ToolTip.Tip="Dump the internal structure of the .ubv file for troubleshooting" />
+                        <Button Content="View Log"
+                                Command="{Binding ViewFileLogCommand}"
+                                IsVisible="{Binding LogLines.Count}"
+                                Padding="16,6" />
+                    </StackPanel>
+
+                    <!-- Detail body -->
+                    <ScrollViewer>
+                        <StackPanel Spacing="12" DataContext="{Binding SelectedFile}">
+                            <!-- File name -->
+                            <TextBlock Text="{Binding FileName}" FontSize="14" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+
+                            <!-- Info grid -->
+                            <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Status" Classes="detail-label" />
+                                <Border Grid.Row="0" Grid.Column="1"
+                                        CornerRadius="3" Padding="8,1" HorizontalAlignment="Left"
+                                        Background="{Binding Status, Converter={StaticResource StatusColorConverter}}">
+                                    <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{Binding Status, Converter={StaticResource StatusForegroundConverter}}" />
+                                </Border>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Size" Classes="detail-label" Margin="0,6,0,0"
+                                           IsVisible="{Binding FileSizeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding FileSizeLabel}" Classes="detail-value" Margin="0,6,0,0"
+                                           IsVisible="{Binding FileSizeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Partitions" Classes="detail-label" Margin="0,6,0,0"
+                                           IsVisible="{Binding PartitionCount, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Classes="detail-value" Margin="0,6,0,0"
+                                           IsVisible="{Binding PartitionCount, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                    <TextBlock.Text>
+                                        <Binding Path="PartitionCount" StringFormat="{}{0}" />
+                                    </TextBlock.Text>
+                                </TextBlock>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Error" Classes="detail-label" Margin="0,6,0,0"
+                                           Foreground="#E85050"
+                                           IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Error}" Classes="detail-value" Margin="0,6,0,0"
+                                           Foreground="#E85050" TextWrapping="Wrap"
+                                           IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            </Grid>
+
+                            <!-- Output files -->
+                            <StackPanel IsVisible="{Binding OutputFiles.Count}" Spacing="2" Margin="0,8,0,0">
+                                <TextBlock Text="OUTPUT FILES" Classes="section-header" />
+                                <ItemsControl ItemsSource="{Binding OutputFiles}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Click="OnOutputFileClick" Tag="{Binding}"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Padding="0,2" Cursor="Hand"
+                                                    HorizontalAlignment="Left"
+                                                    HorizontalContentAlignment="Left">
+                                                <TextBlock Text="{Binding Converter={x:Static conv:FileNameConverter.Instance}}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource SystemControlForegroundAccentBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           TextDecorations="Underline" />
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</UserControl>

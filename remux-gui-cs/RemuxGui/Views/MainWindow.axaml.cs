@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Controls;
@@ -19,6 +18,8 @@ public partial class MainWindow : Window
 
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
+
+        VersionFooter.PointerPressed += OnVersionClick;
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
@@ -50,68 +51,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnBrowseFiles(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel == null) return;
-
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Select UBV files",
-            AllowMultiple = true,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("UBV files") { Patterns = new[] { "*.ubv", "*.ubv.gz" } },
-                new FilePickerFileType("All files") { Patterns = new[] { "*" } }
-            }
-        });
-
-        if (files.Count == 0) return;
-
-        var paths = files
-            .Select(f => f.TryGetLocalPath())
-            .Where(p => p != null)
-            .Cast<string>()
-            .ToList();
-
-        var warned = ViewModel.AddFiles(paths);
-        if (warned.Count > 0)
-        {
-            await ShowLowResWarning(warned);
-        }
-    }
-
-    private async void OnBrowseOutputFolder(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel == null) return;
-
-        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = "Select output folder",
-            AllowMultiple = false
-        });
-
-        if (folders.Count > 0)
-        {
-            var path = folders[0].TryGetLocalPath();
-            if (path != null)
-            {
-                ViewModel.OutputFolder = path;
-            }
-        }
-    }
-
-    private void OnCloseSettings(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel != null)
-            ViewModel.ShowSettings = false;
-    }
-
-    private async void OnHelpClick(object? sender, RoutedEventArgs e)
+    private async void OnVersionClick(object? sender, PointerPressedEventArgs e)
     {
         await AboutWindow.ShowAbout(this);
     }
 
-    private async System.Threading.Tasks.Task ShowLowResWarning(List<string> warnedPaths)
+    internal async System.Threading.Tasks.Task ShowLowResWarning(List<string> warnedPaths)
     {
         var fileNames = warnedPaths
             .Select(p => System.IO.Path.GetFileName(p))

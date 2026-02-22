@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -19,6 +20,7 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<QueuedFile> Files { get; } = new();
     public ObservableCollection<LogEntry> LogLines { get; } = new();
     public ObservableCollection<string> OutputFiles { get; } = new();
+    public ObservableCollection<LogEntry> FilteredLogLines { get; } = new();
 
     [ObservableProperty]
     private bool _isProcessing;
@@ -26,8 +28,38 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isDiagnosticsProcessing;
 
+    // Navigation
     [ObservableProperty]
-    private bool _showSettings;
+    private int _currentView;
+
+    [ObservableProperty]
+    private QueuedFile? _selectedFile;
+
+    // Log filtering
+    [ObservableProperty]
+    private string _logFilterLevel = "All";
+
+    [ObservableProperty]
+    private string _logSearchText = "";
+
+    [ObservableProperty]
+    private int? _logFileFilter;
+
+    [ObservableProperty]
+    private int _infoCount;
+
+    [ObservableProperty]
+    private int _warnCount;
+
+    [ObservableProperty]
+    private int _errorCount;
+
+    public string? LogFileFilterLabel => LogFileFilter is int idx && idx < Files.Count
+        ? Files[idx].FileName
+        : null;
+
+    // Version
+    public string VersionString { get; private set; } = "";
 
     // Settings
     [ObservableProperty]
@@ -62,7 +94,6 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanStart));
         StartCommand.NotifyCanExecuteChanged();
         DiagnosticsCommand.NotifyCanExecuteChanged();
-        ClearCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsDiagnosticsProcessingChanged(bool value)
@@ -71,7 +102,22 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanStart));
         StartCommand.NotifyCanExecuteChanged();
         DiagnosticsCommand.NotifyCanExecuteChanged();
-        ClearCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnLogFilterLevelChanged(string value)
+    {
+        RebuildFilteredLogLines();
+    }
+
+    partial void OnLogSearchTextChanged(string value)
+    {
+        RebuildFilteredLogLines();
+    }
+
+    partial void OnLogFileFilterChanged(int? value)
+    {
+        OnPropertyChanged(nameof(LogFileFilterLabel));
+        RebuildFilteredLogLines();
     }
 
     public MainViewModel()
@@ -82,6 +128,112 @@ public partial class MainViewModel : ViewModelBase
             StartCommand.NotifyCanExecuteChanged();
             DiagnosticsCommand.NotifyCanExecuteChanged();
         };
+
+        LogLines.CollectionChanged += OnLogLinesChanged;
+
+        LoadVersionString();
+    }
+
+    private void LoadVersionString()
+    {
+        try
+        {
+            var info = RemuxNative.GetVersion();
+            var commit = info.GitCommit;
+            if (commit.Length > 7)
+                commit = commit[..7];
+
+            if (!string.IsNullOrEmpty(commit))
+                VersionString = $"v{info.Version} \u00b7 {commit}";
+            else
+                VersionString = $"v{info.Version}";
+        }
+        catch
+        {
+            VersionString = "";
+        }
+    }
+
+    private void OnLogLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        UpdateLogCounts();
+        RebuildFilteredLogLines();
+    }
+
+    private void UpdateLogCounts()
+    {
+        int info = 0, warn = 0, error = 0;
+        foreach (var entry in LogLines)
+        {
+            switch (entry.Level.ToLowerInvariant())
+            {
+                case "error": error++; break;
+                case "warn": warn++; break;
+                default: info++; break;
+            }
+        }
+        InfoCount = info;
+        WarnCount = warn;
+        ErrorCount = error;
+    }
+
+    private void RebuildFilteredLogLines()
+    {
+        FilteredLogLines.Clear();
+        var filterLevel = LogFilterLevel.ToLowerInvariant();
+        var searchText = LogSearchText?.Trim() ?? "";
+        var fileFilter = LogFileFilter;
+
+        foreach (var entry in LogLines)
+        {
+            if (fileFilter != null && entry.FileIndex != fileFilter)
+                continue;
+
+            if (filterLevel != "all" && !entry.Level.Equals(filterLevel, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (searchText.Length > 0 &&
+                !entry.Message.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            FilteredLogLines.Add(entry);
+        }
+    }
+
+    [RelayCommand]
+    private void SetView(string idx)
+    {
+        if (int.TryParse(idx, out var view))
+            CurrentView = view;
+    }
+
+    [RelayCommand]
+    private void SetLogFilter(string level)
+    {
+        LogFilterLevel = level;
+    }
+
+    [RelayCommand]
+    private void ClearLog()
+    {
+        LogLines.Clear();
+        FilteredLogLines.Clear();
+    }
+
+    [RelayCommand]
+    private void ViewFileLog()
+    {
+        if (SelectedFile == null) return;
+        var idx = Files.IndexOf(SelectedFile);
+        if (idx < 0) return;
+        LogFileFilter = idx;
+        CurrentView = 2;
+    }
+
+    [RelayCommand]
+    private void ClearLogFileFilter()
+    {
+        LogFileFilter = null;
     }
 
     /// <summary>
@@ -111,6 +263,7 @@ public partial class MainViewModel : ViewModelBase
             }
         }
 
+        SelectedFile ??= Files.FirstOrDefault();
         return warnedPaths;
     }
 
@@ -123,6 +276,8 @@ public partial class MainViewModel : ViewModelBase
         {
             Files.Add(new QueuedFile(path));
         }
+
+        SelectedFile ??= Files.FirstOrDefault();
     }
 
     private RemuxConfig BuildConfig()
@@ -213,7 +368,7 @@ public partial class MainViewModel : ViewModelBase
                     {
                         Dispatcher.UIThread.Post(() =>
                         {
-                            LogLines.Add(new LogEntry("error", $"Error processing {path}: {error}"));
+                            LogLines.Add(new LogEntry("error", $"Error processing {path}: {error}", fileIndex));
                             if (fileIndex < Files.Count)
                             {
                                 Files[fileIndex].Status = FileStatus.Failed;
@@ -262,7 +417,7 @@ public partial class MainViewModel : ViewModelBase
                 {
                     if (fileIndex < Files.Count)
                         Files[fileIndex].Status = FileStatus.Processing;
-                    LogLines.Add(new LogEntry("info", $"Producing diagnostics for file {fileIndex + 1}..."));
+                    LogLines.Add(new LogEntry("info", $"Producing diagnostics for file {fileIndex + 1}...", fileIndex));
                 });
 
                 var (outputPath, error) = RemuxNative.ProduceDiagnostics(path);
@@ -285,7 +440,7 @@ public partial class MainViewModel : ViewModelBase
                             Files[fileIndex].Status = FileStatus.Failed;
                             Files[fileIndex].Error = error;
                         }
-                        LogLines.Add(new LogEntry("error", error ?? "Unknown error"));
+                        LogLines.Add(new LogEntry("error", error ?? "Unknown error", fileIndex));
                     }
                 });
             }
@@ -303,12 +458,17 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void Clear()
+    private void RemoveFile(QueuedFile? file)
     {
-        if (IsBusy) return;
-        Files.Clear();
-        LogLines.Clear();
-        OutputFiles.Clear();
+        if (file == null || IsBusy) return;
+
+        var idx = Files.IndexOf(file);
+        if (idx < 0) return;
+
+        Files.RemoveAt(idx);
+
+        if (SelectedFile == file)
+            SelectedFile = Files.Count > 0 ? Files[Math.Min(idx, Files.Count - 1)] : null;
     }
 
     private void HandleProgressEvent(int fileIndex, ProgressEvent evt)
@@ -316,7 +476,7 @@ public partial class MainViewModel : ViewModelBase
         switch (evt.Type)
         {
             case "log":
-                LogLines.Add(new LogEntry(evt.Level ?? "info", evt.Message ?? ""));
+                LogLines.Add(new LogEntry(evt.Level ?? "info", evt.Message ?? "", fileIndex));
                 break;
 
             case "file_started":
@@ -325,11 +485,13 @@ public partial class MainViewModel : ViewModelBase
                 break;
 
             case "partitions_found":
-                LogLines.Add(new LogEntry("info", $"Found {evt.Count} partition(s)"));
+                if (fileIndex < Files.Count)
+                    Files[fileIndex].PartitionCount = evt.Count;
+                LogLines.Add(new LogEntry("info", $"Found {evt.Count} partition(s)", fileIndex));
                 break;
 
             case "partition_started":
-                LogLines.Add(new LogEntry("info", $"Processing partition {(evt.Index ?? 0) + 1}/{evt.Total}"));
+                LogLines.Add(new LogEntry("info", $"Processing partition {(evt.Index ?? 0) + 1}/{evt.Total}", fileIndex));
                 break;
 
             case "output_generated":
@@ -342,7 +504,7 @@ public partial class MainViewModel : ViewModelBase
                 break;
 
             case "partition_error":
-                LogLines.Add(new LogEntry("error", $"Partition #{evt.Index}: {evt.Error}"));
+                LogLines.Add(new LogEntry("error", $"Partition #{evt.Index}: {evt.Error}", fileIndex));
                 break;
 
             case "file_completed":
