@@ -230,6 +230,16 @@
                                            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                             </Grid>
 
+                            <!-- Thumbnail -->
+                            <Border CornerRadius="4" ClipToBounds="True"
+                                    Margin="0,4,0,0"
+                                    IsVisible="{Binding Thumbnail, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <Image Source="{Binding Thumbnail}"
+                                       MaxHeight="180"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Left" />
+                            </Border>
+
                             <!-- Output files -->
                             <StackPanel IsVisible="{Binding OutputFiles.Count}" Spacing="2" Margin="0,8,0,0">
                                 <TextBlock Text="OUTPUT FILES" Classes="section-header" />

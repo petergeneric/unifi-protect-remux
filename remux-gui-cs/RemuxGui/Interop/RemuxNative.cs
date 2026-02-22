@@ -73,6 +73,13 @@ public static partial class RemuxNative
         out IntPtr errorOut);
 
     [LibraryImport(LibName)]
+    private static partial int remux_extract_thumbnail(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string mp4Path,
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string outputPath,
+        uint maxWidth,
+        out IntPtr errorOut);
+
+    [LibraryImport(LibName)]
     private static partial void remux_free_string(IntPtr s);
 
     /// <summary>
@@ -134,6 +141,13 @@ public static partial class RemuxNative
         var error = ReadAndFreeString(errorPtr);
         var result = ReadAndFreeString(resultPtr);
         return (result, error);
+    }
+
+    public static string? ExtractThumbnail(string mp4Path, string outputPath, uint maxWidth = 320)
+    {
+        var ret = remux_extract_thumbnail(mp4Path, outputPath, maxWidth, out var errorPtr);
+        var error = ReadAndFreeString(errorPtr);
+        return ret == 0 ? null : (error ?? "Unknown error");
     }
 
     public static (string? outputPath, string? error) ProduceDiagnostics(string ubvPath)

@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod demux;
 pub mod mp4mux;
 pub mod probe;
+pub mod thumbnail;
 
 use std::io;
 use std::path::Path;

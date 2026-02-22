@@ -1,4 +1,5 @@
 using System;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -35,6 +36,9 @@ public partial class QueuedFile : ObservableObject
 
     [ObservableProperty]
     private string? _cameraName;
+
+    [ObservableProperty]
+    private Bitmap? _thumbnail;
 
     public ObservableCollection<string> OutputFiles { get; } = new();
 

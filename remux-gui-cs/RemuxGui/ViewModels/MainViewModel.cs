@@ -645,6 +645,36 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private void ExtractThumbnailAsync(QueuedFile qf, string mp4Path)
+    {
+        try
+        {
+            var thumbPath = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"remuxgui_{Guid.NewGuid():N}.jpg");
+
+            var error = RemuxNative.ExtractThumbnail(mp4Path, thumbPath);
+            if (error != null) return;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    qf.Thumbnail = new Avalonia.Media.Imaging.Bitmap(thumbPath);
+                }
+                catch { }
+                finally
+                {
+                    try { File.Delete(thumbPath); } catch { }
+                }
+            });
+        }
+        catch
+        {
+            // Thumbnail extraction is best-effort
+        }
+    }
+
     private void HandleProgressEvent(int fileIndex, ProgressEvent evt)
     {
         switch (evt.Type)
@@ -672,7 +702,18 @@ public partial class MainViewModel : ViewModelBase
                 if (evt.Path != null)
                 {
                     if (fileIndex < Files.Count)
-                        Files[fileIndex].OutputFiles.Add(evt.Path);
+                    {
+                        var qf = Files[fileIndex];
+                        qf.OutputFiles.Add(evt.Path);
+
+                        // Extract thumbnail from first MP4 output
+                        if (qf.Thumbnail == null &&
+                            evt.Path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var mp4Path = evt.Path;
+                            _ = Task.Run(() => ExtractThumbnailAsync(qf, mp4Path));
+                        }
+                    }
                     OutputFiles.Add(evt.Path);
                 }
                 break;

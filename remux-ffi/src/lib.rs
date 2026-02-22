@@ -504,6 +504,86 @@ pub unsafe extern "C" fn remux_produce_diagnostics(
     }
 }
 
+/// Extract a JPEG thumbnail from the first video frame of an MP4 file.
+///
+/// # Parameters
+///
+/// - `mp4_path`    - Path to the MP4 file (UTF-8 C string).
+/// - `output_path` - Where to write the JPEG thumbnail (UTF-8 C string).
+/// - `max_width`   - Maximum thumbnail width in pixels.
+/// - `error_out`   - On error, receives a heap-allocated error message.
+///                   The caller must free it with `remux_free_string`.
+///                   May be `NULL`.
+///
+/// # Returns
+///
+/// `0` on success, non-zero on error (check `*error_out`).
+///
+/// # Safety
+///
+/// - `mp4_path` and `output_path` must be valid NUL-terminated UTF-8 C strings.
+/// - `error_out` must be either null or point to a valid `*mut c_char` location.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_extract_thumbnail(
+    mp4_path: *const c_char,
+    output_path: *const c_char,
+    max_width: u32,
+    error_out: *mut *mut c_char,
+) -> i32 {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !error_out.is_null() {
+            unsafe {
+                *error_out = std::ptr::null_mut();
+            }
+        }
+
+        if mp4_path.is_null() {
+            unsafe { set_error(error_out, "mp4_path is NULL") };
+            return 1;
+        }
+        let mp4_str = match unsafe { CStr::from_ptr(mp4_path) }.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                unsafe { set_error(error_out, &format!("Invalid UTF-8 in mp4_path: {}", e)) };
+                return 1;
+            }
+        };
+
+        if output_path.is_null() {
+            unsafe { set_error(error_out, "output_path is NULL") };
+            return 1;
+        }
+        let out_str = match unsafe { CStr::from_ptr(output_path) }.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                unsafe {
+                    set_error(error_out, &format!("Invalid UTF-8 in output_path: {}", e));
+                }
+                return 1;
+            }
+        };
+
+        // Ensure FFmpeg is initialised
+        INIT_ONCE.call_once(|| {
+            ffmpeg_next::init().expect("Failed to initialise FFmpeg");
+        });
+
+        match remux_lib::thumbnail::extract_thumbnail(mp4_str, out_str, max_width) {
+            Ok(()) => 0,
+            Err(e) => {
+                unsafe { set_error(error_out, &e.to_string()) };
+                1
+            }
+        }
+    })) {
+        Ok(code) => code,
+        Err(_) => {
+            unsafe { set_error(error_out, "Internal panic during remux_extract_thumbnail") };
+            1
+        }
+    }
+}
+
 /// Free a string that was returned by one of the `remux_*` functions.
 ///
 /// Passing `NULL` is safe and has no effect.
