@@ -137,12 +137,18 @@ Section "Remux GUI" SEC_GUI
   SetOutPath "$INSTDIR\gui"
   File /r "${STAGING_DIR}\RemuxGui\*.*"
 
-  ; Start Menu shortcut
-  CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk" "$INSTDIR\gui\RemuxGui.exe" "" "$INSTDIR\gui\RemuxGui.exe" 0
 SectionEnd
 
-; Component 2: Add to PATH
+; Component 2: Start Menu shortcut
+Section "Start Menu shortcut" SEC_STARTMENU
+  CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk" "$INSTDIR\gui\RemuxGui.exe" "" "$INSTDIR\gui\RemuxGui.exe" 0
+
+  ; Record that we created the shortcut so the uninstaller knows
+  WriteRegStr HKLM "${UNINSTALL_REG_KEY}" "AddedStartMenu" "1"
+SectionEnd
+
+; Component 4: Add to PATH
 Section "Add to PATH" SEC_PATH
   ; Modify current user's PATH
   EnVar::SetHKCU
@@ -153,7 +159,7 @@ Section "Add to PATH" SEC_PATH
   WriteRegStr HKLM "${UNINSTALL_REG_KEY}" "AddedToPath" "1"
 SectionEnd
 
-; Component 3: Associate .ubv files with Remux GUI
+; Component 5: Associate .ubv files with Remux GUI
 Section "Associate .ubv files" SEC_ASSOC
   ; Install the document icon
   SetOutPath "$INSTDIR\resource"
@@ -178,7 +184,8 @@ SectionEnd
 ; Component descriptions
 ;-----------------------------------------------------------------------------
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_GUI} "Install the graphical interface for UBV Remux. Creates a Start Menu shortcut."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_GUI} "Install the graphical interface for UBV Remux."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_STARTMENU} "Create a Start Menu shortcut for the Remux GUI."
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_PATH} "Add the install directory to your user PATH so CLI tools (remux, ubv-info, ubv-anonymise) can be run from any terminal."
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_ASSOC} "Associate .ubv files with Remux GUI so they open in the application when double-clicked."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
@@ -205,9 +212,12 @@ Section "Uninstall"
     EnVar::DeleteValue "PATH" "$INSTDIR\gui"
     EnVar::DeleteValue "PATH" "$INSTDIR\cli"
 
-  ; Remove Start Menu shortcuts
-  Delete "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk"
-  RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
+  ; Remove Start Menu shortcuts if they were added during install
+  ReadRegStr $0 HKLM "${UNINSTALL_REG_KEY}" "AddedStartMenu"
+  StrCmp $0 "1" 0 startmenu_done
+    Delete "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk"
+    RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
+  startmenu_done:
 
   ; Remove GUI files
   RMDir /r "$INSTDIR\gui"
