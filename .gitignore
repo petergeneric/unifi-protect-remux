@@ -1,5 +1,12 @@
 target/
 samples/
+publish/
+
+# Native build artifacts
+remux-gui-cs/RemuxGui/native/**/*.dylib
+remux-gui-cs/RemuxGui/native/**/*.dll
+remux-gui-cs/RemuxGui/native/**/*.so
+
 
 # Essence files
 *.ubv
@@ -19,3 +26,4 @@ samples/
 *.local
 
 dhat-heap.json
+

@@ -1,5 +1,5 @@
 [workspace]
-members = ["ubv", "ubv-info", "remux", "remux-lib", "remux-gui", "ubv-anonymise"]
+members = ["ubv", "ubv-info", "remux", "remux-lib", "remux-ffi", "ubv-anonymise"]
 resolver = "2"
 
 [workspace.package]

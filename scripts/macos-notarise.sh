@@ -3,8 +3,9 @@ set -euo pipefail
 
 # sign-and-notarize.sh — Sign and notarize macOS release archives locally.
 #
-# Builds a proper .app bundle for remux-gui, signs all binaries, notarizes
-# with Apple, and staples the ticket to the .app bundle.
+# Builds a proper .app bundle from the C# Avalonia GUI (RemuxGui/),
+# signs all binaries, notarizes with Apple, and staples the ticket
+# to the .app bundle.
 #
 # Expects to find one or both of:
 #   unifi-protect-remux-macos-aarch64.tar.gz
@@ -62,7 +63,7 @@ if [[ "$found_any" == false ]]; then
     exit 1
 fi
 
-# --- Detect version from remux-gui binary ---
+# --- Detect version from remux CLI binary ---
 
 detect_version() {
     local bin="$1"
@@ -75,77 +76,14 @@ detect_version() {
     echo "$ver"
 }
 
-# --- Create .app bundle ---
+# --- Locate shared .app bundle creation script ---
 
-create_app_bundle() {
-    local gui_binary="$1"
-    local dest_dir="$2"
-    local version="$3"
-    local app_dir="$dest_dir/${APP_NAME}.app"
-
-    echo "  Creating ${APP_NAME}.app bundle..." >&2
-
-    mkdir -p "$app_dir/Contents/MacOS"
-    mkdir -p "$app_dir/Contents/Resources"
-
-    cp "$gui_binary" "$app_dir/Contents/MacOS/remux-gui"
-
-    # Copy app icon
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    cp "$script_dir/../appicon.icns" "$app_dir/Contents/Resources/appicon.icns"
-
-    # Info.plist
-    cat > "$app_dir/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundleDisplayName</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundleIdentifier</key>
-    <string>${BUNDLE_ID}</string>
-    <key>CFBundleVersion</key>
-    <string>${version}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${version}</string>
-    <key>CFBundleExecutable</key>
-    <string>remux-gui</string>
-    <key>CFBundleIconFile</key>
-    <string>appicon</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>11.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSSupportsAutomaticGraphicsSwitching</key>
-    <true/>
-    <key>CFBundleDocumentTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeName</key>
-            <string>UBV Video File</string>
-            <key>CFBundleTypeExtensions</key>
-            <array>
-                <string>ubv</string>
-            </array>
-            <key>CFBundleTypeRole</key>
-            <string>Viewer</string>
-            <key>LSHandlerRank</key>
-            <string>Default</string>
-        </dict>
-    </array>
-</dict>
-</plist>
-PLIST
-
-    echo "$app_dir"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CREATE_APP="$SCRIPT_DIR/create-macos-app.sh"
+if [[ ! -x "$CREATE_APP" ]]; then
+    echo "ERROR: $CREATE_APP not found or not executable" >&2
+    exit 1
+fi
 
 # --- Create entitlements file ---
 
@@ -189,15 +127,21 @@ for archive in "${ARCHIVES[@]}"; do
     echo "Unpacking..."
     tar xzf "$archive_path" -C "$unpack_dir"
 
-    # Detect version from the GUI binary
-    VERSION="$(detect_version "$unpack_dir/remux-gui")"
+    # Detect version from the remux CLI binary
+    VERSION="$(detect_version "$unpack_dir/remux")"
     echo "  Detected version: $VERSION"
 
-    # Create .app bundle from remux-gui binary
-    APP_DIR="$(create_app_bundle "$unpack_dir/remux-gui" "$output_dir" "$VERSION")"
+    # Create .app bundle from the RemuxGui publish directory
+    "$CREATE_APP" "$unpack_dir/RemuxGui" "$output_dir" "$VERSION"
+    APP_DIR="$output_dir/${APP_NAME}.app"
     APP_BUNDLE_PATHS+=("$APP_DIR")
 
-    # Sign the .app bundle (signs the executable inside it)
+    # Sign all native binaries inside the .app bundle (dylibs first, then main executable)
+    echo "  Signing native libraries in ${APP_NAME}.app..."
+    find "$APP_DIR/Contents/MacOS" -name '*.dylib' -exec \
+        codesign --force --options runtime --sign "$IDENTITY" --timestamp \
+        --entitlements "$ENTITLEMENTS" {} \;
+
     echo "  Signing ${APP_NAME}.app..."
     codesign --force --options runtime --sign "$IDENTITY" --timestamp \
         --entitlements "$ENTITLEMENTS" \
