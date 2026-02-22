@@ -85,6 +85,7 @@
                     <!-- Footer: drop / browse prompt -->
                     <Border DockPanel.Dock="Bottom"
                             BorderThickness="0,1,0,0"
+                            CornerRadius="0,0,5,5"
                             BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                             Padding="14,10"
                             Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
