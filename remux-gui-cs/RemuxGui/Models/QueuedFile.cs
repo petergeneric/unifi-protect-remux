@@ -38,6 +38,25 @@ public partial class QueuedFile : ObservableObject
 
     public ObservableCollection<string> OutputFiles { get; } = new();
 
+    public string? OutputSizeLabel
+    {
+        get
+        {
+            long total = 0;
+            foreach (var file in OutputFiles)
+            {
+                try
+                {
+                    var info = new FileInfo(file);
+                    if (info.Exists)
+                        total += info.Length;
+                }
+                catch { }
+            }
+            return total > 0 ? FormatFileSize(total) : null;
+        }
+    }
+
     public QueuedFile(string path)
     {
         Path = path;
@@ -46,7 +65,11 @@ public partial class QueuedFile : ObservableObject
         FileTimestamp = ExtractTimestamp(FileName);
         if (FileTimestamp is DateTimeOffset ts)
             FileTimestampLabel = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
-        OutputFiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(StatusLabel));
+        OutputFiles.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(StatusLabel));
+            OnPropertyChanged(nameof(OutputSizeLabel));
+        };
 
         try
         {

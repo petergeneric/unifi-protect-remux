@@ -184,7 +184,7 @@
                                        ToolTip.Tip="{Binding FileName}" />
 
                             <!-- Info grid -->
-                            <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+                            <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="0,4,0,0">
                                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Status" Classes="detail-label" />
                                 <Border Grid.Row="0" Grid.Column="1"
                                         CornerRadius="3" Padding="8,1" HorizontalAlignment="Left"
@@ -193,28 +193,23 @@
                                                Foreground="{Binding Status, Converter={StaticResource StatusForegroundConverter}}" />
                                 </Border>
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Size" Classes="detail-label" Margin="0,6,0,0"
-                                           IsVisible="{Binding FileSizeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding FileSizeLabel}" Classes="detail-value" Margin="0,6,0,0"
-                                           IsVisible="{Binding FileSizeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Recorded" Classes="detail-label" Margin="0,6,0,0"
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Recorded" Classes="detail-label" Margin="0,6,0,0"
                                            IsVisible="{Binding FileTimestampLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding FileTimestampLabel}" Classes="detail-value" Margin="0,6,0,0"
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding FileTimestampLabel}" Classes="detail-value" Margin="0,6,0,0"
                                            IsVisible="{Binding FileTimestampLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Partitions" Classes="detail-label" Margin="0,6,0,0"
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Partitions" Classes="detail-label" Margin="0,6,0,0"
                                            IsVisible="{Binding PartitionCount, Converter={x:Static ObjectConverters.IsNotNull}}" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Classes="detail-value" Margin="0,6,0,0"
+                                <TextBlock Grid.Row="2" Grid.Column="1" Classes="detail-value" Margin="0,6,0,0"
                                            IsVisible="{Binding PartitionCount, Converter={x:Static ObjectConverters.IsNotNull}}">
                                     <TextBlock.Text>
                                         <Binding Path="PartitionCount" StringFormat="{}{0}" />
                                     </TextBlock.Text>
                                 </TextBlock>
 
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Camera" Classes="detail-label" Margin="0,6,0,0"
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Camera" Classes="detail-label" Margin="0,6,0,0"
                                            IsVisible="{Binding MacAddress, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                <Panel Grid.Row="4" Grid.Column="1" Margin="0,6,0,0"
+                                <Panel Grid.Row="3" Grid.Column="1" Margin="0,6,0,0"
                                        IsVisible="{Binding MacAddress, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                     <TextBlock Text="{Binding CameraName}" Classes="detail-value"
                                                Foreground="{DynamicResource SystemControlForegroundAccentBrush}"
@@ -228,10 +223,10 @@
                                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
                                 </Panel>
 
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Error" Classes="detail-label" Margin="0,6,0,0"
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Error" Classes="detail-label" Margin="0,6,0,0"
                                            Foreground="#E85050"
                                            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Error}" Classes="detail-value" Margin="0,6,0,0"
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Error}" Classes="detail-value" Margin="0,6,0,0"
                                            Foreground="#E85050" TextWrapping="Wrap"
                                            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                             </Grid>
@@ -256,6 +251,10 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                <TextBlock Text="{Binding OutputSizeLabel, StringFormat='Output Size: {0}'}"
+                                           FontSize="11" Margin="0,4,0,0"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                           IsVisible="{Binding OutputSizeLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
