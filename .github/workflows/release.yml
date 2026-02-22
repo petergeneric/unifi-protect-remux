@@ -49,7 +49,7 @@ jobs:
 
       - name: Install build deps (macOS)
         if: runner.os == 'macOS'
-        run: brew install nasm pkg-config
+        run: brew install nasm pkg-config openssl brotli
 
       - name: Install FFmpeg and LLVM (Windows)
         if: runner.os == 'Windows'
@@ -71,10 +71,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Setup .NET 8
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
