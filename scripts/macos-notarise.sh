@@ -3,154 +3,113 @@ set -euo pipefail
 
 # sign-and-notarize.sh — Sign and notarize macOS release archives locally.
 #
-# Builds a proper .app bundle for remux-gui, signs all binaries, notarizes
-# with Apple, and staples the ticket to the .app bundle.
+# Signs binaries, notarizes with Apple, and produces release-ready output.
 #
-# Expects to find one or both of:
-#   unifi-protect-remux-macos-aarch64.tar.gz
-#   unifi-protect-remux-macos-x86_64.tar.gz
+# Usage: macos-notarise.sh [--debug] <archive>...
+#
+#   --debug   Skip signing, notarization and stapling (test the repack/dmg flow only)
+#
+# Accepts .tar.gz and .zip archives. Each archive is classified by contents:
+#   Contains a .app bundle → GUI archive (signed, packaged as .dmg)
+#   Otherwise              → CLI archive (binaries signed, repacked)
+#
+# Any "-unsigned" in the input filename is removed in the output filename.
+
+# --- Parse arguments ---
+
+DEBUG=false
+declare -a INPUT_FILES=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --debug) DEBUG=true; shift ;;
+        *) INPUT_FILES+=("$1"); shift ;;
+    esac
+done
+
+if [[ ${#INPUT_FILES[@]} -eq 0 ]]; then
+    echo "Usage: $(basename "$0") [--debug] <archive>..." >&2
+    exit 1
+fi
+
+# --- Helpers ---
+
+unpack() {
+    local archive="$1" dest="$2"
+    case "$archive" in
+        *.tar.gz) tar xzf "$archive" -C "$dest" ;;
+        *.zip)    unzip -qo "$archive" -d "$dest" ;;
+        *)        echo "ERROR: Unsupported archive format: $archive" >&2; exit 1 ;;
+    esac
+
+    # GitHub Actions artifact downloads wrap the file in a zip.
+    # If the result is a single .tar.gz, unpack that too.
+    local inner
+    inner=$(find "$dest" -maxdepth 1 -name '*.tar.gz' -type f)
+    if [[ $(echo "$inner" | wc -l) -eq 1 && -n "$inner" ]]; then
+        local count
+        count=$(find "$dest" -maxdepth 1 -mindepth 1 | wc -l)
+        if [[ "$count" -eq 1 ]]; then
+            echo "  Unwrapping inner archive: $(basename "$inner")"
+            tar xzf "$inner" -C "$dest"
+            rm "$inner"
+        fi
+    fi
+}
+
+repack() {
+    local src_dir="$1" dest="$2"
+    case "$dest" in
+        *.tar.gz) tar czf "$dest" -C "$src_dir" . ;;
+        *.zip)    (cd "$src_dir" && zip -qr "$dest" .) ;;
+        *)        echo "ERROR: Unsupported archive format: $dest" >&2; exit 1 ;;
+    esac
+}
+
+# Remove "-unsigned" from a filename
+strip_unsigned() {
+    echo "$1" | sed 's/-unsigned//g'
+}
 
 # --- Configuration ---
 
-KEYCHAIN_SERVICE="unifi-protect-remux-notarize"
-BUNDLE_ID="works.peter.ubv-remux"
 APP_NAME="UBV Remux"
-ARCHIVES=(
-    "unifi-protect-remux-macos-x86_64.tar.gz"
-    "unifi-protect-remux-macos-aarch64.tar.gz"
-)
-CLI_BINARIES=(remux ubv-info ubv-anonymise)
+KEYCHAIN_SERVICE="unifi-protect-remux-notarize"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-SEARCH_DIR="${1:-.}"
+# --- Retrieve credentials and signing identity (skip in debug mode) ---
 
-# --- Retrieve credentials from keychain ---
+if [[ "$DEBUG" == true ]]; then
+    echo "DEBUG MODE: skipping signing, notarization and stapling"
+    IDENTITY=""
+else
+    get_keychain_value() {
+        security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$1" -w 2>/dev/null \
+            || { echo "ERROR: Could not find keychain entry for account '$1' under service '$KEYCHAIN_SERVICE'" >&2; exit 1; }
+    }
 
-get_keychain_value() {
-    security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$1" -w 2>/dev/null \
-        || { echo "ERROR: Could not find keychain entry for account '$1' under service '$KEYCHAIN_SERVICE'" >&2; exit 1; }
-}
+    echo "Retrieving credentials from keychain..."
+    APPLE_ID="$(get_keychain_value APPLE_ID)"
+    APPLE_APP_SPECIFIC_PASSWORD="$(get_keychain_value APPLE_APP_SPECIFIC_PASSWORD)"
+    APPLE_TEAM_ID="$(get_keychain_value APPLE_TEAM_ID)"
+    echo "  Apple ID: $APPLE_ID"
+    echo "  Team ID:  $APPLE_TEAM_ID"
 
-echo "Retrieving credentials from keychain..."
-APPLE_ID="$(get_keychain_value APPLE_ID)"
-APPLE_APP_SPECIFIC_PASSWORD="$(get_keychain_value APPLE_APP_SPECIFIC_PASSWORD)"
-APPLE_TEAM_ID="$(get_keychain_value APPLE_TEAM_ID)"
-echo "  Apple ID: $APPLE_ID"
-echo "  Team ID:  $APPLE_TEAM_ID"
-
-# --- Find signing identity ---
-
-IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-if [[ -z "$IDENTITY" ]]; then
-    echo "ERROR: No 'Developer ID Application' certificate found in keychain." >&2
-    echo "Install your Developer ID certificate in Keychain Access first." >&2
-    exit 1
-fi
-echo "  Signing identity: $IDENTITY"
-
-# --- Find archives ---
-
-found_any=false
-for archive in "${ARCHIVES[@]}"; do
-    if [[ -f "$SEARCH_DIR/$archive" ]]; then
-        found_any=true
+    IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    if [[ -z "$IDENTITY" ]]; then
+        echo "ERROR: No 'Developer ID Application' certificate found in keychain." >&2
+        echo "Install your Developer ID certificate in Keychain Access first." >&2
+        exit 1
     fi
-done
-
-if [[ "$found_any" == false ]]; then
-    echo "ERROR: No matching archives found in $SEARCH_DIR" >&2
-    echo "Expected: ${ARCHIVES[*]}" >&2
-    exit 1
+    echo "  Signing identity: $IDENTITY"
 fi
 
-# --- Detect version from remux-gui binary ---
-
-detect_version() {
-    local bin="$1"
-    # Try to extract version string from the binary; fall back to "0.0.0"
-    local ver
-    ver=$(strings "$bin" 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1) || true
-    if [[ -z "$ver" ]]; then
-        ver="0.0.0"
-    fi
-    echo "$ver"
-}
-
-# --- Create .app bundle ---
-
-create_app_bundle() {
-    local gui_binary="$1"
-    local dest_dir="$2"
-    local version="$3"
-    local app_dir="$dest_dir/${APP_NAME}.app"
-
-    echo "  Creating ${APP_NAME}.app bundle..." >&2
-
-    mkdir -p "$app_dir/Contents/MacOS"
-    mkdir -p "$app_dir/Contents/Resources"
-
-    cp "$gui_binary" "$app_dir/Contents/MacOS/remux-gui"
-
-    # Copy app icon
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    cp "$script_dir/../appicon.icns" "$app_dir/Contents/Resources/appicon.icns"
-
-    # Info.plist
-    cat > "$app_dir/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundleDisplayName</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundleIdentifier</key>
-    <string>${BUNDLE_ID}</string>
-    <key>CFBundleVersion</key>
-    <string>${version}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${version}</string>
-    <key>CFBundleExecutable</key>
-    <string>remux-gui</string>
-    <key>CFBundleIconFile</key>
-    <string>appicon</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>11.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSSupportsAutomaticGraphicsSwitching</key>
-    <true/>
-    <key>CFBundleDocumentTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeName</key>
-            <string>UBV Video File</string>
-            <key>CFBundleTypeExtensions</key>
-            <array>
-                <string>ubv</string>
-            </array>
-            <key>CFBundleTypeRole</key>
-            <string>Viewer</string>
-            <key>LSHandlerRank</key>
-            <string>Default</string>
-        </dict>
-    </array>
-</dict>
-</plist>
-PLIST
-
-    echo "$app_dir"
-}
-
-# --- Create entitlements file ---
+# --- Create working directory ---
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
+
+# --- Create entitlements file ---
 
 ENTITLEMENTS="$WORKDIR/entitlements.plist"
 cat > "$ENTITLEMENTS" <<'PLIST'
@@ -166,119 +125,218 @@ cat > "$ENTITLEMENTS" <<'PLIST'
 </plist>
 PLIST
 
-# --- Process each archive ---
+# --- Unpack and classify archives ---
 
-# Track .app bundle paths for stapling after notarization
-declare -a APP_BUNDLE_PATHS=()
+CLI_COUNT=0
+GUI_COUNT=0
 
-for archive in "${ARCHIVES[@]}"; do
-    archive_path="$SEARCH_DIR/$archive"
-    if [[ ! -f "$archive_path" ]]; then
-        echo "Skipping $archive (not found)"
-        continue
+for archive in "${INPUT_FILES[@]}"; do
+    if [[ ! -f "$archive" ]]; then
+        echo "ERROR: File not found: $archive" >&2
+        exit 1
     fi
 
     echo ""
-    echo "=== Processing $archive ==="
+    echo "=== Unpacking $(basename "$archive") ==="
 
-    slug="${archive%.tar.gz}"
-    unpack_dir="$WORKDIR/$slug"
-    output_dir="$WORKDIR/${slug}-output"
-    mkdir -p "$unpack_dir" "$output_dir"
+    unpack_dir="$WORKDIR/archive-${CLI_COUNT}-${GUI_COUNT}"
+    mkdir -p "$unpack_dir"
+    unpack "$archive" "$unpack_dir"
 
-    echo "Unpacking..."
-    tar xzf "$archive_path" -C "$unpack_dir"
+    # Classify by contents: look for a .app bundle
+    app_dir=$(find "$unpack_dir" -maxdepth 1 -name '*.app' -type d | head -1)
 
-    # Detect version from the GUI binary
-    VERSION="$(detect_version "$unpack_dir/remux-gui")"
-    echo "  Detected version: $VERSION"
+    if [[ -n "$app_dir" ]]; then
+        echo "  Detected GUI archive (found $(basename "$app_dir"))"
+        eval "GUI_INPUT_${GUI_COUNT}=\"$archive\""
+        eval "GUI_DIR_${GUI_COUNT}=\"$unpack_dir\""
+        eval "APP_BUNDLE_${GUI_COUNT}=\"$app_dir\""
+        GUI_COUNT=$((GUI_COUNT + 1))
+    else
+        echo "  Detected CLI archive"
+        eval "CLI_INPUT_${CLI_COUNT}=\"$archive\""
+        eval "CLI_DIR_${CLI_COUNT}=\"$unpack_dir\""
+        CLI_COUNT=$((CLI_COUNT + 1))
+    fi
+done
 
-    # Create .app bundle from remux-gui binary
-    APP_DIR="$(create_app_bundle "$unpack_dir/remux-gui" "$output_dir" "$VERSION")"
-    APP_BUNDLE_PATHS+=("$APP_DIR")
+# --- Sign CLI binaries ---
 
-    # Sign the .app bundle (signs the executable inside it)
-    echo "  Signing ${APP_NAME}.app..."
-    codesign --force --options runtime --sign "$IDENTITY" --timestamp \
-        --entitlements "$ENTITLEMENTS" \
-        "$APP_DIR"
-    codesign --verify --verbose "$APP_DIR"
+if [[ "$DEBUG" == false && $CLI_COUNT -gt 0 ]]; then
+    for i in $(seq 0 $((CLI_COUNT - 1))); do
+        eval "unpack_dir=\"\$CLI_DIR_${i}\""
+        eval "input=\"\$CLI_INPUT_${i}\""
+        echo ""
+        echo "=== Signing CLI binaries in $(basename "$input") ==="
 
-    # Sign CLI binaries and copy to output
-    for cli_bin in "${CLI_BINARIES[@]}"; do
-        src="$unpack_dir/$cli_bin"
-        if [[ -f "$src" ]]; then
-            echo "  Signing $cli_bin..."
-            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$src"
-            codesign --verify --verbose "$src"
-            cp "$src" "$output_dir/"
-        fi
+        find "$unpack_dir" -maxdepth 1 -type f -perm +111 | while read -r bin; do
+            echo "  Signing $(basename "$bin")..."
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp "$bin"
+            codesign --verify --verbose "$bin"
+        done
     done
-done
+fi
 
-# --- Submit everything for notarization in one request ---
+# --- Sign GUI .app bundles ---
+
+if [[ "$DEBUG" == false && $GUI_COUNT -gt 0 ]]; then
+    for i in $(seq 0 $((GUI_COUNT - 1))); do
+        eval "app_dir=\"\$APP_BUNDLE_${i}\""
+        echo ""
+        echo "=== Signing $(basename "$app_dir") ==="
+
+        echo "  Signing native libraries..."
+        find "$app_dir/Contents/MacOS" -name '*.dylib' -exec \
+            codesign --force --options runtime --sign "$IDENTITY" --timestamp \
+            --entitlements "$ENTITLEMENTS" {} \;
+
+        echo "  Signing app bundle..."
+        codesign --force --options runtime --sign "$IDENTITY" --timestamp \
+            --entitlements "$ENTITLEMENTS" \
+            "$app_dir"
+        codesign --verify --verbose "$app_dir"
+    done
+fi
+
+# --- Notarization (skip in debug mode) ---
+
+if [[ "$DEBUG" == false ]]; then
+    echo ""
+    echo "=== Notarizing ==="
+    NOTARIZE_ZIP="$WORKDIR/notarize-submission.zip"
+
+    NOTARIZE_STAGING="$WORKDIR/notarize-staging"
+    mkdir -p "$NOTARIZE_STAGING"
+
+    for i in $(seq 0 $((CLI_COUNT - 1))); do
+        eval "cli_dir=\"\$CLI_DIR_${i}\""
+        cp -a "$cli_dir" "$NOTARIZE_STAGING/cli-$i"
+    done
+
+    for i in $(seq 0 $((GUI_COUNT - 1))); do
+        eval "app_dir=\"\$APP_BUNDLE_${i}\""
+        mkdir -p "$NOTARIZE_STAGING/gui-$i"
+        cp -a "$app_dir" "$NOTARIZE_STAGING/gui-$i/"
+    done
+
+    ditto -c -k "$NOTARIZE_STAGING" "$NOTARIZE_ZIP"
+
+    echo "Submitting to Apple notary service..."
+    xcrun notarytool submit "$NOTARIZE_ZIP" \
+        --apple-id "$APPLE_ID" \
+        --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+        --team-id "$APPLE_TEAM_ID" \
+        --wait
+
+    echo "Notarization complete."
+
+    if [[ $GUI_COUNT -gt 0 ]]; then
+        echo ""
+        echo "=== Stapling ==="
+        for i in $(seq 0 $((GUI_COUNT - 1))); do
+            eval "app_dir=\"\$APP_BUNDLE_${i}\""
+            echo "  Stapling $(basename "$app_dir")..."
+            xcrun stapler staple "$app_dir"
+        done
+    fi
+fi
+
+# --- Repack CLI archives ---
+
+if [[ $CLI_COUNT -gt 0 ]]; then
+    echo ""
+    echo "=== Repacking CLI archives ==="
+
+    for i in $(seq 0 $((CLI_COUNT - 1))); do
+        eval "input=\"\$CLI_INPUT_${i}\""
+        eval "unpack_dir=\"\$CLI_DIR_${i}\""
+        archive_path="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
+        output_path="$(dirname "$archive_path")/$(strip_unsigned "$(basename "$archive_path")")"
+
+        if [[ "$archive_path" != "$output_path" ]]; then
+            echo "  Creating $(basename "$output_path")"
+        else
+            backup="${archive_path}.unsigned"
+            echo "  Backing up original to $(basename "$backup")"
+            mv "$archive_path" "$backup"
+        fi
+
+        repack "$unpack_dir" "$output_path"
+        echo "  Done: $(basename "$output_path")"
+    done
+fi
+
+# --- Build GUI .dmg files ---
+
+if [[ $GUI_COUNT -gt 0 ]]; then
+    VOLICON="$SCRIPT_DIR/../assets/appicon.icns"
+
+    echo ""
+    echo "=== Building .dmg files ==="
+
+    DMG_COUNT=0
+
+    for i in $(seq 0 $((GUI_COUNT - 1))); do
+        eval "app_dir=\"\$APP_BUNDLE_${i}\""
+        eval "input=\"\$GUI_INPUT_${i}\""
+        archive_path="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
+        output_dir="$(dirname "$archive_path")"
+
+        # Derive .dmg name: strip extension and -unsigned, then add .dmg
+        base="$(basename "$archive_path")"
+        case "$base" in
+            *.tar.gz) stem="${base%.tar.gz}" ;;
+            *.zip)    stem="${base%.zip}" ;;
+        esac
+        dmg_name="$(strip_unsigned "$stem").dmg"
+        dmg_path="$output_dir/$dmg_name"
+        eval "DMG_PATH_${DMG_COUNT}=\"$dmg_path\""
+        DMG_COUNT=$((DMG_COUNT + 1))
+
+        echo "  Building $dmg_path"
+
+        dmg_staging="$WORKDIR/dmg-$i"
+        mkdir -p "$dmg_staging"
+        cp -a "$app_dir" "$dmg_staging/"
+
+        create-dmg \
+            --volname "$APP_NAME" \
+            --volicon "$VOLICON" \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "${APP_NAME}.app" 150 185 \
+            --app-drop-link 450 185 \
+            --hide-extension "${APP_NAME}.app" \
+            --no-internet-enable \
+            "$dmg_path" \
+            "$dmg_staging"
+
+        echo "  Done: $dmg_name"
+    done
+
+    # Notarize .dmg files (skip in debug mode)
+    if [[ "$DEBUG" == false && $DMG_COUNT -gt 0 ]]; then
+        echo ""
+        echo "=== Notarizing .dmg files ==="
+
+        for i in $(seq 0 $((DMG_COUNT - 1))); do
+            eval "dmg_path=\"\$DMG_PATH_${i}\""
+            dmg_name="$(basename "$dmg_path")"
+
+            echo "Submitting $dmg_name to Apple notary service..."
+            xcrun notarytool submit "$dmg_path" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --wait
+
+            echo "  Stapling $dmg_name..."
+            xcrun stapler staple "$dmg_path"
+
+            echo "Done: $dmg_name"
+        done
+    fi
+fi
 
 echo ""
-echo "=== Notarizing ==="
-NOTARIZE_ZIP="$WORKDIR/notarize-submission.zip"
-
-# Build a zip containing all output directories
-NOTARIZE_STAGING="$WORKDIR/notarize-staging"
-mkdir -p "$NOTARIZE_STAGING"
-for archive in "${ARCHIVES[@]}"; do
-    slug="${archive%.tar.gz}"
-    output_dir="$WORKDIR/${slug}-output"
-    [[ -d "$output_dir" ]] || continue
-    cp -a "$output_dir" "$NOTARIZE_STAGING/$slug"
-done
-ditto -c -k "$NOTARIZE_STAGING" "$NOTARIZE_ZIP"
-
-echo "Submitting to Apple notary service..."
-xcrun notarytool submit "$NOTARIZE_ZIP" \
-    --apple-id "$APPLE_ID" \
-    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-    --team-id "$APPLE_TEAM_ID" \
-    --wait
-
-echo "Notarization complete."
-
-# --- Staple notarization tickets to .app bundles ---
-
-echo ""
-echo "=== Stapling ==="
-for app_dir in "${APP_BUNDLE_PATHS[@]}"; do
-    echo "  Stapling $(basename "$app_dir")..."
-    xcrun stapler staple "$app_dir"
-done
-
-# --- Repack archives ---
-
-echo ""
-echo "=== Repacking archives ==="
-
-for archive in "${ARCHIVES[@]}"; do
-    slug="${archive%.tar.gz}"
-    output_dir="$WORKDIR/${slug}-output"
-    [[ -d "$output_dir" ]] || continue
-
-    archive_path="$(cd "$SEARCH_DIR" && pwd)/$archive"
-    backup="${archive_path}.unsigned"
-
-    echo "Backing up original to ${archive}.unsigned"
-    mv "$archive_path" "$backup"
-
-    echo "Creating signed $archive"
-    tar czf "$archive_path" -C "$output_dir" .
-
-    echo "Done: $archive"
-done
-
-echo ""
-echo "All done. Signed archives are in $SEARCH_DIR"
-echo "Original unsigned archives saved with .unsigned suffix."
-echo ""
-echo "Each archive now contains:"
-echo "  ${APP_NAME}.app/  — signed, notarized, stapled GUI application"
-for cli_bin in "${CLI_BINARIES[@]}"; do
-    echo "  $cli_bin          — signed and notarized CLI tool"
-done
+echo "All done."

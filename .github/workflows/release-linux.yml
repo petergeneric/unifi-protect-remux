@@ -1,0 +1,100 @@
+name: Release (Linux)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach assets to (leave empty for build-only test)"
+        required: false
+
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: unifi-protect-remux-linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: unifi-protect-remux-linux-aarch64
+
+    name: ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential nasm pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            release-${{ matrix.target }}-
+
+      - name: Build release binaries
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Test
+        run: cargo nextest run --release --target ${{ matrix.target }} --profile ci
+
+      - name: Publish test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests (${{ matrix.artifact }})
+          path: target/nextest/ci/junit.xml
+          reporter: java-junit
+
+      - name: Package
+        run: |
+          mkdir -p staging
+          cp target/${{ matrix.target }}/release/remux staging/
+          cp target/${{ matrix.target }}/release/ubv-info staging/
+          cp target/${{ matrix.target }}/release/ubv-anonymise staging/
+          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.tar.gz
+
+      - name: Determine release tag
+        id: tag
+        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release asset
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.tar.gz

@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="RemuxGui.Views.AboutWindow"
+        Title="About UBV Remux"
+        Width="420" Height="300"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SizeToContent="Height">
+    <Border Padding="28,24">
+        <StackPanel Spacing="12">
+            <!-- App name + version row -->
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="UBV Remux" FontSize="22" FontWeight="Bold"
+                           VerticalAlignment="Bottom" />
+                <TextBlock x:Name="VersionText" Margin="0,0,0,2"
+                           VerticalAlignment="Bottom" FontSize="14"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+            </StackPanel>
+
+            <TextBlock Text="Converts Ubiquiti .ubv video files to standard MP4 via remuxing."
+                       TextWrapping="Wrap" FontSize="13"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+
+            <Border Height="1" Margin="0,4"
+                    Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+
+            <!-- Details grid -->
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Release"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Margin="0,2,16,2" FontSize="13"
+                           x:Name="ReleaseLabel" />
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ReleaseText"
+                           Margin="0,2" FontSize="13" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Commit"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Margin="0,2,16,2" FontSize="13"
+                           x:Name="CommitLabel" />
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="CommitText"
+                           FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                           Margin="0,2" FontSize="12" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="License"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Margin="0,2,16,2" FontSize="13" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="AGPL-3.0-only"
+                           Margin="0,2" FontSize="13" />
+            </Grid>
+
+            <Border Height="1" Margin="0,4"
+                    Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+
+            <!-- Footer -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="Copyright (c) Peter Wright 2020-2026" FontSize="12"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                <TextBlock x:Name="GithubLink"
+                           Text="github.com/petergeneric/unifi-protect-remux"
+                           Foreground="{DynamicResource SystemAccentColor}"
+                           Cursor="Hand" FontSize="12"
+                           TextDecorations="Underline" />
+            </StackPanel>
+
+            <Button Content="Close" HorizontalAlignment="Right" Margin="0,8,0,0"
+                    Click="OnClose" Padding="20,6" />
+        </StackPanel>
+    </Border>
+</Window>

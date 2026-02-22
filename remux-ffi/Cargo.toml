@@ -1,20 +1,22 @@
 [package]
-name = "remux-gui"
+name = "remux-ffi"
 version.workspace = true
 edition.workspace = true
 license = "AGPL-3.0-only"
 authors.workspace = true
-description = "GUI for converting .ubv files to MP4"
+description = "C FFI bridge for remux-lib"
+
+[lib]
+crate-type = ["cdylib"]
 
 [dependencies]
 remux-lib = { path = "../remux-lib", default-features = false }
 ubv = { path = "../ubv" }
-eframe = "0.31"
-rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 flate2 = "1"
 log = "0.4"
-env_logger = "0.11"
+ffmpeg-next = "8"
 
 [features]
 default = ["ffmpeg-static"]

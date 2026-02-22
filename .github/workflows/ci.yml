@@ -61,6 +61,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
@@ -77,6 +82,10 @@ jobs:
 
       - name: Build
         run: cargo build --no-default-features
+
+      - name: Build C# GUI
+        if: runner.os != 'Linux'
+        run: dotnet build remux-gui-cs/RemuxGui/RemuxGui.csproj -c Debug
 
       - name: Test
         run: cargo nextest run --no-default-features --profile ci
