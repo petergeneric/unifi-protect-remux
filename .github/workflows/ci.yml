@@ -31,7 +31,9 @@ jobs:
 
       - name: Install FFmpeg (macOS)
         if: runner.os == 'macOS'
-        run: brew install nasm ffmpeg pkg-config
+        run: |
+          brew install nasm ffmpeg pkg-config
+          echo "FFMPEG_DIR=$(brew --prefix ffmpeg)" >> "$GITHUB_ENV"
 
       - name: Install pre-built FFmpeg (Ubuntu x86_64)
         if: runner.os == 'Linux' && runner.arch == 'X64'
@@ -79,6 +81,10 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Clean cached FFmpeg build artifacts
+        shell: bash
+        run: cargo clean -p ffmpeg-sys-next 2>/dev/null || true
 
       - name: Build
         run: cargo build --no-default-features
