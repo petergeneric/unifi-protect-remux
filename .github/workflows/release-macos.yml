@@ -9,7 +9,7 @@ on:
         description: "Existing tag to attach assets to (leave empty for build-only test)"
         required: false
       sign:
-        description: "Code sign and notarize (uncheck to test build logic only)"
+        description: "Code sign and notarise (uncheck to test build logic only)"
         type: boolean
         default: true
 
