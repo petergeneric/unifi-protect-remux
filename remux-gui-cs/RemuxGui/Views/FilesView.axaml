@@ -76,7 +76,7 @@
         </Border>
 
         <!-- Two-pane layout -->
-        <Grid ColumnDefinitions="*,320">
+        <Grid ColumnDefinitions="*,Auto">
             <!-- Left pane: file list with inline drop prompt -->
             <Border Grid.Column="0" Margin="16"
                     BorderThickness="1" CornerRadius="6"
@@ -151,10 +151,10 @@
             </Border>
 
             <!-- Right pane: detail panel -->
-            <Border Grid.Column="1"
+            <Border Grid.Column="1" Width="320"
                     BorderThickness="1,0,0,0"
                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                    IsVisible="{Binding SelectedFile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    IsVisible="{Binding Files.Count}">
                 <DockPanel Margin="16">
                     <!-- Actions at bottom -->
                     <WrapPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
