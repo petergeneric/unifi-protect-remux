@@ -90,21 +90,32 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsBusy => IsProcessing || IsDiagnosticsProcessing;
     public bool CanStart => !IsBusy && Files.Count > 0;
+    public bool CanConvertFile => !IsBusy && SelectedFile != null;
 
     partial void OnIsProcessingChanged(bool value)
     {
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CanConvertFile));
         StartCommand.NotifyCanExecuteChanged();
         DiagnosticsCommand.NotifyCanExecuteChanged();
+        ConvertFileCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsDiagnosticsProcessingChanged(bool value)
     {
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CanConvertFile));
         StartCommand.NotifyCanExecuteChanged();
         DiagnosticsCommand.NotifyCanExecuteChanged();
+        ConvertFileCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSelectedFileChanged(QueuedFile? value)
+    {
+        OnPropertyChanged(nameof(CanConvertFile));
+        ConvertFileCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnLogFilterLevelChanged(string value)
@@ -345,59 +356,93 @@ public partial class MainViewModel : ViewModelBase
                 if (token.IsCancellationRequested)
                     break;
 
-                var fileIndex = i;
-                var path = filePaths[i];
-
-                // Pin the callback delegate to prevent GC collection during native call
-                ProgressCallback callback = (jsonPtr, idx) =>
-                {
-                    if (jsonPtr == IntPtr.Zero) return;
-                    var json = Marshal.PtrToStringUTF8(jsonPtr);
-                    if (json == null) return;
-
-                    try
-                    {
-                        var evt = JsonSerializer.Deserialize(json, AppJsonContext.Default.ProgressEvent);
-                        if (evt != null)
-                        {
-                            Dispatcher.UIThread.Post(() => HandleProgressEvent(idx, evt));
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore deserialization errors in callbacks
-                    }
-                };
-
-                // Pin delegate so GC doesn't collect it during native call
-                var gcHandle = GCHandle.Alloc(callback);
-                try
-                {
-                    var (resultJson, error) = RemuxNative.ProcessFile(path, config, callback, fileIndex);
-
-                    if (error != null)
-                    {
-                        Dispatcher.UIThread.Post(() =>
-                        {
-                            LogLines.Add(new LogEntry("error", $"Error processing {path}: {error}", fileIndex));
-                            if (fileIndex < Files.Count)
-                            {
-                                Files[fileIndex].Status = FileStatus.Failed;
-                                Files[fileIndex].Error = error;
-                            }
-                        });
-                    }
-                }
-                finally
-                {
-                    gcHandle.Free();
-                }
+                ProcessSingleFile(filePaths[i], config, i);
             }
         });
 
         _cts?.Dispose();
         _cts = null;
         IsProcessing = false;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanConvertFile))]
+    private async Task ConvertFile()
+    {
+        if (IsBusy || SelectedFile == null)
+            return;
+
+        var fileIndex = Files.IndexOf(SelectedFile);
+        if (fileIndex < 0)
+            return;
+
+        var path = SelectedFile.Path;
+
+        SelectedFile.Status = FileStatus.Pending;
+        SelectedFile.OutputFiles.Clear();
+        SelectedFile.Error = null;
+
+        LogLines.Clear();
+        OutputFiles.Clear();
+
+        _cts = new CancellationTokenSource();
+        IsProcessing = true;
+        var config = BuildConfig();
+
+        await Task.Run(() =>
+        {
+            RemuxNative.Init();
+            ProcessSingleFile(path, config, fileIndex);
+        });
+
+        _cts?.Dispose();
+        _cts = null;
+        IsProcessing = false;
+    }
+
+    private void ProcessSingleFile(string path, RemuxConfig config, int fileIndex)
+    {
+        ProgressCallback callback = (jsonPtr, idx) =>
+        {
+            if (jsonPtr == IntPtr.Zero) return;
+            var json = Marshal.PtrToStringUTF8(jsonPtr);
+            if (json == null) return;
+
+            try
+            {
+                var evt = JsonSerializer.Deserialize(json, AppJsonContext.Default.ProgressEvent);
+                if (evt != null)
+                {
+                    Dispatcher.UIThread.Post(() => HandleProgressEvent(idx, evt));
+                }
+            }
+            catch
+            {
+                // Ignore deserialization errors in callbacks
+            }
+        };
+
+        var gcHandle = GCHandle.Alloc(callback);
+        try
+        {
+            var (resultJson, error) = RemuxNative.ProcessFile(path, config, callback, fileIndex);
+
+            if (error != null)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    LogLines.Add(new LogEntry("error", $"Error processing {path}: {error}", fileIndex));
+                    if (fileIndex < Files.Count)
+                    {
+                        Files[fileIndex].Status = FileStatus.Failed;
+                        Files[fileIndex].Error = error;
+                    }
+                });
+            }
+        }
+        finally
+        {
+            gcHandle.Free();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
