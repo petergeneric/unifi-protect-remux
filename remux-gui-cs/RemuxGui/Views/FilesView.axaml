@@ -161,21 +161,21 @@
                                Margin="0,0,0,12" />
 
                     <!-- Actions at bottom -->
-                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8"
-                                Margin="0,12,0,0">
+                    <WrapPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                               Margin="0,12,0,0">
                         <Button Content="Convert"
                                 Command="{Binding ConvertFileCommand}"
-                                Padding="16,6"
+                                Padding="10,6" Margin="0,0,6,6"
                                 ToolTip.Tip="Convert this .ubv file into a standard MP4 file" />
                         <Button Content="Diagnostics"
                                 Command="{Binding DiagnosticsCommand}"
-                                Padding="16,6"
+                                Padding="10,6" Margin="0,0,6,6"
                                 ToolTip.Tip="Dump the internal structure of the .ubv file for troubleshooting" />
                         <Button Content="View Log"
                                 Command="{Binding ViewFileLogCommand}"
                                 IsVisible="{Binding LogLines.Count}"
-                                Padding="16,6" />
-                    </StackPanel>
+                                Padding="10,6" Margin="0,0,6,6" />
+                    </WrapPanel>
 
                     <!-- Detail body -->
                     <ScrollViewer>
