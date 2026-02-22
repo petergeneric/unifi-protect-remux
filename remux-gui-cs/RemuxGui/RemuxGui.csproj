@@ -6,6 +6,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +19,12 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="MessageBox.Avalonia" Version="3.3.1.1" />
+  </ItemGroup>
+
+  <!-- NativeAOT on macOS needs Homebrew libs (OpenSSL, brotli, etc.) at link time -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('osx'))">
+    <LinkerArg Include="-L/opt/homebrew/lib" Condition="Exists('/opt/homebrew/lib')" />
+    <LinkerArg Include="-L/usr/local/lib" Condition="Exists('/usr/local/lib')" />
   </ItemGroup>
 
   <!-- Native library references: copy any .dylib / .dll / .so from all native dirs -->

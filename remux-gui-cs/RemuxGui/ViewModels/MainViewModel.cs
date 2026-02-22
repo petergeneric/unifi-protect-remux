@@ -187,7 +187,7 @@ public partial class MainViewModel : ViewModelBase
 
                     try
                     {
-                        var evt = JsonSerializer.Deserialize<ProgressEvent>(json);
+                        var evt = JsonSerializer.Deserialize(json, AppJsonContext.Default.ProgressEvent);
                         if (evt != null)
                         {
                             Dispatcher.UIThread.Post(() => HandleProgressEvent(idx, evt));

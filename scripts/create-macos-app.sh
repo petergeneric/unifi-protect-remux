@@ -23,8 +23,8 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-# Copy the entire .NET self-contained publish directory into MacOS/
-cp -a "$PUBLISH_DIR"/* "$APP_DIR/Contents/MacOS/"
+# Copy the publish directory into MacOS/, excluding debug symbol bundles
+rsync -a --exclude '*.dSYM' "$PUBLISH_DIR/" "$APP_DIR/Contents/MacOS/"
 
 # Copy app icon
 if [[ -f "$SCRIPT_DIR/../assets/appicon.icns" ]]; then

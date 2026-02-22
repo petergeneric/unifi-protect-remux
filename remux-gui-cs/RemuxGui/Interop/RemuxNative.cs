@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 using System.Text.Json;
 using RemuxGui.Models;
 
@@ -9,7 +10,7 @@ namespace RemuxGui.Interop;
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 public delegate void ProgressCallback(IntPtr jsonEvent, int fileIndex);
 
-public static class RemuxNative
+public static partial class RemuxNative
 {
     private const string LibName = "remux_ffi";
 
@@ -48,31 +49,31 @@ public static class RemuxNative
         return IntPtr.Zero;
     }
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern void remux_init();
+    [LibraryImport(LibName)]
+    private static partial void remux_init();
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr remux_version();
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_version();
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr remux_validate_config(
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string configJson);
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_validate_config(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string configJson);
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr remux_process_file(
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string ubvPath,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string configJson,
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_process_file(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string ubvPath,
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string configJson,
         ProgressCallback? progressCallback,
         int fileIndex,
         out IntPtr errorOut);
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr remux_produce_diagnostics(
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string ubvPath,
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_produce_diagnostics(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string ubvPath,
         out IntPtr errorOut);
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern void remux_free_string(IntPtr s);
+    [LibraryImport(LibName)]
+    private static partial void remux_free_string(IntPtr s);
 
     /// <summary>
     /// Read a UTF-8 string from a Rust-allocated pointer, then free it.
@@ -122,12 +123,12 @@ public static class RemuxNative
         var json = ReadAndFreeString(remux_version());
         if (json == null)
             return new VersionInfo { Version = "unknown" };
-        return JsonSerializer.Deserialize<VersionInfo>(json) ?? new VersionInfo { Version = "unknown" };
+        return JsonSerializer.Deserialize(json, AppJsonContext.Default.VersionInfo) ?? new VersionInfo { Version = "unknown" };
     }
 
     public static (bool valid, string? error) ValidateConfig(RemuxConfig config)
     {
-        var configJson = JsonSerializer.Serialize(config);
+        var configJson = JsonSerializer.Serialize(config, AppJsonContext.Default.RemuxConfig);
         var resultJson = ReadAndFreeString(remux_validate_config(configJson));
         if (resultJson == null)
             return (false, "Internal error: null result from validate_config");
@@ -146,7 +147,7 @@ public static class RemuxNative
         ProgressCallback? callback,
         int fileIndex)
     {
-        var configJson = JsonSerializer.Serialize(config);
+        var configJson = JsonSerializer.Serialize(config, AppJsonContext.Default.RemuxConfig);
         var resultPtr = remux_process_file(ubvPath, configJson, callback, fileIndex, out var errorPtr);
         var error = ReadAndFreeError(errorPtr);
         var result = ReadAndFreeString(resultPtr);
