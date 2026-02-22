@@ -176,7 +176,7 @@
                     </WrapPanel>
 
                     <!-- Detail body -->
-                    <ScrollViewer>
+                    <ScrollViewer IsScrollInertiaEnabled="True">
                         <StackPanel Spacing="12" DataContext="{Binding SelectedFile}">
                             <!-- File name -->
                             <TextBlock Text="{Binding FileName}" FontSize="13" FontWeight="SemiBold"

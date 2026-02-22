@@ -27,15 +27,13 @@
                     <TextBlock Text="UBV Remux" FontSize="17" FontWeight="SemiBold" />
                 </Border>
 
-                <!-- Version footer -->
+                <!-- Copyright footer -->
                 <Border DockPanel.Dock="Bottom" Padding="16,10"
                         BorderThickness="0,1,0,0"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                        x:Name="VersionFooter">
-                    <TextBlock Text="{Binding VersionString}"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+                    <TextBlock Text="&#xa9; Peter Wright 2020&#x2013;2026"
                                FontSize="11"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                               Cursor="Hand" />
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
                 </Border>
 
                 <!-- Nav items -->
@@ -80,6 +78,16 @@
                             <TextBlock Text="Cameras" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+                    <Button Classes="nav-item"
+                            Command="{Binding SetViewCommand}"
+                            CommandParameter="4"
+                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=4}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                      Data="{StaticResource IconInfo}" />
+                            <TextBlock Text="About" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -90,6 +98,7 @@
             <views:SettingsView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}" />
             <views:LogView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}" />
             <views:CamerasView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}" />
+            <views:AboutView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=4}" />
         </Grid>
     </DockPanel>
 </Window>

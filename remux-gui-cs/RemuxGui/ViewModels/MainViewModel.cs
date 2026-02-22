@@ -61,9 +61,6 @@ public partial class MainViewModel : ViewModelBase
         ? Files[idx].FileName
         : null;
 
-    // Version
-    public string VersionString { get; private set; } = "";
-
     // Settings
     [ObservableProperty]
     private bool _withAudio = true;
@@ -146,28 +143,7 @@ public partial class MainViewModel : ViewModelBase
         LogLines.CollectionChanged += OnLogLinesChanged;
         Cameras.CollectionChanged += (_, _) => RefreshAllCameraNames();
 
-        LoadVersionString();
         LoadCameras();
-    }
-
-    private void LoadVersionString()
-    {
-        try
-        {
-            var info = RemuxNative.GetVersion();
-            var commit = info.GitCommit;
-            if (commit.Length > 7)
-                commit = commit[..7];
-
-            if (!string.IsNullOrEmpty(commit))
-                VersionString = $"v{info.Version} \u00b7 {commit}";
-            else
-                VersionString = $"v{info.Version}";
-        }
-        catch
-        {
-            VersionString = "";
-        }
     }
 
     private void OnLogLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)

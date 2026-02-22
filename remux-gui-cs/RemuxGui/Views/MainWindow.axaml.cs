@@ -18,8 +18,6 @@ public partial class MainWindow : Window
 
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
-
-        VersionFooter.PointerPressed += OnVersionClick;
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
@@ -49,11 +47,6 @@ public partial class MainWindow : Window
         {
             await ShowLowResWarning(warned);
         }
-    }
-
-    private async void OnVersionClick(object? sender, PointerPressedEventArgs e)
-    {
-        await AboutWindow.ShowAbout(this);
     }
 
     internal async System.Threading.Tasks.Task ShowLowResWarning(List<string> warnedPaths)

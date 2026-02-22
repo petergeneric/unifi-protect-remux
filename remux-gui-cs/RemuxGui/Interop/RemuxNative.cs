@@ -56,6 +56,9 @@ public static partial class RemuxNative
     private static partial IntPtr remux_version();
 
     [LibraryImport(LibName)]
+    private static partial IntPtr remux_licenses();
+
+    [LibraryImport(LibName)]
     private static partial IntPtr remux_validate_config(
         [MarshalUsing(typeof(Utf8StringMarshaller))] string configJson);
 
@@ -113,6 +116,14 @@ public static partial class RemuxNative
         if (json == null)
             return new VersionInfo { Version = "unknown" };
         return JsonSerializer.Deserialize(json, AppJsonContext.Default.VersionInfo) ?? new VersionInfo { Version = "unknown" };
+    }
+
+    public static LicenseEntry[] GetLicenses()
+    {
+        var json = ReadAndFreeString(remux_licenses());
+        if (json == null)
+            return [];
+        return JsonSerializer.Deserialize(json, AppJsonContext.Default.LicenseEntryArray) ?? [];
     }
 
     public static (bool valid, string? error) ValidateConfig(RemuxConfig config)

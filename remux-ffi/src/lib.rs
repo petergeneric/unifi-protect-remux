@@ -16,6 +16,7 @@ extern crate ffmpeg_next;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_COMMIT: &str = env!("GIT_COMMIT");
 const RELEASE_VERSION: &str = env!("RELEASE_VERSION");
+const LICENSES_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/licenses.json"));
 
 // ---------------------------------------------------------------------------
 // JSON serde types
@@ -227,6 +228,18 @@ pub extern "C" fn remux_version() -> *mut c_char {
         let json = serde_json::to_string(&info).unwrap_or_default();
         string_to_c(&json)
     }) {
+        Ok(ptr) => ptr,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Return a JSON array of third-party license information.
+///
+/// The caller **must** free the returned string with `remux_free_string`.
+/// Returns `NULL` on internal error.
+#[unsafe(no_mangle)]
+pub extern "C" fn remux_licenses() -> *mut c_char {
+    match panic::catch_unwind(|| string_to_c(LICENSES_JSON)) {
         Ok(ptr) => ptr,
         Err(_) => std::ptr::null_mut(),
     }

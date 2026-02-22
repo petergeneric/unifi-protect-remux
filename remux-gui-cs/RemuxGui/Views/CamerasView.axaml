@@ -20,7 +20,7 @@
         </Border>
 
         <!-- Content -->
-        <ScrollViewer Padding="16">
+        <ScrollViewer Padding="16" IsScrollInertiaEnabled="True">
             <StackPanel Spacing="8">
                 <!-- Column headers -->
                 <Grid ColumnDefinitions="160,*,40" Margin="12,0,12,4"

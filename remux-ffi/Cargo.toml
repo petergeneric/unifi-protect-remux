@@ -18,6 +18,9 @@ flate2 = "1"
 log = "0.4"
 ffmpeg-next = "8"
 
+[build-dependencies]
+serde_json = "1"
+
 [features]
 default = ["ffmpeg-static"]
 ffmpeg-static = ["remux-lib/ffmpeg-static"]

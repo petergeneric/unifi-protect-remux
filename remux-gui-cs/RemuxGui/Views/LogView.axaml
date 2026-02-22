@@ -139,7 +139,7 @@
 
         <!-- Log entries -->
         <Border Padding="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
-            <ScrollViewer x:Name="LogScrollViewer">
+            <ScrollViewer x:Name="LogScrollViewer" IsScrollInertiaEnabled="True">
                 <ItemsControl ItemsSource="{Binding FilteredLogLines}" Padding="8">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>

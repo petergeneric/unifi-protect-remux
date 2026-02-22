@@ -7,6 +7,7 @@ namespace RemuxGui.Models;
 [JsonSerializable(typeof(VersionInfo))]
 [JsonSerializable(typeof(CameraData))]
 [JsonSerializable(typeof(CameraDataEntry))]
+[JsonSerializable(typeof(LicenseEntry[]))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
 }

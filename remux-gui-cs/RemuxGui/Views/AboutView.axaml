@@ -1,0 +1,114 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:RemuxGui.Views"
+             x:Class="RemuxGui.Views.AboutView">
+    <DockPanel>
+        <!-- Trademark notice — pinned to bottom -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="28,0,28,24">
+            <Border Height="1" Margin="0,4"
+                    Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                       Text="UniFi and UniFi Protect are registered trademarks of Ubiquiti Networks Inc. This software is open source and is unaffiliated with Ubiquiti." />
+        </StackPanel>
+
+        <!-- Scrollable content fills remaining space -->
+        <ScrollViewer Padding="28,24,28,0" IsScrollInertiaEnabled="True">
+            <StackPanel Spacing="12" MaxWidth="500" HorizontalAlignment="Left" Margin="0,0,0,12">
+                <!-- App name + version row -->
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="UBV Remux" FontSize="22" FontWeight="Bold"
+                               VerticalAlignment="Bottom" />
+                    <TextBlock x:Name="VersionText" Margin="0,0,0,2"
+                               VerticalAlignment="Bottom" FontSize="14"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                </StackPanel>
+
+                <TextBlock Text="Converts Ubiquiti .ubv video files to standard MP4 via remuxing."
+                           TextWrapping="Wrap" FontSize="13"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+
+                <Border Height="1" Margin="0,4"
+                        Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+
+                <!-- Details grid -->
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Release"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Margin="0,2,16,2" FontSize="13"
+                               x:Name="ReleaseLabel" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ReleaseText"
+                               Margin="0,2" FontSize="13" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Commit"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Margin="0,2,16,2" FontSize="13"
+                               x:Name="CommitLabel" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="CommitText"
+                               FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                               Margin="0,2" FontSize="12" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="License"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Margin="0,2,16,2" FontSize="13" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="AGPL-3.0-only"
+                               Margin="0,2" FontSize="13" />
+                </Grid>
+
+                <Border Height="1" Margin="0,4"
+                        Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+
+                <!-- Footer -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Copyright (c) Peter Wright 2020-2026" FontSize="12"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                    <TextBlock x:Name="GithubLink"
+                               Text="github.com/petergeneric/unifi-protect-remux"
+                               Foreground="{DynamicResource SystemAccentColor}"
+                               Cursor="Hand" FontSize="12"
+                               TextDecorations="Underline" />
+                </StackPanel>
+
+                <Border Height="1" Margin="0,4"
+                        Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+
+                <!-- Credits & Third-Party Libraries -->
+                <TextBlock Text="Credits &amp; Third-Party Libraries" FontSize="15" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1">
+                    <TextBlock Text="&#x2022; CCTV camera icon &#x2014; Vectors Market (CC BY 3.0)"
+                               FontSize="12" TextWrapping="Wrap"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                    <Button x:Name="IconAttributionLink" Cursor="Hand"
+                            Background="Transparent" Padding="0" BorderThickness="0"
+                            VerticalAlignment="Center">
+                        <PathIcon Data="{StaticResource IconExternalLink}" Width="11" Height="11"
+                                  Foreground="{DynamicResource SystemAccentColor}" />
+                    </Button>
+                </StackPanel>
+                <ItemsControl x:Name="LibrariesList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="views:LibraryItem">
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,1">
+                                <TextBlock Text="{Binding DisplayText}" FontSize="12" TextWrapping="Wrap"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                <Button IsVisible="{Binding HasUrl}" Cursor="Hand"
+                                        Background="Transparent" Padding="0" BorderThickness="0"
+                                        VerticalAlignment="Center"
+                                        Tag="{Binding Url}"
+                                        Click="OnLibraryLinkClick">
+                                    <PathIcon Data="{StaticResource IconExternalLink}" Width="10" Height="10"
+                                              Foreground="{DynamicResource SystemAccentColor}" />
+                                </Button>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Breathing room at the end of the scroll area -->
+                <Border Height="140" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>
