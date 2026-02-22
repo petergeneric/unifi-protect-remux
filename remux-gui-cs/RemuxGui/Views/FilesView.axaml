@@ -158,11 +158,6 @@
                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                     IsVisible="{Binding SelectedFile, Converter={x:Static ObjectConverters.IsNotNull}}">
                 <DockPanel Margin="16">
-                    <!-- Header -->
-                    <TextBlock DockPanel.Dock="Top" Text="File Details"
-                               FontSize="15" FontWeight="SemiBold"
-                               Margin="0,0,0,12" />
-
                     <!-- Actions at bottom -->
                     <WrapPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
                                Margin="0,12,0,0">
@@ -184,8 +179,9 @@
                     <ScrollViewer>
                         <StackPanel Spacing="12" DataContext="{Binding SelectedFile}">
                             <!-- File name -->
-                            <TextBlock Text="{Binding FileName}" FontSize="14" FontWeight="SemiBold"
-                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding FileName}" FontSize="13" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="{Binding FileName}" />
 
                             <!-- Info grid -->
                             <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,4,0,0">

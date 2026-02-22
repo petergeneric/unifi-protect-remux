@@ -224,6 +224,9 @@ Section "Uninstall"
   ; Remove install directory (only if empty)
   RMDir "$INSTDIR"
 
+  ; Remove application data (cameras.json, etc.)
+  RMDir /r "$APPDATA\RemuxGui"
+
   ; Remove registry entries
   DeleteRegKey HKLM "${UNINSTALL_REG_KEY}"
 SectionEnd
