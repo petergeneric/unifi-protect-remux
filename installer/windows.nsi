@@ -140,7 +140,6 @@ Section "Remux GUI" SEC_GUI
   ; Start Menu shortcut
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk" "$INSTDIR\gui\RemuxGui.exe" "" "$INSTDIR\gui\RemuxGui.exe" 0
-  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
 SectionEnd
 
 ; Component 2: Add to PATH
@@ -208,7 +207,6 @@ Section "Uninstall"
 
   ; Remove Start Menu shortcuts
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\UBV Remux.lnk"
-  Delete "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk"
   RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
 
   ; Remove GUI files
