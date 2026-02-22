@@ -209,10 +209,20 @@
                                 </TextBlock>
 
                                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Camera" Classes="detail-label" Margin="0,6,0,0"
-                                           IsVisible="{Binding CameraName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding CameraName}" Classes="detail-value" Margin="0,6,0,0"
-                                           Foreground="{DynamicResource SystemControlForegroundAccentBrush}"
-                                           IsVisible="{Binding CameraName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                           IsVisible="{Binding MacAddress, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <Panel Grid.Row="3" Grid.Column="1" Margin="0,6,0,0"
+                                       IsVisible="{Binding MacAddress, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                    <TextBlock Text="{Binding CameraName}" Classes="detail-value"
+                                               Foreground="{DynamicResource SystemControlForegroundAccentBrush}"
+                                               IsVisible="{Binding CameraName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    <Button Content="Set Name"
+                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SetViewCommand}"
+                                            CommandParameter="3"
+                                            IsVisible="{Binding CameraName, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                            Background="Transparent" BorderThickness="0"
+                                            Padding="0" Cursor="Hand" FontSize="12"
+                                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                </Panel>
 
                                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Error" Classes="detail-label" Margin="0,6,0,0"
                                            Foreground="#E85050"
