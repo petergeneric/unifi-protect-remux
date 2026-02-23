@@ -67,11 +67,11 @@ jobs:
       - name: Build C# GUI
         shell: pwsh
         run: |
-          $NativeDir = "remux-gui-cs/RemuxGui/native/win-x64"
+          $NativeDir = "ui/RemuxGui/native/win-x64"
           New-Item -ItemType Directory -Force $NativeDir
           Copy-Item "target/x86_64-pc-windows-msvc/release/remux_ffi.dll" $NativeDir
           Copy-Item "$env:FFMPEG_DIR\bin\*.dll" $NativeDir
-          dotnet publish remux-gui-cs/RemuxGui/RemuxGui.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
+          dotnet publish ui/RemuxGui/RemuxGui.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
 
       - name: Test
         run: cargo nextest run --release --no-default-features --target x86_64-pc-windows-msvc --profile ci

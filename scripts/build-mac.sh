@@ -34,7 +34,7 @@ esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NATIVE_DIR="$REPO_ROOT/remux-gui-cs/RemuxGui/native/$RID"
+NATIVE_DIR="$REPO_ROOT/ui/RemuxGui/native/$RID"
 PUBLISH_DIR="$REPO_ROOT/publish/$RID"
 
 echo "=== Building remux-ffi (Rust) for $RID ($CARGO_PROFILE) ==="
@@ -49,7 +49,7 @@ mkdir -p "$NATIVE_DIR"
 cp "$REPO_ROOT/target/$CARGO_PROFILE/libremux_ffi.dylib" "$NATIVE_DIR/"
 
 echo "=== Building C# GUI ==="
-dotnet publish "$REPO_ROOT/remux-gui-cs/RemuxGui/RemuxGui.csproj" \
+dotnet publish "$REPO_ROOT/ui/RemuxGui/RemuxGui.csproj" \
     -c "$CONFIGURATION" \
     -r "$RID" \
     --self-contained \

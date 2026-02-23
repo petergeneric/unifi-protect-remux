@@ -133,9 +133,9 @@ jobs:
 
       - name: Build C# GUI
         run: |
-          mkdir -p "remux-gui-cs/RemuxGui/native/${{ matrix.rid }}"
-          cp "target/${{ matrix.target }}/release/libremux_ffi.dylib" "remux-gui-cs/RemuxGui/native/${{ matrix.rid }}/"
-          dotnet publish remux-gui-cs/RemuxGui/RemuxGui.csproj -c Release -r "${{ matrix.rid }}" --self-contained -o "publish/${{ matrix.rid }}"
+          mkdir -p "ui/RemuxGui/native/${{ matrix.rid }}"
+          cp "target/${{ matrix.target }}/release/libremux_ffi.dylib" "ui/RemuxGui/native/${{ matrix.rid }}/"
+          dotnet publish ui/RemuxGui/RemuxGui.csproj -c Release -r "${{ matrix.rid }}" --self-contained -o "publish/${{ matrix.rid }}"
 
       - name: Test
         run: cargo nextest run --release --target ${{ matrix.target }} --profile ci

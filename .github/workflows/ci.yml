@@ -91,7 +91,7 @@ jobs:
 
       - name: Build C# GUI
         if: runner.os != 'Linux'
-        run: dotnet build remux-gui-cs/RemuxGui/RemuxGui.csproj -c Debug
+        run: dotnet build ui/RemuxGui/RemuxGui.csproj -c Debug
 
       - name: Test
         run: cargo nextest run --no-default-features --profile ci
