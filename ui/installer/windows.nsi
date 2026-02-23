@@ -27,7 +27,7 @@
 ;       └── ...
 ;
 ; Build:
-;   makensis /DSTAGING_DIR=staging /DVERSION=maj.min.rev installer\windows.nsi
+;   makensis /DSTAGING_DIR=staging /DVERSION=maj.min.rev ui\installer\windows.nsi
 
 ;-----------------------------------------------------------------------------
 ; Build-time defines with defaults
