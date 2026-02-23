@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -27,6 +28,11 @@ public partial class UbvInfoWindow : Window
     public UbvInfoWindow()
     {
         InitializeComponent();
+    }
+
+    private void OnCloseWindow(object? sender, EventArgs e)
+    {
+        Close();
     }
 
     public static void ShowUbvInfo(Window owner, string ubvPath, string filename, string json)

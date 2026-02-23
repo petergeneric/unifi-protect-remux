@@ -7,6 +7,17 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         SizeToContent="Height">
+
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenuItem Header="File">
+                <NativeMenu>
+                    <NativeMenuItem Header="Close Window" Click="OnCloseWindow" Gesture="Meta+W" />
+                </NativeMenu>
+            </NativeMenuItem>
+        </NativeMenu>
+    </NativeMenu.Menu>
+
     <Border Padding="28,24">
         <StackPanel Spacing="12">
             <!-- App name + version row -->

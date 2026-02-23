@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
@@ -36,6 +37,11 @@ public partial class MainWindow : Window
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
+
+    private void OnCloseWindow(object? sender, EventArgs e)
+    {
+        Close();
+    }
 
     private Border? FindFileListBorder()
     {

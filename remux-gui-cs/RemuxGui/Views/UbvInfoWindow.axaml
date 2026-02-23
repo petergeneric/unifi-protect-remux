@@ -8,6 +8,16 @@
         MinWidth="800" MinHeight="500"
         WindowStartupLocation="CenterScreen">
 
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenuItem Header="File">
+                <NativeMenu>
+                    <NativeMenuItem Header="Close Window" Click="OnCloseWindow" Gesture="Meta+W" />
+                </NativeMenu>
+            </NativeMenuItem>
+        </NativeMenu>
+    </NativeMenu.Menu>
+
     <Window.Styles>
         <!-- Auto-expand all tree nodes -->
         <Style Selector="TreeViewItem">

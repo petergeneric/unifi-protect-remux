@@ -23,6 +23,16 @@
         <KeyBinding Gesture="Ctrl+5" Command="{Binding SetViewCommand}" CommandParameter="4" />
     </Window.KeyBindings>
 
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenuItem Header="File">
+                <NativeMenu>
+                    <NativeMenuItem Header="Close Window" Click="OnCloseWindow" Gesture="Meta+W" />
+                </NativeMenu>
+            </NativeMenuItem>
+        </NativeMenu>
+    </NativeMenu.Menu>
+
     <Panel>
         <DockPanel>
             <!-- Left Sidebar -->

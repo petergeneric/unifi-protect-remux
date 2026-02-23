@@ -11,10 +11,16 @@ namespace RemuxGui.Views;
 
 public partial class AboutWindow : Window
 {
+
     public static async Task ShowAbout(Window owner)
     {
         var about = new AboutWindow();
         await about.ShowDialog(owner);
+    }
+
+    private void OnCloseWindow(object? sender, EventArgs e)
+    {
+        Close();
     }
 
     public AboutWindow()
