@@ -7,6 +7,8 @@
 
     <UserControl.Resources>
         <conv:LogLevelColorConverter x:Key="LogLevelColorConverter" />
+        <conv:LogFilterActiveConverter x:Key="FilterActiveBg" Mode="bg" />
+        <conv:LogFilterActiveConverter x:Key="FilterActiveFg" Mode="fg" />
     </UserControl.Resources>
 
     <UserControl.Styles>
@@ -29,7 +31,7 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8"
                             HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Button Content="Clear" Command="{Binding ClearLogCommand}"
-                            Padding="16,6" />
+                            Classes="subtle" Padding="16,6" />
                     <Button Content="Export..." Click="OnExportLog"
                             Padding="16,6" />
                 </StackPanel>
@@ -71,12 +73,16 @@
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <Button Classes="filter-pill"
                             Command="{Binding SetLogFilterCommand}"
-                            CommandParameter="All">
+                            CommandParameter="All"
+                            Background="{Binding LogFilterLevel, Converter={StaticResource FilterActiveBg}, ConverterParameter=All}"
+                            Foreground="{Binding LogFilterLevel, Converter={StaticResource FilterActiveFg}, ConverterParameter=All}">
                         <TextBlock Text="All" />
                     </Button>
                     <Button Classes="filter-pill"
                             Command="{Binding SetLogFilterCommand}"
-                            CommandParameter="info">
+                            CommandParameter="info"
+                            Background="{Binding LogFilterLevel, Converter={StaticResource FilterActiveBg}, ConverterParameter=info}"
+                            Foreground="{Binding LogFilterLevel, Converter={StaticResource FilterActiveFg}, ConverterParameter=info}">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <TextBlock Text="Info" />
                             <TextBlock FontSize="10" VerticalAlignment="Center"
@@ -89,7 +95,9 @@
                     </Button>
                     <Button Classes="filter-pill"
                             Command="{Binding SetLogFilterCommand}"
-                            CommandParameter="warn">
+                            CommandParameter="warn"
+                            Background="{Binding LogFilterLevel, Converter={StaticResource FilterActiveBg}, ConverterParameter=warn}"
+                            Foreground="{Binding LogFilterLevel, Converter={StaticResource FilterActiveFg}, ConverterParameter=warn}">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <TextBlock Text="Warn" Foreground="#DCB432" />
                             <TextBlock FontSize="10" VerticalAlignment="Center"
@@ -102,7 +110,9 @@
                     </Button>
                     <Button Classes="filter-pill"
                             Command="{Binding SetLogFilterCommand}"
-                            CommandParameter="error">
+                            CommandParameter="error"
+                            Background="{Binding LogFilterLevel, Converter={StaticResource FilterActiveBg}, ConverterParameter=error}"
+                            Foreground="{Binding LogFilterLevel, Converter={StaticResource FilterActiveFg}, ConverterParameter=error}">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <TextBlock Text="Error" Foreground="#F05A5A" />
                             <TextBlock FontSize="10" VerticalAlignment="Center"
@@ -139,34 +149,56 @@
 
         <!-- Log entries -->
         <Border Padding="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
-            <ScrollViewer x:Name="LogScrollViewer" IsScrollInertiaEnabled="True">
-                <ItemsControl ItemsSource="{Binding FilteredLogLines}" Padding="8">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid ColumnDefinitions="62,36,*" Margin="0,1">
-                                <TextBlock Grid.Column="0" Text="{Binding TimestampLabel}"
-                                           FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-                                <TextBlock Grid.Column="1"
-                                           FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
-                                           FontSize="11"
-                                           Foreground="{Binding Level, Converter={StaticResource LogLevelColorConverter}}">
-                                    <TextBlock.Text>
-                                        <Binding Path="Level" StringFormat="[{0}]" />
-                                    </TextBlock.Text>
-                                </TextBlock>
-                                <TextBlock Grid.Column="2"
-                                           FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
-                                           FontSize="11"
-                                           TextWrapping="Wrap"
-                                           Margin="4,0,0,0"
-                                           Text="{Binding Message}" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <Panel>
+                <!-- Empty state -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Spacing="8" Margin="20"
+                            IsVisible="{Binding !LogLines.Count}">
+                    <PathIcon Width="32" Height="32"
+                              Data="{StaticResource IconClipboardText}"
+                              Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                              HorizontalAlignment="Center" />
+                    <TextBlock Text="No log entries yet"
+                               FontSize="14" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                    <TextBlock Text="Logs will appear here when you convert files"
+                               FontSize="12"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+                </StackPanel>
+
+                <!-- Log list -->
+                <ScrollViewer x:Name="LogScrollViewer" IsScrollInertiaEnabled="True"
+                              IsVisible="{Binding LogLines.Count}">
+                    <ItemsControl ItemsSource="{Binding FilteredLogLines}" Padding="8">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="62,36,*" Margin="0,1">
+                                    <TextBlock Grid.Column="0" Text="{Binding TimestampLabel}"
+                                               FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                    <TextBlock Grid.Column="1"
+                                               FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                               FontSize="11"
+                                               Foreground="{Binding Level, Converter={StaticResource LogLevelColorConverter}}">
+                                        <TextBlock.Text>
+                                            <Binding Path="Level" StringFormat="[{0}]" />
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                    <TextBlock Grid.Column="2"
+                                               FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Margin="4,0,0,0"
+                                               Text="{Binding Message}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Panel>
         </Border>
     </DockPanel>
 </UserControl>

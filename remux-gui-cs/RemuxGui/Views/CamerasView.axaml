@@ -5,11 +5,36 @@
              x:Class="RemuxGui.Views.CamerasView"
              x:DataType="vm:MainViewModel">
 
+    <UserControl.Styles>
+        <Style Selector="Border.camera-row">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.camera-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListLowBrush}" />
+        </Style>
+    </UserControl.Styles>
+
     <DockPanel>
         <!-- Top toolbar -->
         <Border DockPanel.Dock="Top" Padding="16,10">
-            <TextBlock Text="My Cameras" FontSize="18" FontWeight="SemiBold"
-                       VerticalAlignment="Center" />
+            <DockPanel>
+                <TextBlock Text="My Cameras" FontSize="18" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Button DockPanel.Dock="Right" Padding="16,6"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Command="{Binding SaveCamerasExplicitCommand}"
+                        Click="OnSaveClick">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Width="12" Height="12" Data="{StaticResource IconCheck}" />
+                        <TextBlock Text="{Binding CameraSaveLabel}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </DockPanel>
         </Border>
 
         <!-- Description -->
@@ -21,7 +46,7 @@
 
         <!-- Content -->
         <ScrollViewer Padding="16" IsScrollInertiaEnabled="True">
-            <StackPanel Spacing="8">
+            <StackPanel Spacing="0">
                 <!-- Column headers -->
                 <Grid ColumnDefinitions="160,*,40" Margin="12,0,12,4"
                       IsVisible="{Binding Cameras.Count}">
@@ -36,10 +61,7 @@
                 <ItemsControl x:Name="CamerasList" ItemsSource="{Binding Cameras}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:CameraEntry">
-                            <Border CornerRadius="6" Padding="12,8" Margin="0,2"
-                                    BorderThickness="1"
-                                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+                            <Border Classes="camera-row" CornerRadius="6" Padding="12,8" Margin="0,1">
                                 <Grid ColumnDefinitions="160,*,40">
                                     <TextBlock Grid.Column="0" Text="{Binding MacAddressFormatted}"
                                                FontFamily="Cascadia Mono, Consolas, Menlo, monospace"

@@ -12,93 +12,150 @@
 
     <Window.Resources>
         <conv:ViewIndexConverter x:Key="ViewIndexConverter" />
+        <conv:ViewIndexConverter x:Key="ViewIndexFgConverter" Mode="fg" />
     </Window.Resources>
 
-    <DockPanel>
-        <!-- Left Sidebar -->
-        <Border DockPanel.Dock="Left" Width="200"
-                BorderThickness="0,0,1,0"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
-            <DockPanel>
-                <!-- Brand header -->
-                <Border DockPanel.Dock="Top" Padding="16,14"
-                        BorderThickness="0,0,0,1"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
-                    <TextBlock Text="UBV Remux" FontSize="17" FontWeight="SemiBold" />
-                </Border>
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+1" Command="{Binding SetViewCommand}" CommandParameter="0" />
+        <KeyBinding Gesture="Ctrl+2" Command="{Binding SetViewCommand}" CommandParameter="1" />
+        <KeyBinding Gesture="Ctrl+3" Command="{Binding SetViewCommand}" CommandParameter="2" />
+        <KeyBinding Gesture="Ctrl+4" Command="{Binding SetViewCommand}" CommandParameter="3" />
+        <KeyBinding Gesture="Ctrl+5" Command="{Binding SetViewCommand}" CommandParameter="4" />
+    </Window.KeyBindings>
 
-                <!-- Copyright footer -->
-                <Border DockPanel.Dock="Bottom" Padding="16,10"
-                        BorderThickness="0,1,0,0"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
-                    <TextBlock Text="&#xa9; Peter Wright 2020&#x2013;2026"
-                               FontSize="11"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-                </Border>
+    <Panel>
+        <DockPanel>
+            <!-- Left Sidebar -->
+            <Border DockPanel.Dock="Left" Width="200"
+                    BorderThickness="0,0,1,0"
+                    BorderBrush="#2A2D3D">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Color="#1F2233" Offset="0" />
+                        <GradientStop Color="#1A1C2B" Offset="0.5" />
+                        <GradientStop Color="#171926" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <DockPanel>
+                    <!-- Brand header -->
+                    <Border DockPanel.Dock="Top" Padding="16,14"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="#2A2D3D">
+                        <TextBlock Text="UBV Remux" FontSize="17" FontWeight="SemiBold"
+                                   Foreground="#E8EAF0" />
+                    </Border>
 
-                <!-- Nav items -->
-                <StackPanel Margin="8,8" Spacing="2">
-                    <Button Classes="nav-item"
-                            Command="{Binding SetViewCommand}"
-                            CommandParameter="0"
-                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
-                                      Data="{StaticResource IconFolder}" />
-                            <TextBlock Text="Files" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="nav-item"
-                            Command="{Binding SetViewCommand}"
-                            CommandParameter="1"
-                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
-                                      Data="{StaticResource IconCog}" />
-                            <TextBlock Text="Settings" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="nav-item"
-                            Command="{Binding SetViewCommand}"
-                            CommandParameter="2"
-                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
-                                      Data="{StaticResource IconClipboardText}" />
-                            <TextBlock Text="Log" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="nav-item"
-                            Command="{Binding SetViewCommand}"
-                            CommandParameter="3"
-                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
-                                      Data="{StaticResource IconVideo}" />
-                            <TextBlock Text="Cameras" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="nav-item"
-                            Command="{Binding SetViewCommand}"
-                            CommandParameter="4"
-                            Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=4}">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <PathIcon Width="15" Height="15" VerticalAlignment="Center"
-                                      Data="{StaticResource IconInfo}" />
-                            <TextBlock Text="About" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
-            </DockPanel>
-        </Border>
+                    <!-- Nav items -->
+                    <StackPanel Margin="8,8" Spacing="2">
+                        <Button Classes="nav-item"
+                                Command="{Binding SetViewCommand}"
+                                CommandParameter="0"
+                                Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}"
+                                Foreground="{Binding CurrentView, Converter={StaticResource ViewIndexFgConverter}, ConverterParameter=0}">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Right" CornerRadius="8"
+                                        Padding="6,1" VerticalAlignment="Center"
+                                        Background="#28FFFFFF"
+                                        IsVisible="{Binding Files.Count}">
+                                    <TextBlock FontSize="10" FontWeight="SemiBold"
+                                               Foreground="#A8ADBC">
+                                        <TextBlock.Text>
+                                            <Binding Path="Files.Count" />
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </Border>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                              Data="{StaticResource IconFolder}"
+                                              Foreground="{Binding $parent[Button].Foreground}" />
+                                    <TextBlock Text="Files" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Button>
+                        <Button Classes="nav-item"
+                                Command="{Binding SetViewCommand}"
+                                CommandParameter="1"
+                                Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}"
+                                Foreground="{Binding CurrentView, Converter={StaticResource ViewIndexFgConverter}, ConverterParameter=1}">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                          Data="{StaticResource IconCog}"
+                                          Foreground="{Binding $parent[Button].Foreground}" />
+                                <TextBlock Text="Settings" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav-item"
+                                Command="{Binding SetViewCommand}"
+                                CommandParameter="2"
+                                Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}"
+                                Foreground="{Binding CurrentView, Converter={StaticResource ViewIndexFgConverter}, ConverterParameter=2}">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Right" CornerRadius="8"
+                                        Padding="6,1" VerticalAlignment="Center"
+                                        IsVisible="{Binding ErrorCount}"
+                                        Background="#40E85050">
+                                    <TextBlock FontSize="10" FontWeight="SemiBold"
+                                               Foreground="#F06060">
+                                        <TextBlock.Text>
+                                            <Binding Path="ErrorCount" />
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </Border>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                              Data="{StaticResource IconClipboardText}"
+                                              Foreground="{Binding $parent[Button].Foreground}" />
+                                    <TextBlock Text="Log" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Button>
+                        <Button Classes="nav-item"
+                                Command="{Binding SetViewCommand}"
+                                CommandParameter="3"
+                                Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}"
+                                Foreground="{Binding CurrentView, Converter={StaticResource ViewIndexFgConverter}, ConverterParameter=3}">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                          Data="{StaticResource IconVideo}"
+                                          Foreground="{Binding $parent[Button].Foreground}" />
+                                <TextBlock Text="Cameras" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav-item"
+                                Command="{Binding SetViewCommand}"
+                                CommandParameter="4"
+                                Background="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=4}"
+                                Foreground="{Binding CurrentView, Converter={StaticResource ViewIndexFgConverter}, ConverterParameter=4}">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <PathIcon Width="15" Height="15" VerticalAlignment="Center"
+                                          Data="{StaticResource IconInfo}"
+                                          Foreground="{Binding $parent[Button].Foreground}" />
+                                <TextBlock Text="About" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
 
-        <!-- Content area: three views, visibility-toggled -->
-        <Grid>
-            <views:FilesView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}" />
-            <views:SettingsView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}" />
-            <views:LogView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}" />
-            <views:CamerasView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}" />
-            <views:AboutView IsVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=4}" />
-        </Grid>
-    </DockPanel>
+            <!-- Content area: views with opacity transitions -->
+            <Grid>
+                <views:FilesView Classes="animated-view"
+                    Opacity="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}"
+                    IsHitTestVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=0}" />
+                <views:SettingsView Classes="animated-view"
+                    Opacity="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}"
+                    IsHitTestVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=1}" />
+                <views:LogView Classes="animated-view"
+                    Opacity="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}"
+                    IsHitTestVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=2}" />
+                <views:CamerasView Classes="animated-view"
+                    Opacity="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}"
+                    IsHitTestVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=3}" />
+                <views:AboutView Classes="animated-view"
+                    Opacity="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=4}"
+                    IsHitTestVisible="{Binding CurrentView, Converter={StaticResource ViewIndexConverter}, ConverterParameter=4}" />
+            </Grid>
+        </DockPanel>
+
+    </Panel>
 </Window>

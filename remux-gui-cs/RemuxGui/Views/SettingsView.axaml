@@ -9,7 +9,6 @@
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-            <Setter Property="Margin" Value="0,0,0,12" />
             <Setter Property="LetterSpacing" Value="1" />
         </Style>
         <Style Selector="TextBlock.setting-label">
@@ -48,7 +47,12 @@
                 <!-- Streams card -->
                 <Border Grid.Row="0" Grid.Column="0" Classes="settings-card">
                     <StackPanel Spacing="12">
-                        <TextBlock Text="STREAMS" Classes="card-header" />
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,12">
+                            <PathIcon Width="12" Height="12"
+                                      Data="{StaticResource IconStreams}"
+                                      Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Text="STREAMS" Classes="card-header" />
+                        </StackPanel>
 
                         <DockPanel>
                             <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding WithVideo}"
@@ -73,7 +77,12 @@
                 <!-- Output Format card -->
                 <Border Grid.Row="0" Grid.Column="1" Classes="settings-card">
                     <StackPanel Spacing="12">
-                        <TextBlock Text="OUTPUT FORMAT" Classes="card-header" />
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,12">
+                            <PathIcon Width="12" Height="12"
+                                      Data="{StaticResource IconFilm}"
+                                      Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Text="OUTPUT FORMAT" Classes="card-header" />
+                        </StackPanel>
 
                         <DockPanel>
                             <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding Mp4Output}"
@@ -98,7 +107,12 @@
                 <!-- Output Location card -->
                 <Border Grid.Row="1" Grid.Column="0" Classes="settings-card">
                     <StackPanel Spacing="12">
-                        <TextBlock Text="OUTPUT LOCATION" Classes="card-header" />
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,12">
+                            <PathIcon Width="12" Height="12"
+                                      Data="{StaticResource IconFolderOpen}"
+                                      Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Text="OUTPUT LOCATION" Classes="card-header" />
+                        </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Output folder" Classes="setting-label" />
@@ -117,7 +131,12 @@
                 <!-- Advanced card -->
                 <Border Grid.Row="1" Grid.Column="1" Classes="settings-card">
                     <StackPanel Spacing="12">
-                        <TextBlock Text="ADVANCED" Classes="card-header" />
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,12">
+                            <PathIcon Width="12" Height="12"
+                                      Data="{StaticResource IconTune}"
+                                      Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Text="ADVANCED" Classes="card-header" />
+                        </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Framerate override" Classes="setting-label" />

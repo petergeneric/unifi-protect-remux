@@ -31,6 +31,16 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isDiagnosticsProcessing;
 
+    // Progress detail
+    [ObservableProperty]
+    private string _progressText = "";
+
+    [ObservableProperty]
+    private bool _hasProgressInfo;
+
+    [ObservableProperty]
+    private double _progressPercent;
+
     // Navigation
     [ObservableProperty]
     private int _currentView;
@@ -317,6 +327,10 @@ public partial class MainViewModel : ViewModelBase
         LogLines.Clear();
         OutputFiles.Clear();
 
+        ProgressText = "";
+        HasProgressInfo = false;
+        ProgressPercent = 0;
+
         foreach (var f in Files)
         {
             f.Status = FileStatus.Pending;
@@ -549,12 +563,29 @@ public partial class MainViewModel : ViewModelBase
         Cameras.Add(entry);
     }
 
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveCamerasExplicitCommand))]
+    private bool _hasUnsavedCameraChanges;
+
+    [ObservableProperty]
+    private string _cameraSaveLabel = "Save";
+
+    [RelayCommand(CanExecute = nameof(HasUnsavedCameraChanges))]
+    private async Task SaveCamerasExplicit()
+    {
+        SaveCameras();
+        HasUnsavedCameraChanges = false;
+        CameraSaveLabel = "Saved!";
+        await Task.Delay(1500);
+        CameraSaveLabel = "Save";
+    }
+
     private void OnCameraEntryPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(CameraEntry.FriendlyName))
         {
             RefreshAllCameraNames();
-            SaveCameras();
+            HasUnsavedCameraChanges = true;
         }
     }
 
@@ -670,15 +701,24 @@ public partial class MainViewModel : ViewModelBase
             case "file_started":
                 if (fileIndex < Files.Count)
                     Files[fileIndex].Status = FileStatus.Processing;
+                ProgressText = $"File {fileIndex + 1} of {Files.Count}";
                 break;
 
             case "partitions_found":
                 if (fileIndex < Files.Count)
                     Files[fileIndex].PartitionCount = evt.Count;
+                HasProgressInfo = true;
+                ProgressPercent = 0;
                 LogLines.Add(new LogEntry("info", $"Found {evt.Count} partition(s)", fileIndex));
                 break;
 
             case "partition_started":
+                if (evt.Total is > 0)
+                {
+                    var partIdx = evt.Index ?? 0;
+                    ProgressPercent = (double)partIdx / evt.Total.Value * 100;
+                    ProgressText = $"File {fileIndex + 1} of {Files.Count} — partition {partIdx + 1}/{evt.Total}";
+                }
                 LogLines.Add(new LogEntry("info", $"Processing partition {(evt.Index ?? 0) + 1}/{evt.Total}", fileIndex));
                 break;
 
@@ -719,6 +759,7 @@ public partial class MainViewModel : ViewModelBase
                         Files[fileIndex].Error = string.Join("; ", evt.Errors);
                     }
                 }
+                ProgressPercent = 100;
                 break;
         }
     }

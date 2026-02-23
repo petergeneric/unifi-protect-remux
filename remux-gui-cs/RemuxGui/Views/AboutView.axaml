@@ -4,8 +4,9 @@
              x:Class="RemuxGui.Views.AboutView">
     <DockPanel>
         <!-- Trademark notice — pinned to bottom -->
-        <StackPanel DockPanel.Dock="Bottom" Margin="28,0,28,24">
-            <Border Height="1" Margin="0,4"
+        <StackPanel DockPanel.Dock="Bottom" Margin="28,0,28,16"
+                    MaxWidth="500" HorizontalAlignment="Left">
+            <Border Height="1"
                     Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
             <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0"
                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
@@ -107,7 +108,7 @@
                 </ItemsControl>
 
                 <!-- Breathing room at the end of the scroll area -->
-                <Border Height="140" />
+                <Border Height="24" />
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

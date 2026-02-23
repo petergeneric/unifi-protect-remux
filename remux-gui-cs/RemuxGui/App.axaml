@@ -15,20 +15,61 @@
     <Application.Styles>
         <FluentTheme />
 
-        <!-- Nav item button style -->
+        <!-- Nav item button style (always on dark sidebar) -->
         <Style Selector="Button.nav-item">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+            <Setter Property="Foreground" Value="#A8ADBC" />
             <Setter Property="Padding" Value="16,9" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="Button.nav-item:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#18FFFFFF" />
+            <Setter Property="Foreground" Value="#DDE0E8" />
+        </Style>
+        <Style Selector="Button.nav-item:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#18FFFFFF" />
+            <Setter Property="Foreground" Value="#DDE0E8" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <!-- Subtle button style for tertiary actions -->
+        <Style Selector="Button.subtle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+        </Style>
+        <Style Selector="Button.subtle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListLowBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+        </Style>
+
+        <!-- Animated view transition style -->
+        <Style Selector="UserControl.animated-view">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- Filter pill transitions -->
+        <Style Selector="Button.filter-pill">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
         </Style>
     </Application.Styles>
     <NativeMenu.Menu>
