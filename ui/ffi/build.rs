@@ -1,4 +1,4 @@
-#[path = "../build/shared_git_metadata.rs"]
+#[path = "../../build/shared_git_metadata.rs"]
 mod shared_git_metadata;
 
 fn main() {
@@ -15,7 +15,7 @@ fn generate_licenses_json() {
     let licenses_path = std::path::Path::new(&out_dir).join("licenses.json");
 
     // Don't re-run on every build — only when the lock file changes
-    println!("cargo:rerun-if-changed=../Cargo.lock");
+    println!("cargo:rerun-if-changed=../../Cargo.lock");
 
     let result = (|| -> Result<String, Box<dyn std::error::Error>> {
         let output = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
