@@ -19,7 +19,7 @@ public partial class AboutView : UserControl
         LoadLibraries();
 
         GithubLink.PointerPressed += OnGithubLinkClick;
-        IconAttributionLink.Click += OnIconAttributionLinkClick;
+        LicenseLink.Click += OnLicenseLinkClick;
     }
 
     private void LoadVersionInfo()
@@ -65,13 +65,14 @@ public partial class AboutView : UserControl
     {
         var items = new List<LibraryItem>
         {
-            new("Avalonia \u2014 cross-platform .NET UI framework (MIT)",
+            new("CCTV Camera icon by Vectors Market (CC BY 3.0)", "https://thenounproject.com/icon/cctv-1925352/"),
+            new("Avalonia UI (MIT)",
                 "https://github.com/AvaloniaUI/Avalonia"),
-            new("CommunityToolkit.Mvvm \u2014 MVVM toolkit (MIT)",
+            new("CommunityToolkit.Mvvm (MIT)",
                 "https://github.com/CommunityToolkit/dotnet"),
-            new("FFmpeg \u2014 multimedia framework (LGPL/GPL)",
+            new("FFmpeg multimedia framework (LGPL/GPL)",
                 "https://ffmpeg.org/"),
-            new("MessageBox.Avalonia \u2014 message box dialogs (MIT)",
+            new("MessageBox.Avalonia (MIT)",
                 "https://github.com/AvaloniaCommunity/MessageBox.Avalonia"),
         };
 
@@ -117,9 +118,9 @@ public partial class AboutView : UserControl
         OpenUrl("https://github.com/petergeneric/unifi-protect-remux");
     }
 
-    private void OnIconAttributionLinkClick(object? sender, RoutedEventArgs e)
+    private void OnLicenseLinkClick(object? sender, RoutedEventArgs e)
     {
-        OpenUrl("https://thenounproject.com/icon/cctv-1925352/");
+        OpenUrl("https://www.gnu.org/licenses/agpl-3.0.html");
     }
 
     private void OnLibraryLinkClick(object? sender, RoutedEventArgs e)

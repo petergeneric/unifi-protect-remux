@@ -8,7 +8,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationIcon>../../assets/appicon.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PublishAot>true</PublishAot>
+    <PublishAot Condition="'$(Configuration)' == 'Release'">true</PublishAot>
     <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
@@ -26,6 +26,10 @@
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('osx'))">
     <LinkerArg Include="-L/opt/homebrew/lib" Condition="Exists('/opt/homebrew/lib')" />
     <LinkerArg Include="-L/usr/local/lib" Condition="Exists('/usr/local/lib')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="../../assets/appicon.png" Link="Assets/appicon.png" />
   </ItemGroup>
 
   <!-- Native library references: copy any .dylib / .dll / .so from all native dirs -->
