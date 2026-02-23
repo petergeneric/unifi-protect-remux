@@ -8,12 +8,27 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="/Icons.axaml" />
             </ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppWindowBackground" Color="#1E2030" />
+                    <SolidColorBrush x:Key="SystemControlBackgroundAltHighBrush" Color="#272A3C" />
+                    <SolidColorBrush x:Key="SystemControlBackgroundBaseLowBrush" Color="#232536" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppWindowBackground" Color="#F3F3F3" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
             <SolidColorBrush x:Key="NavActiveBg" Color="#266C8CFF" />
             <SolidColorBrush x:Key="NavActiveFg" Color="#6C8CFF" />
         </ResourceDictionary>
     </Application.Resources>
     <Application.Styles>
         <FluentTheme />
+
+        <!-- Override Fluent dark mode background (avoid near-black) -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource AppWindowBackground}" />
+        </Style>
 
         <!-- Nav item button style (always on dark sidebar) -->
         <Style Selector="Button.nav-item">
