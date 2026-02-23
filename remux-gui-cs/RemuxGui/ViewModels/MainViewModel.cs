@@ -123,6 +123,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanConvertFile));
         ConvertFileCommand.NotifyCanExecuteChanged();
+        DiagnosticsCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnLogFilterLevelChanged(string value)
@@ -455,65 +456,54 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanStart))]
+    /// <summary>
+    /// Callback to open the UBV info window. Set by the view layer.
+    /// Parameters: (ubvPath, filename, json).
+    /// </summary>
+    public Action<string, string, string>? OpenUbvInfoRequested { get; set; }
+
+    [RelayCommand(CanExecute = nameof(CanConvertFile))]
     private async Task Diagnostics()
     {
-        if (!TryBeginProcessing())
+        if (IsBusy || SelectedFile == null)
             return;
 
-        _cts = new CancellationTokenSource();
-        var token = _cts.Token;
+        var fileIndex = Files.IndexOf(SelectedFile);
+        if (fileIndex < 0)
+            return;
+
+        var path = SelectedFile.Path;
+        var fileName = SelectedFile.FileName;
 
         IsDiagnosticsProcessing = true;
-        var filePaths = Files.Select(f => f.Path).ToList();
+        SelectedFile.Status = FileStatus.Processing;
+
+        string? json = null;
+        string? error = null;
 
         await Task.Run(() =>
         {
             RemuxNative.Init();
-
-            for (int i = 0; i < filePaths.Count; i++)
-            {
-                if (token.IsCancellationRequested)
-                    break;
-
-                var fileIndex = i;
-                var path = filePaths[i];
-
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (fileIndex < Files.Count)
-                        Files[fileIndex].Status = FileStatus.Processing;
-                    LogLines.Add(new LogEntry("info", $"Producing diagnostics for file {fileIndex + 1}...", fileIndex));
-                });
-
-                var (outputPath, error) = RemuxNative.ProduceDiagnostics(path);
-
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (outputPath != null)
-                    {
-                        if (fileIndex < Files.Count)
-                        {
-                            Files[fileIndex].Status = FileStatus.Completed;
-                            Files[fileIndex].OutputFiles.Add(outputPath);
-                        }
-                        OutputFiles.Add(outputPath);
-                    }
-                    else
-                    {
-                        if (fileIndex < Files.Count)
-                        {
-                            Files[fileIndex].Status = FileStatus.Failed;
-                            Files[fileIndex].Error = error;
-                        }
-                        LogLines.Add(new LogEntry("error", error ?? "Unknown error", fileIndex));
-                    }
-                });
-            }
+            (json, error) = RemuxNative.GetUbvInfo(path);
         });
 
-        _cts?.Dispose();
-        _cts = null;
+        if (json != null)
+        {
+            if (fileIndex < Files.Count)
+                Files[fileIndex].Status = FileStatus.Completed;
+
+            OpenUbvInfoRequested?.Invoke(path, fileName, json);
+        }
+        else
+        {
+            if (fileIndex < Files.Count)
+            {
+                Files[fileIndex].Status = FileStatus.Failed;
+                Files[fileIndex].Error = error;
+            }
+            LogLines.Add(new LogEntry("error", error ?? "Unknown error", fileIndex));
+        }
+
         IsDiagnosticsProcessing = false;
     }
 

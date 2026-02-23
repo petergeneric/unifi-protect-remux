@@ -195,11 +195,11 @@
                                 Command="{Binding ConvertFileCommand}"
                                 Padding="10,6" Margin="0,0,6,6"
                                 ToolTip.Tip="Convert this .ubv file into a standard MP4 file" />
-                        <Button Content="Diagnostics"
+                        <Button Content="Info"
                                 Command="{Binding DiagnosticsCommand}"
                                 Classes="subtle"
                                 Padding="10,6" Margin="0,0,6,6"
-                                ToolTip.Tip="Dump the internal structure of the .ubv file for troubleshooting" />
+                                ToolTip.Tip="View the internal structure of the .ubv file" />
                         <Button Content="View Log"
                                 Command="{Binding ViewFileLogCommand}"
                                 Classes="subtle"

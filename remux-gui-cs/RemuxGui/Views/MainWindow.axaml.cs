@@ -24,6 +24,15 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DragEnterEvent, OnDragEnter);
         AddHandler(DragDrop.DragLeaveEvent, OnDragLeave);
+
+        DataContextChanged += (_, _) =>
+        {
+            if (ViewModel != null)
+            {
+                ViewModel.OpenUbvInfoRequested = (ubvPath, filename, json) =>
+                    UbvInfoWindow.ShowUbvInfo(this, ubvPath, filename, json);
+            }
+        };
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;

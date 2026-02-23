@@ -1,0 +1,163 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="using:RemuxGui.Models"
+        x:Class="RemuxGui.Views.UbvInfoWindow"
+        x:Name="InfoWindow"
+        Title="UBV Info"
+        Width="1100" Height="700"
+        MinWidth="800" MinHeight="500"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Styles>
+        <!-- Auto-expand all tree nodes -->
+        <Style Selector="TreeViewItem">
+            <Setter Property="IsExpanded" Value="True" />
+        </Style>
+        <Style Selector="TextBlock.header-cell">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.cell">
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Menlo, monospace" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+    </Window.Styles>
+
+    <Grid ColumnDefinitions="260,Auto,*">
+        <!-- Left pane: tree view -->
+        <Border Grid.Column="0" Padding="8"
+                BorderThickness="0,0,1,0"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Structure" FontSize="14" FontWeight="SemiBold"
+                           Margin="4,4,4,8" />
+                <Border DockPanel.Dock="Bottom" Padding="4,8,4,4"
+                        BorderThickness="0,1,0,0"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
+                    <Button Content="Save JSON" Click="OnSaveJson"
+                            Padding="10,6" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            ToolTip.Tip="Save parsed UBV structure as a .json.gz file" />
+                </Border>
+                <TreeView x:Name="InfoTree" SelectionChanged="OnTreeSelectionChanged">
+                    <TreeView.ItemTemplate>
+                        <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="models:UbvInfoTreeNode">
+                            <TextBlock Text="{Binding Label}" FontSize="13" />
+                        </TreeDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </DockPanel>
+        </Border>
+
+        <!-- Grid splitter -->
+        <GridSplitter Grid.Column="1" Width="4" ResizeDirection="Columns"
+                      Background="Transparent" />
+
+        <!-- Right pane -->
+        <Panel Grid.Column="2">
+            <!-- Table view (entry groups) -->
+            <DockPanel x:Name="TablePanel">
+                <!-- Fixed header row -->
+                <Border DockPanel.Dock="Top" Padding="8,6"
+                        BorderThickness="0,0,0,1"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+                    <Grid x:Name="HeaderGrid">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="0" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="60" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Type" Classes="header-cell" />
+                        <TextBlock Grid.Column="1" Text="TID" Classes="header-cell" />
+                        <TextBlock Grid.Column="2" Text="KF" Classes="header-cell" />
+                        <TextBlock Grid.Column="3" Text="Offset" Classes="header-cell" />
+                        <TextBlock Grid.Column="4" Text="Size" Classes="header-cell" />
+                        <TextBlock Grid.Column="5" Text="DTS" Classes="header-cell" />
+                        <TextBlock Grid.Column="6" Text="CTS" Classes="header-cell" />
+                        <TextBlock Grid.Column="7" Text="WC" Classes="header-cell" />
+                        <TextBlock Grid.Column="8" Text="CR" Classes="header-cell" />
+                        <TextBlock Grid.Column="9" Text="Seq" Classes="header-cell" />
+                        <TextBlock Grid.Column="10" Text="Pos" Classes="header-cell" />
+                    </Grid>
+                </Border>
+
+                <!-- Scrollable entry rows -->
+                <ListBox x:Name="EntryList" Background="Transparent" BorderThickness="0"
+                         Padding="0">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+            </DockPanel>
+
+            <!-- Partition header view -->
+            <ScrollViewer x:Name="PartitionPanel" IsVisible="False" Padding="24,20">
+                <StackPanel Spacing="16" MaxWidth="600">
+                    <TextBlock x:Name="PartitionTitle" FontSize="16" FontWeight="SemiBold" />
+
+                    <!-- Header fields -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="HEADER" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Margin="0,0,0,4" />
+                        <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="File Offset"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="HdrFileOffset"
+                                       FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                       FontSize="12" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="DTS" Margin="0,4,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="HdrDts" Margin="0,4,0,0"
+                                       FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                       FontSize="12" />
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Clock Rate" Margin="0,4,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="HdrClockRate" Margin="0,4,0,0"
+                                       FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                       FontSize="12" />
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Format Code" Margin="0,4,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="HdrFormatCode" Margin="0,4,0,0"
+                                       FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                       FontSize="12" />
+                        </Grid>
+                    </StackPanel>
+
+                    <Border Height="1"
+                            Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
+
+                    <!-- Entry counts -->
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="HdrEntriesLabel" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Margin="0,0,0,4" />
+                        <StackPanel x:Name="EntryCountsPanel" Spacing="2" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Panel>
+    </Grid>
+</Window>

@@ -76,6 +76,11 @@ public static partial class RemuxNative
         out IntPtr errorOut);
 
     [LibraryImport(LibName)]
+    private static partial IntPtr remux_ubv_info(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string ubvPath,
+        out IntPtr errorOut);
+
+    [LibraryImport(LibName)]
     private static partial int remux_extract_thumbnail(
         [MarshalUsing(typeof(Utf8StringMarshaller))] string mp4Path,
         [MarshalUsing(typeof(Utf8StringMarshaller))] string outputPath,
@@ -159,6 +164,14 @@ public static partial class RemuxNative
         var ret = remux_extract_thumbnail(mp4Path, outputPath, maxWidth, out var errorPtr);
         var error = ReadAndFreeString(errorPtr);
         return ret == 0 ? null : (error ?? "Unknown error");
+    }
+
+    public static (string? json, string? error) GetUbvInfo(string ubvPath)
+    {
+        var resultPtr = remux_ubv_info(ubvPath, out var errorPtr);
+        var error = ReadAndFreeString(errorPtr);
+        var json = ReadAndFreeString(resultPtr);
+        return (json, error ?? (json == null ? "Unknown error" : null));
     }
 
     public static (string? outputPath, string? error) ProduceDiagnostics(string ubvPath)

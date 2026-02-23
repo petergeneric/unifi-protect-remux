@@ -178,6 +178,15 @@ fn ffi_config_to_remux_config(ffi: &FfiRemuxConfig) -> RemuxConfig {
     }
 }
 
+/// Parse a `.ubv` file and return the raw JSON string.
+fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let ubv_path = std::path::Path::new(path);
+    let mut reader = ubv::reader::open_ubv(ubv_path)?;
+    let ubv_file = ubv::reader::parse_ubv(&mut reader)?;
+    let json = serde_json::to_string(&ubv_file)?;
+    Ok(json)
+}
+
 /// Parse and decompress a `.ubv` file, serialise to JSON, gzip-compress,
 /// and write to `<path>.json.gz`.
 fn produce_diagnostics(path: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -511,6 +520,71 @@ pub unsafe extern "C" fn remux_produce_diagnostics(
         Err(_) => {
             unsafe {
                 set_error(error_out, "Internal panic during remux_produce_diagnostics");
+            }
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Parse a `.ubv` file and return its structure as a JSON string.
+///
+/// # Parameters
+///
+/// - `ubv_path`  - Path to the `.ubv` file (UTF-8 C string).
+/// - `error_out` - On error, receives a heap-allocated error message.
+///                 The caller must free it with `remux_free_string`.
+///                 May be `NULL`.
+///
+/// # Returns
+///
+/// A JSON string containing the parsed UBV file structure. The caller
+/// **must** free the returned string with `remux_free_string`.
+/// Returns `NULL` on error (check `*error_out`).
+///
+/// # Safety
+///
+/// - `ubv_path` must be either null or a valid NUL-terminated UTF-8 C string.
+/// - `error_out` must be either null or point to a valid `*mut c_char` location.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_ubv_info(
+    ubv_path: *const c_char,
+    error_out: *mut *mut c_char,
+) -> *mut c_char {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Clear error_out
+        if !error_out.is_null() {
+            unsafe {
+                *error_out = std::ptr::null_mut();
+            }
+        }
+
+        // Validate ubv_path
+        if ubv_path.is_null() {
+            unsafe { set_error(error_out, "ubv_path is NULL") };
+            return std::ptr::null_mut();
+        }
+        let path_str = match unsafe { CStr::from_ptr(ubv_path) }.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                unsafe {
+                    set_error(error_out, &format!("Invalid UTF-8 in ubv_path: {}", e));
+                }
+                return std::ptr::null_mut();
+            }
+        };
+
+        match ubv_info(path_str) {
+            Ok(json) => string_to_c(&json),
+            Err(e) => {
+                unsafe { set_error(error_out, &e.to_string()) };
+                std::ptr::null_mut()
+            }
+        }
+    })) {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            unsafe {
+                set_error(error_out, "Internal panic during remux_ubv_info");
             }
             std::ptr::null_mut()
         }
