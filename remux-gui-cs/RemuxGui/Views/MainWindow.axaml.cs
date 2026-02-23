@@ -72,7 +72,7 @@ public partial class MainWindow : Window
 
         if (ViewModel == null) return;
 
-        var files = e.Data.GetFiles();
+        var files = e.DataTransfer.TryGetFiles();
         if (files == null) return;
 
         var paths = files
