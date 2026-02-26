@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    name: cli-windows-x86_64
+    name: windows-x86_64
     runs-on: windows-latest
 
     steps:
