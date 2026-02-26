@@ -71,8 +71,8 @@ VIAddVersionKey "LegalCopyright" "AGPL-3.0-only"
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 
-!define MUI_ICON "..\assets\appicon.ico"
-!define MUI_UNICON "..\assets\appicon.ico"
+!define MUI_ICON "..\..\assets\appicon.ico"
+!define MUI_UNICON "..\..\assets\appicon.ico"
 !define MUI_ABORTWARNING
 
 ; Installer pages
@@ -163,7 +163,7 @@ SectionEnd
 Section "Associate .ubv files" SEC_ASSOC
   ; Install the document icon
   SetOutPath "$INSTDIR\resource"
-  File "..\assets\ubv-document.ico"
+  File "..\..\assets\ubv-document.ico"
 
   ; Register the ProgID
   WriteRegStr HKLM "Software\Classes\UBVRemux.ubv" "" "UBV Video Recording"
