@@ -40,6 +40,12 @@
   !define VERSION "0.0.0"
 !endif
 
+; Numeric version for PE metadata (X.X.X.X format).
+; Passed separately because VERSION may be a branch name or have a v prefix.
+!ifndef VI_VERSION
+  !define VI_VERSION "0.0.0.0"
+!endif
+
 !define PRODUCT_NAME "UBV Remux"
 !define PRODUCT_PUBLISHER "Peter Wright"
 !define PRODUCT_WEB_SITE "https://github.com/peterwright/unifi-protect-remux"
@@ -58,7 +64,7 @@ SetCompressor /SOLID lzma
 ;-----------------------------------------------------------------------------
 ; Version information embedded in the .exe
 ;-----------------------------------------------------------------------------
-VIProductVersion "${VERSION}.0"
+VIProductVersion "${VI_VERSION}"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "FileDescription" "${PRODUCT_NAME} Installer"

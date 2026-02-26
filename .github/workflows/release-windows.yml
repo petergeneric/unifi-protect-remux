@@ -111,8 +111,10 @@ jobs:
           $nsisDir = "${env:ProgramFiles(x86)}\NSIS"
           Expand-Archive ui\installer\nsis-plugins\EnVar_plugin.zip -DestinationPath $nsisDir
           $version = if ("${{ github.event.release.tag_name }}" -ne "") { "${{ github.event.release.tag_name }}" } else { "${{ github.ref_name }}" }
+          # Derive numeric X.X.X.0 version for PE metadata, fallback to 0.0.0.0
+          if ($version -match '^v?(\d+)\.(\d+)\.(\d+)(?:-(\d+))?') { $viVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3]).$($Matches[4] ?? '0')" } else { $viVersion = "0.0.0.0" }
           $stagingDir = (Resolve-Path staging).Path
-          & "$nsisDir\makensis.exe" /DSTAGING_DIR=$stagingDir /DVERSION=$version ui\installer\windows.nsi
+          & "$nsisDir\makensis.exe" /DSTAGING_DIR=$stagingDir /DVERSION=$version /DVI_VERSION=$viVersion ui\installer\windows.nsi
           Move-Item ui\installer\cli-windows-x86_64-setup.exe gui-unsigned-windows-x86_64.exe
 
       - name: Upload artifact (GUI installer)
