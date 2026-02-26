@@ -108,8 +108,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.version {
         ubv::version::print_cli_version_banner(
             "UBV Anonymise Tool",
-            env!("CARGO_PKG_VERSION"),
-            env!("RELEASE_VERSION"),
+            env!("GIT_VERSION"),
             env!("GIT_COMMIT"),
         );
         return Ok(());

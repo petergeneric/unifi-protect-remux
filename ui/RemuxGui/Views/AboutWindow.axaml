@@ -37,26 +37,19 @@
                     Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" />
 
             <!-- Details grid -->
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Release"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                           Margin="0,2,16,2" FontSize="13"
-                           x:Name="ReleaseLabel" />
-                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ReleaseText"
-                           Margin="0,2" FontSize="13" />
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Commit"
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,2">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Commit"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                            Margin="0,2,16,2" FontSize="13"
                            x:Name="CommitLabel" />
-                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="CommitText"
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="CommitText"
                            FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
                            Margin="0,2" FontSize="12" />
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="License"
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="License"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                            Margin="0,2,16,2" FontSize="13" />
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="AGPL-3.0-only"
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="AGPL-3.0-only"
                            Margin="0,2" FontSize="13" />
             </Grid>
 

@@ -9,7 +9,4 @@ public class VersionInfo
 
     [JsonPropertyName("git_commit")]
     public string GitCommit { get; set; } = "";
-
-    [JsonPropertyName("release_version")]
-    public string ReleaseVersion { get; set; } = "";
 }

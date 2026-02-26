@@ -110,7 +110,7 @@ jobs:
           choco install nsis --yes --no-progress
           $nsisDir = "${env:ProgramFiles(x86)}\NSIS"
           Expand-Archive ui\installer\nsis-plugins\EnVar_plugin.zip -DestinationPath $nsisDir
-          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          $version = if ("${{ github.event.release.tag_name }}" -ne "") { "${{ github.event.release.tag_name }}" } else { "${{ github.ref_name }}" }
           $stagingDir = (Resolve-Path staging).Path
           & "$nsisDir\makensis.exe" /DSTAGING_DIR=$stagingDir /DVERSION=$version ui\installer\windows.nsi
           Move-Item ui\installer\cli-windows-x86_64-setup.exe gui-unsigned-windows-x86_64.exe

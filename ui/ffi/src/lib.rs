@@ -13,9 +13,8 @@ extern crate ffmpeg_next;
 // ---------------------------------------------------------------------------
 // Version info injected at build time
 // ---------------------------------------------------------------------------
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const GIT_VERSION: &str = env!("GIT_VERSION");
 const GIT_COMMIT: &str = env!("GIT_COMMIT");
-const RELEASE_VERSION: &str = env!("RELEASE_VERSION");
 const LICENSES_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/licenses.json"));
 
 // ---------------------------------------------------------------------------
@@ -26,7 +25,6 @@ const LICENSES_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/licenses.jso
 struct VersionInfo {
     version: &'static str,
     git_commit: &'static str,
-    release_version: &'static str,
 }
 
 #[derive(serde::Serialize)]
@@ -230,9 +228,8 @@ pub extern "C" fn remux_init() {
 pub extern "C" fn remux_version() -> *mut c_char {
     match panic::catch_unwind(|| {
         let info = VersionInfo {
-            version: VERSION,
+            version: GIT_VERSION,
             git_commit: GIT_COMMIT,
-            release_version: RELEASE_VERSION,
         };
         let json = serde_json::to_string(&info).unwrap_or_default();
         string_to_c(&json)

@@ -36,17 +36,7 @@ public partial class AboutWindow : Window
         try
         {
             var info = RemuxNative.GetVersion();
-            VersionText.Text = $"v{info.Version}";
-
-            if (!string.IsNullOrEmpty(info.ReleaseVersion))
-            {
-                ReleaseText.Text = info.ReleaseVersion;
-            }
-            else
-            {
-                ReleaseLabel.IsVisible = false;
-                ReleaseText.IsVisible = false;
-            }
+            VersionText.Text = info.Version;
 
             if (!string.IsNullOrEmpty(info.GitCommit))
             {
@@ -63,8 +53,6 @@ public partial class AboutWindow : Window
         catch
         {
             VersionText.Text = "unknown";
-            ReleaseLabel.IsVisible = false;
-            ReleaseText.IsVisible = false;
             CommitLabel.IsVisible = false;
             CommitText.IsVisible = false;
         }

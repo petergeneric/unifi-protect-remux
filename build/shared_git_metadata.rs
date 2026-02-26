@@ -19,13 +19,15 @@ pub fn emit_git_metadata() {
         .unwrap_or_default();
     println!("cargo:rustc-env=GIT_COMMIT={commit}");
 
-    // Inject release version (only if HEAD is directly tagged).
+    // Inject version derived from git tags via `git describe`.
+    // Produces e.g. "v4.2.0" on a tag, "v4.2.0-3-gabcdef" when past a tag,
+    // or a short commit hash if no tags exist.
     let version = Command::new("git")
-        .args(["tag", "--points-at", "HEAD"])
+        .args(["describe", "--tags", "--always"])
         .output()
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
-    println!("cargo:rustc-env=RELEASE_VERSION={version}");
+    println!("cargo:rustc-env=GIT_VERSION={version}");
 }

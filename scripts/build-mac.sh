@@ -55,8 +55,8 @@ dotnet publish "$REPO_ROOT/ui/RemuxGui/RemuxGui.csproj" \
     --self-contained \
     -o "$PUBLISH_DIR"
 
-# Detect version from Cargo.toml
-VERSION=$(grep '^version = ' "$REPO_ROOT/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+# Detect version from git tags
+VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
 
 echo "=== Creating .app bundle ==="
 "$SCRIPT_DIR/create-macos-app.sh" "$PUBLISH_DIR" "$REPO_ROOT/publish" "$VERSION"

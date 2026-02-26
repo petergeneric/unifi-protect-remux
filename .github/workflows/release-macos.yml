@@ -154,7 +154,7 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           set -euo pipefail
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          VERSION="${{ github.event.release.tag_name || github.ref_name }}"
           APP_NAME="UBV Remux"
 
           # --- Stage CLI binaries ---
