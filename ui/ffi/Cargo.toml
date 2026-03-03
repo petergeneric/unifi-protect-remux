@@ -17,9 +17,11 @@ serde_json = "1"
 flate2 = "1"
 log = "0.4"
 ffmpeg-next = "8"
+dirs = "6"
 
 [build-dependencies]
 serde_json = "1"
+cbindgen = "0.28"
 
 [features]
 default = ["ffmpeg-static"]

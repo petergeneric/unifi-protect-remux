@@ -4,6 +4,27 @@ mod shared_git_metadata;
 fn main() {
     shared_git_metadata::emit_git_metadata();
     generate_licenses_json();
+    generate_c_header();
+}
+
+fn generate_c_header() {
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let config =
+        cbindgen::Config::from_file(std::path::Path::new(&crate_dir).join("cbindgen.toml"))
+            .expect("Failed to read cbindgen.toml");
+
+    let include_dir = std::path::Path::new(&crate_dir).join("include");
+    std::fs::create_dir_all(&include_dir).expect("Failed to create include directory");
+
+    cbindgen::Builder::new()
+        .with_crate(&crate_dir)
+        .with_config(config)
+        .generate()
+        .expect("cbindgen failed to generate header")
+        .write_to_file(include_dir.join("remux_ffi.h"));
+
+    println!("cargo:rerun-if-changed=src/lib.rs");
+    println!("cargo:rerun-if-changed=cbindgen.toml");
 }
 
 fn generate_licenses_json() {

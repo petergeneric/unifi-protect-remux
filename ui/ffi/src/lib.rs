@@ -1,6 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::io::Write;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int, c_void};
 use std::panic;
 use std::sync::Once;
 
@@ -89,6 +89,17 @@ struct DiagnosticsResult {
     output_path: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CameraData {
+    cameras: Vec<CameraDataEntry>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CameraDataEntry {
+    mac: String,
+    name: String,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -173,6 +184,63 @@ fn ffi_config_to_remux_config(ffi: &FfiRemuxConfig) -> RemuxConfig {
         mp4: ffi.mp4.unwrap_or(defaults.mp4),
         video_track: ffi.video_track.unwrap_or(defaults.video_track),
         base_name: ffi.base_name.clone(),
+    }
+}
+
+/// Extract the 12-character uppercase hex MAC address from a UBV filename.
+///
+/// The MAC is the prefix before the first underscore, if it is exactly 12 hex
+/// characters.
+fn extract_mac(filename: &str) -> Option<String> {
+    let underscore_idx = filename.find('_')?;
+    if underscore_idx != 12 {
+        return None;
+    }
+    let prefix = &filename[..12];
+    if prefix
+        .chars()
+        .all(|c| c.is_ascii_hexdigit())
+    {
+        Some(prefix.to_ascii_uppercase())
+    } else {
+        None
+    }
+}
+
+/// Extract the unix-milliseconds timestamp string from a UBV filename.
+///
+/// The timestamp is the last `_`-delimited segment before the `.ubv` (or
+/// `.ubv.gz`) extension, and must look like a plausible unix-ms value
+/// (between 1e12 and 1e13).
+fn extract_timestamp(filename: &str) -> Option<String> {
+    let mut name = filename;
+    if name.to_ascii_lowercase().ends_with(".gz") {
+        name = &name[..name.len() - 3];
+    }
+    if name.to_ascii_lowercase().ends_with(".ubv") {
+        name = &name[..name.len() - 4];
+    }
+
+    let last_underscore = name.rfind('_')?;
+    let segment = &name[last_underscore + 1..];
+
+    if let Ok(millis) = segment.parse::<i64>() {
+        if millis > 1_000_000_000_000 && millis < 10_000_000_000_000 {
+            return Some(segment.to_string());
+        }
+    }
+    None
+}
+
+/// Return the platform-specific path for the cameras JSON file.
+fn cameras_file_path() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        dirs::data_dir().map(|d| d.join("RemuxGui").join("cameras.json"))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        dirs::config_dir().map(|d| d.join("RemuxGui").join("cameras.json"))
     }
 }
 
@@ -664,6 +732,327 @@ pub unsafe extern "C" fn remux_extract_thumbnail(
         Err(_) => {
             unsafe { set_error(error_out, "Internal panic during remux_extract_thumbnail") };
             1
+        }
+    }
+}
+
+/// Extract the 12-character uppercase hex MAC address from a UBV filename.
+///
+/// Returns a heap-allocated string on success, `NULL` if no MAC was found.
+/// The caller **must** free the returned string with `remux_free_string`.
+///
+/// # Safety
+///
+/// `filename` must be either null or a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_extract_mac(filename: *const c_char) -> *mut c_char {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if filename.is_null() {
+            return std::ptr::null_mut();
+        }
+        let c_str = unsafe { CStr::from_ptr(filename) };
+        let name = match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        match extract_mac(name) {
+            Some(mac) => string_to_c(&mac),
+            None => std::ptr::null_mut(),
+        }
+    })) {
+        Ok(ptr) => ptr,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Extract the unix-milliseconds timestamp from a UBV filename as a string.
+///
+/// Returns a heap-allocated string on success, `NULL` if no timestamp was
+/// found. The caller **must** free the returned string with
+/// `remux_free_string`.
+///
+/// # Safety
+///
+/// `filename` must be either null or a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_extract_timestamp(filename: *const c_char) -> *mut c_char {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if filename.is_null() {
+            return std::ptr::null_mut();
+        }
+        let c_str = unsafe { CStr::from_ptr(filename) };
+        let name = match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        match extract_timestamp(name) {
+            Some(ts) => string_to_c(&ts),
+            None => std::ptr::null_mut(),
+        }
+    })) {
+        Ok(ptr) => ptr,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Check whether a UBV filename indicates a low-resolution recording.
+///
+/// Returns `1` if the filename contains `_2_rotating_` or `_timelapse_`
+/// (case-insensitive), `0` otherwise.
+///
+/// # Safety
+///
+/// `filename` must be either null or a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_is_low_res_filename(filename: *const c_char) -> c_int {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if filename.is_null() {
+            return 0;
+        }
+        let c_str = unsafe { CStr::from_ptr(filename) };
+        let name = match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+        let lower = name.to_ascii_lowercase();
+        if lower.contains("_2_rotating_") || lower.contains("_timelapse_") {
+            1
+        } else {
+            0
+        }
+    })) {
+        Ok(v) => v,
+        Err(_) => 0,
+    }
+}
+
+/// Load the cameras registry from the platform-specific application data
+/// directory.
+///
+/// Returns a JSON string `{"cameras":[...]}`. If the file does not exist or
+/// cannot be read, returns `{"cameras":[]}`.
+///
+/// The caller **must** free the returned string with `remux_free_string`.
+#[unsafe(no_mangle)]
+pub extern "C" fn remux_load_cameras() -> *mut c_char {
+    match panic::catch_unwind(|| {
+        let data = (|| -> CameraData {
+            let path = match cameras_file_path() {
+                Some(p) => p,
+                None => return CameraData { cameras: vec![] },
+            };
+            let json = match std::fs::read_to_string(&path) {
+                Ok(j) => j,
+                Err(_) => return CameraData { cameras: vec![] },
+            };
+            match serde_json::from_str(&json) {
+                Ok(d) => d,
+                Err(_) => CameraData { cameras: vec![] },
+            }
+        })();
+        let json = serde_json::to_string(&data).unwrap_or_else(|_| r#"{"cameras":[]}"#.to_string());
+        string_to_c(&json)
+    }) {
+        Ok(ptr) => ptr,
+        Err(_) => string_to_c(r#"{"cameras":[]}"#),
+    }
+}
+
+/// Save the cameras registry to the platform-specific application data
+/// directory.
+///
+/// # Parameters
+///
+/// - `cameras_json` - JSON string `{"cameras":[{"mac":"...","name":"..."},
+///   ...]}`.
+/// - `error_out`    - On error, receives a heap-allocated error message. May
+///   be `NULL`.
+///
+/// # Returns
+///
+/// `0` on success, non-zero on error.
+///
+/// # Safety
+///
+/// - `cameras_json` must be either null or a valid NUL-terminated UTF-8 C
+///   string.
+/// - `error_out` must be either null or point to a valid `*mut c_char`
+///   location.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_save_cameras(
+    cameras_json: *const c_char,
+    error_out: *mut *mut c_char,
+) -> c_int {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !error_out.is_null() {
+            unsafe { *error_out = std::ptr::null_mut(); }
+        }
+
+        if cameras_json.is_null() {
+            unsafe { set_error(error_out, "cameras_json is NULL"); }
+            return 1;
+        }
+        let c_str = unsafe { CStr::from_ptr(cameras_json) };
+        let json_str = match c_str.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                unsafe { set_error(error_out, &format!("Invalid UTF-8: {}", e)); }
+                return 1;
+            }
+        };
+
+        // Validate the JSON parses correctly
+        let _data: CameraData = match serde_json::from_str(json_str) {
+            Ok(d) => d,
+            Err(e) => {
+                unsafe { set_error(error_out, &format!("Invalid JSON: {}", e)); }
+                return 1;
+            }
+        };
+
+        let path = match cameras_file_path() {
+            Some(p) => p,
+            None => {
+                unsafe { set_error(error_out, "Cannot determine application data directory"); }
+                return 1;
+            }
+        };
+
+        if let Some(parent) = path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                unsafe { set_error(error_out, &format!("Failed to create directory: {}", e)); }
+                return 1;
+            }
+        }
+
+        match std::fs::write(&path, json_str) {
+            Ok(()) => 0,
+            Err(e) => {
+                unsafe { set_error(error_out, &format!("Failed to write file: {}", e)); }
+                1
+            }
+        }
+    })) {
+        Ok(code) => code,
+        Err(_) => {
+            unsafe { set_error(error_out, "Internal panic during remux_save_cameras"); }
+            1
+        }
+    }
+}
+
+/// Process a single `.ubv` file (with context pointer for callbacks).
+///
+/// This is identical to `remux_process_file` except the callback receives an
+/// additional `*mut c_void` context pointer, allowing callers (e.g. Swift) to
+/// pass closure context without using globals.
+///
+/// # Safety
+///
+/// Same requirements as `remux_process_file`, plus `context` is passed
+/// through opaquely to the callback and must remain valid for the duration of
+/// the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_process_file_ctx(
+    ubv_path: *const c_char,
+    config_json: *const c_char,
+    progress_callback: Option<extern "C" fn(*const c_char, c_int, *mut c_void)>,
+    file_index: c_int,
+    context: *mut c_void,
+    error_out: *mut *mut c_char,
+) -> *mut c_char {
+    // Wrap context in a Send-able newtype so catch_unwind is satisfied
+    struct SendCtx(*mut c_void);
+    unsafe impl Send for SendCtx {}
+
+    let ctx = SendCtx(context);
+
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Clear error_out
+        if !error_out.is_null() {
+            unsafe { *error_out = std::ptr::null_mut(); }
+        }
+
+        // Validate ubv_path
+        if ubv_path.is_null() {
+            unsafe { set_error(error_out, "ubv_path is NULL") };
+            return std::ptr::null_mut();
+        }
+        let ubv_path_str = match unsafe { CStr::from_ptr(ubv_path) }.to_str() {
+            Ok(s) => s.to_string(),
+            Err(e) => {
+                unsafe { set_error(error_out, &format!("Invalid UTF-8 in ubv_path: {}", e)); }
+                return std::ptr::null_mut();
+            }
+        };
+
+        // Validate config_json
+        if config_json.is_null() {
+            unsafe { set_error(error_out, "config_json is NULL") };
+            return std::ptr::null_mut();
+        }
+        let config_str = match unsafe { CStr::from_ptr(config_json) }.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                unsafe { set_error(error_out, &format!("Invalid UTF-8 in config_json: {}", e)); }
+                return std::ptr::null_mut();
+            }
+        };
+
+        // Parse config
+        let ffi_config: FfiRemuxConfig = match serde_json::from_str(config_str) {
+            Ok(c) => c,
+            Err(e) => {
+                unsafe { set_error(error_out, &format!("Invalid config JSON: {}", e)) };
+                return std::ptr::null_mut();
+            }
+        };
+        let config = ffi_config_to_remux_config(&ffi_config);
+
+        // Validate config
+        if let Err(msg) = remux_lib::validate_config(&config) {
+            unsafe { set_error(error_out, &msg) };
+            return std::ptr::null_mut();
+        }
+
+        // Ensure FFmpeg is initialised
+        INIT_ONCE.call_once(|| {
+            ffmpeg_next::init().expect("Failed to initialise FFmpeg");
+        });
+
+        // Process the file, forwarding progress events through the callback
+        let raw_ctx = ctx.0;
+        let mut progress_fn = |event: ProgressEvent| {
+            if let Some(cb) = progress_callback {
+                let json_event = event_to_json(&event);
+                if let Ok(json) = serde_json::to_string(&json_event) {
+                    if let Ok(c_json) = CString::new(json) {
+                        cb(c_json.as_ptr(), file_index, raw_ctx);
+                    }
+                }
+            }
+        };
+
+        match remux_lib::process_file(&ubv_path_str, &config, &mut progress_fn) {
+            Ok(file_result) => {
+                let result = ProcessResult {
+                    input_path: file_result.input_path,
+                    output_files: file_result.output_files,
+                    errors: file_result.errors,
+                };
+                let json = serde_json::to_string(&result).unwrap_or_default();
+                string_to_c(&json)
+            }
+            Err(e) => {
+                unsafe { set_error(error_out, &e.to_string()) };
+                std::ptr::null_mut()
+            }
+        }
+    })) {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            unsafe { set_error(error_out, "Internal panic during remux_process_file_ctx") };
+            std::ptr::null_mut()
         }
     }
 }
