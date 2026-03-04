@@ -3,6 +3,7 @@ import AppKit
 
 @main
 struct RemuxGuiApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var viewModel = AppViewModel()
 
     var body: some Scene {
@@ -80,5 +81,11 @@ struct RemuxGuiApp: App {
         if !urls.isEmpty {
             _ = viewModel.addFiles(urls)
         }
+    }
+}
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 }
