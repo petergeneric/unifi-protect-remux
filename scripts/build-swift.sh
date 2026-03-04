@@ -35,12 +35,19 @@ echo "=== Copying dylib ==="
 mkdir -p "$MACOS_DIR/lib"
 cp "$REPO_ROOT/target/$CARGO_PROFILE/libremux_ffi.dylib" "$MACOS_DIR/lib/"
 
+# Derive version from git tags (same source as Rust's GIT_VERSION)
+GIT_VERSION="$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null || echo "0.0.0")"
+# Strip leading 'v' and any pre-release suffix for CFBundleShortVersionString (e.g. v4.2.1-3-gabcdef -> 4.2.1)
+MARKETING_VERSION="$(echo "$GIT_VERSION" | sed 's/^v//; s/-.*//')"
+echo "=== Version: $MARKETING_VERSION (from $GIT_VERSION) ==="
+
 echo "=== Building SwiftUI app ($XCODE_CONFIG) ==="
 xcodebuild \
     -project "$MACOS_DIR/RemuxGui.xcodeproj" \
     -scheme RemuxGui \
     -configuration "$XCODE_CONFIG" \
     -derivedDataPath "$MACOS_DIR/build" \
+    MARKETING_VERSION="$MARKETING_VERSION" \
     build
 
 APP_PATH="$(find "$MACOS_DIR/build" -name 'RemuxGui.app' -type d | head -1)"
