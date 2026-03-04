@@ -46,8 +46,10 @@ struct LogView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                     TextField("Filter\u{2026}", text: $vm.logSearchText)
                         .textFieldStyle(.plain)
+                        .accessibilityLabel("Filter log entries")
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -75,6 +77,7 @@ struct LogView: View {
                     Image(systemName: "doc.text")
                         .font(.system(size: 28, weight: .light))
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                     Text(vm.logLines.isEmpty ? "No log entries" : "No matching entries")
                         .foregroundStyle(.secondary)
                 }

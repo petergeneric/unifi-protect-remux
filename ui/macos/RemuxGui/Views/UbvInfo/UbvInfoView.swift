@@ -178,11 +178,12 @@ struct UbvInfoView: View {
             && node.entries.contains(where: { $0.keyframe == false })
 
         return VStack(spacing: 0) {
-            // Fixed header row
+            // Fixed header row (column labels are included in row a11y labels)
             entryHeaderRow(showKf: showKf)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(Color(nsColor: .controlBackgroundColor))
+                .accessibilityHidden(true)
 
             Divider()
 
@@ -245,6 +246,23 @@ struct UbvInfoView: View {
                 cell(entry.packetPosition, width: 60)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(entryAccessibilityLabel(entry, showKf: showKf))
+    }
+
+    private func entryAccessibilityLabel(_ entry: UbvInfoEntry, showKf: Bool) -> String {
+        var parts: [String] = ["Type \(entry.type)"]
+        if let tid = entry.trackId { parts.append("Track \(tid)") }
+        if showKf { parts.append(entry.keyframe == true ? "Keyframe" : "Non-keyframe") }
+        if let offset = entry.offset { parts.append("Offset \(offset)") }
+        if let size = entry.size { parts.append("Size \(size)") }
+        if let dts = entry.dts { parts.append("DTS \(dts)") }
+        if let cts = entry.cts { parts.append("CTS \(cts)") }
+        if let wc = entry.wc { parts.append("WC \(wc)") }
+        if let cr = entry.clockRate { parts.append("Clock rate \(cr)") }
+        if let seq = entry.sequence { parts.append("Sequence \(seq)") }
+        if let pos = entry.packetPosition { parts.append("Position \(pos)") }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder

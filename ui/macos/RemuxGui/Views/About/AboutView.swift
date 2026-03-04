@@ -48,6 +48,7 @@ struct AboutView: View {
                                         Image(systemName: "arrow.up.forward.square")
                                             .font(.caption)
                                     }
+                                    .accessibilityLabel("AGPL-3.0 license")
                                 }
                             }
 
@@ -81,6 +82,7 @@ struct AboutView: View {
                                         Image(systemName: "arrow.up.forward.square")
                                             .font(.system(size: 9))
                                     }
+                                    .accessibilityLabel("\(item.sortKey) repository")
                                 }
                             } else {
                                 Text(item.displayText)

@@ -53,12 +53,14 @@ struct FileDetailView: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: "doc.fill")
                                             .font(.caption2)
+                                            .accessibilityHidden(true)
                                         Text((path as NSString).lastPathComponent)
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         Spacer()
                                         Image(systemName: "arrow.up.forward.square")
                                             .font(.caption2)
+                                            .accessibilityHidden(true)
                                     }
                                     .font(.caption)
                                     .contentShape(Rectangle())

@@ -32,6 +32,7 @@ struct CamerasView: View {
                     Image(systemName: "video.slash")
                         .font(.system(size: 32, weight: .light))
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                     Text("No cameras registered")
                         .font(.headline)
                         .foregroundStyle(.secondary)

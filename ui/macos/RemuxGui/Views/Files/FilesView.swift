@@ -84,6 +84,8 @@ struct FilesView: View {
                 .padding(16)
         )
         .background(isDropTargeted ? Color.accentColor.opacity(0.04) : .clear)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Drop zone. Drop .ubv files here, or click Browse below.")
     }
 
     private var bottomBar: some View {

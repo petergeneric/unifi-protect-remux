@@ -42,6 +42,7 @@ struct SettingsView: View {
                             HStack {
                                 Image(systemName: "folder")
                                     .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
                                 Text(vm.outputFolder == RemuxConfig.defaultOutputFolder
                                      ? "Same as source"
                                      : vm.outputFolder)
