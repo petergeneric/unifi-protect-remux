@@ -1,7 +1,17 @@
 import Foundation
 
+enum ProgressEventType: String, Decodable {
+    case log
+    case fileStarted = "file_started"
+    case partitionsFound = "partitions_found"
+    case partitionStarted = "partition_started"
+    case outputGenerated = "output_generated"
+    case partitionError = "partition_error"
+    case fileCompleted = "file_completed"
+}
+
 struct ProgressEvent: Decodable {
-    let type: String
+    let type: ProgressEventType
     let level: String?
     let message: String?
     let path: String?

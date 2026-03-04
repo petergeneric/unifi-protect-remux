@@ -30,19 +30,18 @@ final class AppViewModel {
 
     // MARK: - Log
     var logLines: [LogEntry] = []
-    var logFilterLevel = "All"
+    var logFilterLevel: LogLevel? = nil
     var logSearchText = ""
     var logFileFilter: Int?
 
     var filteredLogLines: [LogEntry] {
-        let filterLevel = logFilterLevel.lowercased()
         let searchText = logSearchText.trimmingCharacters(in: .whitespaces)
 
         return logLines.filter { entry in
             if let fileFilter = logFileFilter, entry.fileIndex != fileFilter {
                 return false
             }
-            if filterLevel != "all" && entry.level.lowercased() != filterLevel {
+            if let filterLevel = logFilterLevel, entry.level != filterLevel {
                 return false
             }
             if !searchText.isEmpty &&
@@ -53,9 +52,9 @@ final class AppViewModel {
         }
     }
 
-    var infoCount: Int { logLines.filter { $0.level.lowercased() != "error" && $0.level.lowercased() != "warn" }.count }
-    var warnCount: Int { logLines.filter { $0.level.lowercased() == "warn" }.count }
-    var errorCount: Int { logLines.filter { $0.level.lowercased() == "error" }.count }
+    var infoCount: Int { logLines.filter { $0.level == .info }.count }
+    var warnCount: Int { logLines.filter { $0.level == .warn }.count }
+    var errorCount: Int { logLines.filter { $0.level == .error }.count }
 
     var logFileFilterLabel: String? {
         guard let idx = logFileFilter, idx < files.count else { return nil }
@@ -272,7 +271,7 @@ final class AppViewModel {
                         self.files[fileIndex].status = .failed
                         self.files[fileIndex].error = error
                     }
-                    self.logLines.append(LogEntry(level: "error", message: error ?? "Unknown error", fileIndex: fileIndex))
+                    self.logLines.append(LogEntry(level: .error, message: error ?? "Unknown error", fileIndex: fileIndex))
                 }
                 self.isDiagnosticsProcessing = false
             }
@@ -291,32 +290,32 @@ final class AppViewModel {
 
     private func handleProgressEvent(fileIndex: Int, evt: ProgressEvent) {
         switch evt.type {
-        case "log":
-            logLines.append(LogEntry(level: evt.level ?? "info", message: evt.message ?? "", fileIndex: fileIndex))
+        case .log:
+            logLines.append(LogEntry(level: LogLevel(raw: evt.level ?? "info"), message: evt.message ?? "", fileIndex: fileIndex))
 
-        case "file_started":
+        case .fileStarted:
             if fileIndex < files.count {
                 files[fileIndex].status = .processing
             }
             progressText = "File \(fileIndex + 1) of \(files.count)"
 
-        case "partitions_found":
+        case .partitionsFound:
             if fileIndex < files.count {
                 files[fileIndex].partitionCount = evt.count
             }
             hasProgressInfo = true
             progressPercent = 0
-            logLines.append(LogEntry(level: "info", message: "Found \(evt.count ?? 0) partition(s)", fileIndex: fileIndex))
+            logLines.append(LogEntry(level: .info, message: "Found \(evt.count ?? 0) partition(s)", fileIndex: fileIndex))
 
-        case "partition_started":
+        case .partitionStarted:
             if let total = evt.total, total > 0 {
                 let partIdx = evt.index ?? 0
                 progressPercent = Double(partIdx) / Double(total) * 100
                 progressText = "File \(fileIndex + 1) of \(files.count) \u{2014} partition \(partIdx + 1)/\(total)"
             }
-            logLines.append(LogEntry(level: "info", message: "Processing partition \((evt.index ?? 0) + 1)/\(evt.total ?? 0)", fileIndex: fileIndex))
+            logLines.append(LogEntry(level: .info, message: "Processing partition \((evt.index ?? 0) + 1)/\(evt.total ?? 0)", fileIndex: fileIndex))
 
-        case "output_generated":
+        case .outputGenerated:
             if let path = evt.path {
                 if fileIndex < files.count {
                     let qf = files[fileIndex]
@@ -339,10 +338,10 @@ final class AppViewModel {
                 }
             }
 
-        case "partition_error":
-            logLines.append(LogEntry(level: "error", message: "Partition #\(evt.index ?? 0): \(evt.error ?? "")", fileIndex: fileIndex))
+        case .partitionError:
+            logLines.append(LogEntry(level: .error, message: "Partition #\(evt.index ?? 0): \(evt.error ?? "")", fileIndex: fileIndex))
 
-        case "file_completed":
+        case .fileCompleted:
             if fileIndex < files.count {
                 if evt.errors == nil || evt.errors?.isEmpty == true {
                     files[fileIndex].status = .completed
@@ -352,9 +351,6 @@ final class AppViewModel {
                 }
             }
             progressPercent = 100
-
-        default:
-            break
         }
     }
 

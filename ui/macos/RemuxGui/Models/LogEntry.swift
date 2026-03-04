@@ -1,8 +1,18 @@
 import Foundation
 
+enum LogLevel: String {
+    case info
+    case warn
+    case error
+
+    init(raw: String) {
+        self = LogLevel(rawValue: raw.lowercased()) ?? .info
+    }
+}
+
 struct LogEntry: Identifiable {
     let id = UUID()
-    let level: String
+    let level: LogLevel
     let message: String
     let timestamp: Date
     let fileIndex: Int?
@@ -13,7 +23,7 @@ struct LogEntry: Identifiable {
         return formatter.string(from: timestamp)
     }
 
-    init(level: String, message: String, fileIndex: Int? = nil) {
+    init(level: LogLevel, message: String, fileIndex: Int? = nil) {
         self.level = level
         self.message = message
         self.timestamp = Date()

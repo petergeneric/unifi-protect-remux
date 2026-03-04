@@ -56,10 +56,10 @@ struct LogView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.15)))
                 .frame(maxWidth: 220)
 
-                filterPill("All", count: vm.logLines.count)
-                filterPill("Info", count: vm.infoCount)
-                filterPill("Warn", count: vm.warnCount, color: .logWarn)
-                filterPill("Error", count: vm.errorCount, color: .logError)
+                filterPill("All", level: nil, count: vm.logLines.count)
+                filterPill("Info", level: .info, count: vm.infoCount)
+                filterPill("Warn", level: .warn, count: vm.warnCount, color: .logWarn)
+                filterPill("Error", level: .error, count: vm.errorCount, color: .logError)
 
                 Spacer()
             }
@@ -115,12 +115,12 @@ struct LogView: View {
         }
     }
 
-    private func filterPill(_ level: String, count: Int, color: Color = .accentColor) -> some View {
+    private func filterPill(_ label: String, level: LogLevel?, count: Int, color: Color = .accentColor) -> some View {
         let isActive = vm.logFilterLevel == level
         return Button {
             vm.logFilterLevel = level
         } label: {
-            Text("\(level) \(count)")
+            Text("\(label) \(count)")
                 .font(.caption.monospacedDigit())
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
@@ -138,7 +138,7 @@ struct LogView: View {
         panel.nameFieldStringValue = "remux-log.txt"
         if panel.runModal() == .OK, let url = panel.url {
             let text = vm.logLines.map { entry in
-                "\(entry.timestampLabel) [\(entry.level)] \(entry.message)"
+                "\(entry.timestampLabel) [\(entry.level.rawValue)] \(entry.message)"
             }.joined(separator: "\n")
             try? text.write(to: url, atomically: true, encoding: .utf8)
         }

@@ -4,10 +4,10 @@ struct LogRowView: View {
     let entry: LogEntry
 
     private var levelColor: Color {
-        switch entry.level.lowercased() {
-        case "error": .logError
-        case "warn": .logWarn
-        default: .logInfo
+        switch entry.level {
+        case .error: .logError
+        case .warn: .logWarn
+        case .info: .logInfo
         }
     }
 
@@ -18,12 +18,12 @@ struct LogRowView: View {
                 .foregroundStyle(.tertiary)
                 .frame(width: 62, alignment: .leading)
 
-            Text(entry.level.uppercased())
+            Text(entry.level.rawValue.uppercased())
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
-                .background(levelColor.opacity(entry.level.lowercased() == "info" ? 0.4 : 0.8))
+                .background(levelColor.opacity(entry.level == .info ? 0.4 : 0.8))
                 .clipShape(RoundedRectangle(cornerRadius: 3))
                 .frame(width: 46, alignment: .leading)
 
