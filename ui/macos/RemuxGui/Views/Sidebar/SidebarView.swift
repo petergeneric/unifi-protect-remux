@@ -4,8 +4,8 @@ struct SidebarView: View {
     @Environment(AppViewModel.self) private var vm
 
     var body: some View {
-        VStack(spacing: 4) {
-            Spacer().frame(height: 12)
+        VStack(spacing: 2) {
+            Spacer().frame(height: 8)
 
             NavButton(
                 label: "Files",
@@ -25,7 +25,7 @@ struct SidebarView: View {
                 icon: "doc.text",
                 index: 2,
                 badge: vm.errorCount > 0 ? "\(vm.errorCount)" : nil,
-                badgeColor: .red
+                badgeColor: .statusFailed
             )
 
             NavButton(
@@ -42,10 +42,11 @@ struct SidebarView: View {
                 index: 4
             )
 
-            Spacer().frame(height: 12)
+            Spacer().frame(height: 8)
         }
         .padding(.horizontal, 8)
         .frame(maxHeight: .infinity)
+        .background(.ultraThinMaterial)
     }
 }
 
@@ -56,39 +57,58 @@ private struct NavButton: View {
     let index: Int
     var badge: String? = nil
     var badgeColor: Color = .accentColor
+    @State private var isHovered = false
 
     private var isActive: Bool { vm.currentView == index }
 
     var body: some View {
         Button {
-            vm.currentView = index
+            withAnimation(.easeInOut(duration: 0.15)) {
+                vm.currentView = index
+            }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: icon)
+                Image(systemName: isActive ? activeIcon : icon)
+                    .font(.system(size: 13))
                     .frame(width: 20)
+                    .foregroundStyle(isActive ? Color.accentColor : .secondary)
                 Text(label)
+                    .font(.system(size: 13))
                 Spacer()
                 if let badge {
                     Text(badge)
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption2.weight(.medium).monospacedDigit())
                         .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(isActive ? badgeColor : badgeColor.opacity(0.3))
+                        .padding(.vertical, 1)
+                        .background(badgeColor.opacity(isActive ? 1 : 0.6))
                         .foregroundStyle(.white)
                         .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .foregroundStyle(isActive ? .primary : .secondary)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.accentColor.opacity(0.15) : .clear)
+                    .fill(isActive ? Color.accentColor.opacity(0.12) : (isHovered ? Color.primary.opacity(0.04) : .clear))
             )
         }
         .buttonStyle(.plain)
         .focusEffectDisabled()
+        .onHover { isHovered = $0 }
+    }
+
+    /// Return the filled variant of the SF Symbol when active.
+    private var activeIcon: String {
+        switch icon {
+        case "folder": "folder.fill"
+        case "gearshape": "gearshape.fill"
+        case "doc.text": "doc.text.fill"
+        case "video": "video.fill"
+        case "info.circle": "info.circle.fill"
+        default: icon
+        }
     }
 }

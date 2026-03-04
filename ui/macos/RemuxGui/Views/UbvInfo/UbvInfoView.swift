@@ -49,7 +49,7 @@ struct UbvInfoView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Structure")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.headline)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -85,9 +85,10 @@ struct UbvInfoView: View {
 
             Divider()
 
-            Button("Save JSON") {
+            Button("Save JSON\u{2026}", systemImage: "square.and.arrow.down") {
                 saveJSON()
             }
+            .controlSize(.small)
             .padding(8)
             .frame(maxWidth: .infinity)
         }
@@ -116,7 +117,7 @@ struct UbvInfoView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Partition \(header.index)")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.title3.bold())
 
                 // Header fields
                 VStack(alignment: .leading, spacing: 4) {

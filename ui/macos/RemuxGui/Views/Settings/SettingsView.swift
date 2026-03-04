@@ -6,58 +6,94 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var vm = vm
         ScrollView {
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 16),
-                GridItem(.flexible(), spacing: 16),
-            ], spacing: 16) {
-                // Streams card
-                SettingsCard(title: "Streams", icon: "waveform") {
-                    Toggle("Include Video", isOn: $vm.withVideo)
-                    Toggle("Include Audio", isOn: $vm.withAudio)
-                }
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Settings")
+                    .font(.title2.bold())
 
-                // Output Format card
-                SettingsCard(title: "Output Format", icon: "film") {
-                    Toggle("MP4 Output", isOn: $vm.mp4Output)
-                    Toggle("Fast Start (moov atom)", isOn: $vm.fastStart)
-                }
-
-                // Output Location card
-                SettingsCard(title: "Output Location", icon: "folder") {
-                    HStack {
-                        Text(vm.outputFolder == RemuxConfig.defaultOutputFolder
-                             ? "Same as source"
-                             : vm.outputFolder)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        Button("Browse...") {
-                            chooseOutputFolder()
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: 16),
+                    GridItem(.flexible(), spacing: 16),
+                ], spacing: 16) {
+                    // Streams
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle("Include Video", isOn: $vm.withVideo)
+                            Toggle("Include Audio", isOn: $vm.withAudio)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } label: {
+                        Label("Streams", systemImage: "waveform")
                     }
-                    Button("Reset to Source Folder") {
-                        vm.outputFolder = RemuxConfig.defaultOutputFolder
-                    }
-                    .font(.caption)
-                }
 
-                // Advanced card
-                SettingsCard(title: "Advanced", icon: "slider.horizontal.3") {
-                    HStack {
-                        Text("Force Framerate:")
-                        TextField("0 = auto", value: $vm.forceRate, format: .number)
-                            .frame(width: 80)
-                            .textFieldStyle(.roundedBorder)
+                    // Output Format
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle("MP4 Output", isOn: $vm.mp4Output)
+                            Toggle("Fast Start (moov atom)", isOn: $vm.fastStart)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } label: {
+                        Label("Output Format", systemImage: "film")
                     }
-                    HStack {
-                        Text("Video Track:")
-                        TextField("0 = default", value: $vm.videoTrack, format: .number)
-                            .frame(width: 80)
-                            .textFieldStyle(.roundedBorder)
+
+                    // Output Location
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "folder")
+                                    .foregroundStyle(.secondary)
+                                Text(vm.outputFolder == RemuxConfig.defaultOutputFolder
+                                     ? "Same as source"
+                                     : vm.outputFolder)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .foregroundStyle(.secondary)
+                                    .help(vm.outputFolder)
+                                Spacer()
+                                Button("Browse\u{2026}") {
+                                    chooseOutputFolder()
+                                }
+                                .controlSize(.small)
+                            }
+                            if vm.outputFolder != RemuxConfig.defaultOutputFolder {
+                                Button("Reset to Source Folder") {
+                                    vm.outputFolder = RemuxConfig.defaultOutputFolder
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } label: {
+                        Label("Output Location", systemImage: "folder")
+                    }
+
+                    // Advanced
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 8) {
+                            LabeledContent("Force Framerate") {
+                                TextField("auto", value: $vm.forceRate, format: .number)
+                                    .frame(width: 70)
+                                    .textFieldStyle(.roundedBorder)
+                                    .monospacedDigit()
+                            }
+                            LabeledContent("Video Track") {
+                                TextField("default", value: $vm.videoTrack, format: .number)
+                                    .frame(width: 70)
+                                    .textFieldStyle(.roundedBorder)
+                                    .monospacedDigit()
+                            }
+
+                            Text("Set to 0 for automatic detection.")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } label: {
+                        Label("Advanced", systemImage: "slider.horizontal.3")
                     }
                 }
             }
-            .padding()
+            .padding(20)
         }
     }
 
@@ -69,28 +105,5 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             vm.outputFolder = url.path
         }
-    }
-}
-
-private struct SettingsCard<Content: View>: View {
-    let title: String
-    let icon: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .foregroundStyle(Color.accentColor)
-                Text(title)
-                    .font(.headline)
-            }
-
-            content
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

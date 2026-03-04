@@ -8,20 +8,20 @@ struct CamerasView: View {
             // Header
             HStack {
                 Text("Cameras")
-                    .font(.headline)
+                    .font(.title2.bold())
                 Spacer()
                 Button(vm.cameraSaveLabel) {
                     vm.saveCamerasExplicit()
                 }
                 .disabled(!vm.hasUnsavedCameraChanges && vm.cameraSaveLabel == "Save")
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
             Text("Assign friendly names to cameras by MAC address. Names are used as output file prefixes.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
                 .padding(.bottom, 8)
 
             Divider()
@@ -30,27 +30,28 @@ struct CamerasView: View {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: "video.slash")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundStyle(.tertiary)
                     Text("No cameras registered")
+                        .font(.headline)
                         .foregroundStyle(.secondary)
                     Text("Cameras appear automatically when you add .ubv files")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
                 Spacer()
             } else {
                 // Column headers
                 HStack {
                     Text("MAC Address")
-                        .font(.caption.bold())
                         .frame(width: 160, alignment: .leading)
                     Text("Friendly Name")
-                        .font(.caption.bold())
                     Spacer()
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 4)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 5)
                 .background(Color(nsColor: .controlBackgroundColor))
 
                 // Camera list
@@ -71,10 +72,12 @@ private struct CameraRowView: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(camera.macAddressFormatted)
                 .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.secondary)
                 .frame(width: 160, alignment: .leading)
+                .textSelection(.enabled)
 
             TextField("Camera name", text: $camera.friendlyName)
                 .textFieldStyle(.roundedBorder)
@@ -91,6 +94,7 @@ private struct CameraRowView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help("Remove camera")
             }
         }
         .onHover { isHovered = $0 }

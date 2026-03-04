@@ -3,6 +3,17 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppViewModel.self) private var vm
 
+    private var windowTitle: String {
+        switch vm.currentView {
+        case 0: "UBV Remux"
+        case 1: "Settings"
+        case 2: "Log"
+        case 3: "Cameras"
+        case 4: "About"
+        default: "UBV Remux"
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             SidebarView()
@@ -31,8 +42,9 @@ struct ContentView: View {
                     .opacity(vm.currentView == 4 ? 1 : 0)
                     .allowsHitTesting(vm.currentView == 4)
             }
-            .animation(.easeOut(duration: 0.12), value: vm.currentView)
         }
+        .frame(minWidth: 760, minHeight: 480)
+        .navigationTitle(windowTitle)
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: vm.showUbvInfo) { _, show in
             if show {

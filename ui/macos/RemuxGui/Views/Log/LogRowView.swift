@@ -12,16 +12,20 @@ struct LogRowView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(entry.timestampLabel)
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 60, alignment: .leading)
+                .foregroundStyle(.tertiary)
+                .frame(width: 62, alignment: .leading)
 
-            Text("[\(entry.level)]")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(levelColor)
-                .frame(width: 50, alignment: .leading)
+            Text(entry.level.uppercased())
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(levelColor.opacity(entry.level.lowercased() == "info" ? 0.4 : 0.8))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .frame(width: 46, alignment: .leading)
 
             Text(entry.message)
                 .font(.system(.caption, design: .monospaced))

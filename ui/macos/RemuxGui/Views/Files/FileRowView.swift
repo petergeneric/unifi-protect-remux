@@ -19,33 +19,40 @@ struct FileRowView: View {
             // Status indicator
             Circle()
                 .fill(statusColor)
-                .frame(width: 8, height: 8)
+                .frame(width: 7, height: 7)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(file.fileName)
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(1)
+                    .truncationMode(.middle)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if let cameraName = file.cameraName {
-                        Text(cameraName)
+                        Label(cameraName, systemImage: "video")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     if let ts = file.fileTimestampLabel {
                         Text(ts)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
                     }
                     if let size = file.fileSizeLabel {
                         Text(size)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
                     }
                 }
             }
 
             Spacer()
+
+            if file.status == .processing {
+                ProgressView()
+                    .controlSize(.small)
+            }
 
             Text(file.statusLabel)
                 .font(.caption)
@@ -56,11 +63,13 @@ struct FileRowView: View {
                     vm.removeFile(file)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .help("Remove from queue")
             }
         }
+        .padding(.vertical, 2)
         .onHover { isHovered = $0 }
     }
 }

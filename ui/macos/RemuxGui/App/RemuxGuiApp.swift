@@ -17,6 +17,7 @@ struct RemuxGuiApp: App {
                 }
         }
         .defaultSize(width: 1100, height: 700)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About UBV Remux") {

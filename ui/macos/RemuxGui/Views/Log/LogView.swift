@@ -9,101 +9,125 @@ struct LogView: View {
             // Top toolbar
             HStack {
                 Text("Log")
-                    .font(.headline)
+                    .font(.title2.bold())
                 Spacer()
-                Button("Clear") {
+                Button("Clear", systemImage: "trash") {
                     vm.clearLog()
                 }
-                Button("Export...") {
+                .disabled(vm.logLines.isEmpty)
+                Button("Export\u{2026}", systemImage: "square.and.arrow.up") {
                     exportLog()
                 }
+                .disabled(vm.logLines.isEmpty)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
             // File filter banner
             if let label = vm.logFileFilterLabel {
-                HStack {
-                    Text("Filtered to: \(label)")
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                        .foregroundStyle(Color.accentColor)
+                    Text("Showing: \(label)")
                         .font(.caption)
                     Spacer()
-                    Button("Show all") {
+                    Button("Show All") {
                         vm.clearLogFileFilter()
                     }
-                    .font(.caption)
+                    .controlSize(.small)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 4)
-                .background(Color.accentColor.opacity(0.1))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.06))
             }
 
             // Filter bar
             HStack(spacing: 8) {
-                TextField("Search...", text: $vm.logSearchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 200)
+                HStack(spacing: 4) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.tertiary)
+                    TextField("Filter\u{2026}", text: $vm.logSearchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.15)))
+                .frame(maxWidth: 220)
 
                 filterPill("All", count: vm.logLines.count)
                 filterPill("Info", count: vm.infoCount)
-                filterPill("Warn", count: vm.warnCount)
-                filterPill("Error", count: vm.errorCount)
+                filterPill("Warn", count: vm.warnCount, color: .logWarn)
+                filterPill("Error", count: vm.errorCount, color: .logError)
 
                 Spacer()
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
             .padding(.vertical, 6)
 
             Divider()
 
             // Log entries
-            ScrollViewReader { proxy in
-                List(vm.filteredLogLines) { entry in
-                    LogRowView(entry: entry)
+            if vm.filteredLogLines.isEmpty {
+                Spacer()
+                VStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(.tertiary)
+                    Text(vm.logLines.isEmpty ? "No log entries" : "No matching entries")
+                        .foregroundStyle(.secondary)
                 }
-                .listStyle(.plain)
-                .onChange(of: vm.filteredLogLines.count) {
-                    if let last = vm.filteredLogLines.last {
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                Spacer()
+            } else {
+                ScrollViewReader { proxy in
+                    List(vm.filteredLogLines) { entry in
+                        LogRowView(entry: entry)
+                    }
+                    .listStyle(.plain)
+                    .onChange(of: vm.filteredLogLines.count) {
+                        if let last = vm.filteredLogLines.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
             }
 
             // Status bar
-            HStack {
+            HStack(spacing: 12) {
                 Text("\(vm.logLines.count) entries")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
                 Spacer()
                 if vm.errorCount > 0 {
-                    Text("\(vm.errorCount) errors")
-                        .font(.caption)
+                    Label("\(vm.errorCount) errors", systemImage: "xmark.circle")
                         .foregroundStyle(Color.logError)
                 }
                 if vm.warnCount > 0 {
-                    Text("\(vm.warnCount) warnings")
-                        .font(.caption)
+                    Label("\(vm.warnCount) warnings", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(Color.logWarn)
                 }
             }
-            .padding(.horizontal)
-            .padding(.vertical, 4)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 5)
             .background(.bar)
         }
     }
 
-    private func filterPill(_ level: String, count: Int) -> some View {
+    private func filterPill(_ level: String, count: Int, color: Color = .accentColor) -> some View {
         let isActive = vm.logFilterLevel == level
         return Button {
             vm.logFilterLevel = level
         } label: {
-            Text("\(level) (\(count))")
-                .font(.caption)
+            Text("\(level) \(count)")
+                .font(.caption.monospacedDigit())
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(isActive ? Color.accentColor : Color.clear)
-                .foregroundStyle(isActive ? .white : .secondary)
+                .background(isActive ? color.opacity(0.15) : .clear)
+                .foregroundStyle(isActive ? color : .secondary)
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: isActive ? 0 : 1))
+                .overlay(Capsule().stroke(isActive ? color.opacity(0.3) : Color.secondary.opacity(0.2), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

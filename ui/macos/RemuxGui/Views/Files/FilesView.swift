@@ -5,6 +5,7 @@ struct FilesView: View {
     @Environment(AppViewModel.self) private var vm
     @State private var lowResWarningURLs: [URL] = []
     @State private var showLowResAlert = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -12,6 +13,7 @@ struct FilesView: View {
             HStack(spacing: 0) {
                 // File list (left pane)
                 fileListPane
+                    .frame(minWidth: 300)
 
                 // Detail pane (right)
                 if let file = vm.selectedFile {
@@ -26,7 +28,7 @@ struct FilesView: View {
             // Bottom bar
             bottomBar
         }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
             return true
         }
@@ -48,57 +50,50 @@ struct FilesView: View {
             if vm.files.isEmpty {
                 dropZone
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(vm.files, id: \.id) { file in
-                            FileRowView(file: file)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .background(
-                                    vm.selectedFile?.id == file.id
-                                        ? Color.accentColor.opacity(0.2)
-                                        : Color.clear
-                                )
-                                .onTapGesture {
-                                    vm.selectedFile = file
-                                }
-                        }
-                    }
+                List(vm.files, id: \.id, selection: Binding(
+                    get: { vm.selectedFile?.id },
+                    set: { id in vm.selectedFile = vm.files.first { $0.id == id } }
+                )) { file in
+                    FileRowView(file: file)
                 }
-                .onChange(of: vm.files.count) {
-                    if vm.selectedFile == nil, let first = vm.files.first {
-                        vm.selectedFile = first
-                    }
-                }
+                .listStyle(.inset(alternatesRowBackgrounds: true))
             }
         }
     }
 
     private var dropZone: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "arrow.down.doc")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.secondary)
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(.tertiary)
             Text("Drop .ubv files here")
-                .foregroundStyle(Color.secondary)
-            Text("or use Browse below")
-                .font(.caption)
-                .foregroundStyle(Color.secondary.opacity(0.7))
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text("or click Browse below")
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(
+                    isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.2),
+                    style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1.5, dash: [8, 4])
+                )
+                .padding(16)
+        )
+        .background(isDropTargeted ? Color.accentColor.opacity(0.04) : .clear)
     }
 
     private var bottomBar: some View {
-        HStack {
+        HStack(spacing: 12) {
             Button("Convert All") {
                 vm.startAll()
             }
             .disabled(vm.isBusy || vm.files.isEmpty)
 
             if vm.isProcessing {
-                Button("Cancel") {
+                Button("Cancel", role: .cancel) {
                     vm.cancel()
                 }
             }
@@ -107,18 +102,21 @@ struct FilesView: View {
 
             if vm.hasProgressInfo {
                 ProgressView(value: vm.progressPercent, total: 100)
-                    .frame(width: 120)
+                    .progressViewStyle(.linear)
+                    .frame(width: 140)
                 Text(vm.progressText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
 
-            Button("Browse...") {
+            Button("Browse\u{2026}") {
                 browseFiles()
             }
             .disabled(vm.isBusy)
         }
-        .padding(10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(.bar)
     }
 

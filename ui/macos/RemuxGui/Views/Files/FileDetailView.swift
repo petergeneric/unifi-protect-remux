@@ -6,7 +6,7 @@ struct FileDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 // Thumbnail
                 if let thumbnail = file.thumbnail {
                     Image(nsImage: thumbnail)
@@ -14,81 +14,87 @@ struct FileDetailView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
                 }
 
-                // Info grid
-                infoSection
+                // Info section
+                GroupBox("Details") {
+                    Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+                        DetailGridRow(label: "Status", value: file.statusLabel, valueColor: statusColor)
+
+                        if let mac = file.macAddress {
+                            DetailGridRow(label: "MAC", value: mac)
+                        }
+                        if let ts = file.fileTimestampLabel {
+                            DetailGridRow(label: "Timestamp", value: ts)
+                        }
+                        if let size = file.fileSizeLabel {
+                            DetailGridRow(label: "Size", value: size)
+                        }
+                        if let count = file.partitionCount {
+                            DetailGridRow(label: "Partitions", value: "\(count)")
+                        }
+                        if let outSize = file.outputSizeLabel {
+                            DetailGridRow(label: "Output Size", value: outSize)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 // Output files
                 if !file.outputFiles.isEmpty {
-                    outputSection
+                    GroupBox("Output Files") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(file.outputFiles, id: \.self) { path in
+                                Button {
+                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "doc.fill")
+                                            .font(.caption2)
+                                        Text((path as NSString).lastPathComponent)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                        Spacer()
+                                        Image(systemName: "arrow.up.forward.square")
+                                            .font(.caption2)
+                                    }
+                                    .font(.caption)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Color.accentColor)
+                                .help("Reveal in Finder")
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
 
                 // Error
                 if let error = file.error {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(8)
-                        .background(Color.red.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    GroupBox {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
 
                 // Action buttons
                 actionButtons
             }
-            .padding()
+            .padding(12)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("File Details")
-                .font(.headline)
-
-            DetailRow(label: "Status", value: file.statusLabel)
-
-            if let mac = file.macAddress {
-                DetailRow(label: "MAC", value: mac)
-            }
-            if let ts = file.fileTimestampLabel {
-                DetailRow(label: "Timestamp", value: ts)
-            }
-            if let size = file.fileSizeLabel {
-                DetailRow(label: "Size", value: size)
-            }
-            if let count = file.partitionCount {
-                DetailRow(label: "Partitions", value: "\(count)")
-            }
-            if let outSize = file.outputSizeLabel {
-                DetailRow(label: "Output Size", value: outSize)
-            }
-        }
-    }
-
-    private var outputSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Output Files")
-                .font(.headline)
-
-            ForEach(file.outputFiles, id: \.self) { path in
-                Button {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-                } label: {
-                    HStack {
-                        Image(systemName: "doc")
-                        Text((path as NSString).lastPathComponent)
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.caption)
-                    }
-                    .font(.caption)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-            }
+    private var statusColor: Color {
+        switch file.status {
+        case .pending: .statusPending
+        case .processing: .statusProcessing
+        case .completed: .statusCompleted
+        case .failed: .statusFailed
         }
     }
 
@@ -103,25 +109,31 @@ struct FileDetailView: View {
                 vm.runDiagnostics(file)
             }
             .disabled(vm.isBusy)
+            .help("Inspect UBV structure")
 
             Button("View Log") {
                 vm.viewFileLog()
             }
+            .help("Show log filtered to this file")
         }
     }
 }
 
-private struct DetailRow: View {
+private struct DetailGridRow: View {
     let label: String
     let value: String
+    var valueColor: Color? = nil
 
     var body: some View {
-        HStack {
+        GridRow {
             Text(label)
+                .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 80, alignment: .trailing)
+                .gridColumnAlignment(.trailing)
             Text(value)
+                .font(.caption)
+                .foregroundStyle(valueColor ?? .primary)
+                .textSelection(.enabled)
         }
-        .font(.caption)
     }
 }
