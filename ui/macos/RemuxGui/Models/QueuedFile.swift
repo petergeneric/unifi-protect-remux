@@ -3,6 +3,12 @@ import AppKit
 
 @Observable
 final class QueuedFile: Identifiable {
+    private static let timestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
+
     let id = UUID()
     let path: String
     let fileName: String
@@ -18,6 +24,7 @@ final class QueuedFile: Identifiable {
     var cameraName: String?
     var thumbnail: NSImage?
     var outputFiles: [String] = []
+    var outputSizeLabel: String?
 
     var statusLabel: String {
         switch status {
@@ -36,29 +43,17 @@ final class QueuedFile: Identifiable {
         }
     }
 
-    var outputSizeLabel: String? {
-        var total: Int64 = 0
-        for file in outputFiles {
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: file),
-               let size = attrs[.size] as? Int64 {
-                total += size
-            }
-        }
-        return total > 0 ? Self.formatFileSize(total) : nil
-    }
-
     init(path: String) {
+        let url = URL(fileURLWithPath: path)
         self.path = path
-        self.fileName = (path as NSString).lastPathComponent
-        self.macAddress = RemuxFFI.extractMAC(filename: (path as NSString).lastPathComponent)
+        self.fileName = url.lastPathComponent
+        self.macAddress = RemuxFFI.extractMAC(filename: url.lastPathComponent)
 
-        if let tsString = RemuxFFI.extractTimestamp(filename: (path as NSString).lastPathComponent),
+        if let tsString = RemuxFFI.extractTimestamp(filename: url.lastPathComponent),
            let millis = Int64(tsString) {
             let date = Date(timeIntervalSince1970: Double(millis) / 1000.0)
             self.fileTimestamp = date
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            self.fileTimestampLabel = formatter.string(from: date)
+            self.fileTimestampLabel = Self.timestampFormatter.string(from: date)
         } else {
             self.fileTimestamp = nil
             self.fileTimestampLabel = nil
@@ -72,6 +67,17 @@ final class QueuedFile: Identifiable {
             self.fileSize = nil
             self.fileSizeLabel = nil
         }
+    }
+
+    func updateOutputSize() {
+        var total: Int64 = 0
+        for file in outputFiles {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: file),
+               let size = attrs[.size] as? Int64 {
+                total += size
+            }
+        }
+        outputSizeLabel = total > 0 ? Self.formatFileSize(total) : nil
     }
 
     static func formatFileSize(_ bytes: Int64) -> String {

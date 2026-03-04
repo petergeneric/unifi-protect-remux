@@ -319,6 +319,7 @@ final class AppViewModel {
                 if fileIndex < files.count {
                     let qf = files[fileIndex]
                     qf.outputFiles.append(path)
+                    qf.updateOutputSize()
 
                     // Extract thumbnail from first MP4
                     if qf.thumbnail == nil && path.lowercased().hasSuffix(".mp4") {

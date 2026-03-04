@@ -11,6 +11,12 @@ enum LogLevel: String {
 }
 
 struct LogEntry: Identifiable {
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
     let id = UUID()
     let level: LogLevel
     let message: String
@@ -18,9 +24,7 @@ struct LogEntry: Identifiable {
     let fileIndex: Int?
 
     var timestampLabel: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: timestamp)
+        Self.timeFormatter.string(from: timestamp)
     }
 
     init(level: LogLevel, message: String, fileIndex: Int? = nil) {
