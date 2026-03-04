@@ -8,103 +8,102 @@ struct AboutView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                     // App identity
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         AppIconImage()
-                            .frame(width: 48, height: 48)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("UBV Remux")
-                                .font(.title.bold())
-                            Text("Version \(versionInfo.version)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+                            .frame(width: 40, height: 40)
+                        Text("UBV Remux")
+                            .font(.system(size: 22, weight: .bold))
+                        Text(versionInfo.version)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
                     }
 
-                    Text("Convert Ubiquiti .ubv video files to standard MP4 format.")
-                        .font(.body)
+                    Text("Convert Ubiquiti .ubv video files to standard MP4")
+                        .font(.system(size: 13))
                         .foregroundStyle(.secondary)
 
-                    // Metadata
-                    GroupBox {
-                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                            if !versionInfo.gitCommit.isEmpty {
-                                GridRow {
-                                    Text("Commit")
-                                        .foregroundStyle(.secondary)
-                                    Text(String(versionInfo.gitCommit.prefix(10)))
-                                        .font(.system(.body, design: .monospaced))
-                                        .textSelection(.enabled)
-                                }
-                            }
-
+                    // Details grid
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                        if !versionInfo.gitCommit.isEmpty {
                             GridRow {
-                                Text("License")
+                                Text("Commit")
+                                    .font(.system(size: 13))
                                     .foregroundStyle(.secondary)
-                                HStack(spacing: 6) {
-                                    Text("AGPL-3.0")
-                                    Link(destination: URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!) {
-                                        Image(systemName: "arrow.up.forward.square")
-                                            .font(.caption)
-                                    }
-                                    .accessibilityLabel("AGPL-3.0 license")
-                                }
-                            }
-
-                            GridRow {
-                                Text("Source")
-                                    .foregroundStyle(.secondary)
-                                Link("GitHub", destination: URL(string: "https://github.com/petergeneric/unifi-protect-remux")!)
+                                Text(String(versionInfo.gitCommit.prefix(10)))
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .textSelection(.enabled)
                             }
                         }
-                        .font(.body)
+
+                        GridRow {
+                            Text("License")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 6) {
+                                Text("Affero GNU Public License 3.0")
+                                    .font(.system(size: 13))
+                                Link(destination: URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!) {
+                                    Image(systemName: "arrow.up.forward.square")
+                                        .font(.system(size: 11))
+                                }
+                                .accessibilityLabel("AGPL-3.0 license")
+                            }
+                        }
                     }
 
-                    Text("\u{00A9} Peter Wright 2020\u{2013}2026")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
+                    // Footer
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\u{00A9} Peter Wright 2020\u{2013}2026")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        Link("https://github.com/petergeneric/unifi-protect-remux",
+                             destination: URL(string: "https://github.com/petergeneric/unifi-protect-remux")!)
+                            .font(.system(size: 12))
+                    }
 
                     Divider()
 
                     // Credits
-                    Text("Third-Party Libraries")
-                        .font(.headline)
+                    Text("Credits & Third-Party Libraries")
+                        .font(.system(size: 15, weight: .semibold))
 
                     VStack(alignment: .leading, spacing: 3) {
                         ForEach(libraryItems) { item in
                             if let urlString = item.url, let url = URL(string: urlString) {
                                 HStack(spacing: 4) {
                                     Text(item.displayText)
-                                        .font(.caption)
+                                        .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
                                     Link(destination: url) {
                                         Image(systemName: "arrow.up.forward.square")
-                                            .font(.system(size: 9))
+                                            .font(.system(size: 10))
                                     }
                                     .accessibilityLabel("\(item.sortKey) repository")
                                 }
                             } else {
                                 Text(item.displayText)
-                                    .font(.caption)
+                                    .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(EdgeInsets(top: 24, leading: 28, bottom: 12, trailing: 28))
+                .frame(maxWidth: 500, alignment: .leading)
             }
 
             // Trademark notice
             VStack(spacing: 0) {
                 Divider()
                 Text("UniFi and UniFi Protect are registered trademarks of Ubiquiti Networks Inc. This software is open source and is unaffiliated with Ubiquiti.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, 28)
                     .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .task {
