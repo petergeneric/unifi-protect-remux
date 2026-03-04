@@ -4,7 +4,12 @@ import SwiftUI
 @MainActor
 enum UbvInfoWindowController {
 
+    private static var openWindows: [NSWindow] = []
+
     static func open(ubvPath: String, fileName: String, json: String) {
+        // Clean up previously closed windows
+        openWindows.removeAll { !$0.isVisible }
+
         let view = UbvInfoView(ubvPath: ubvPath, fileName: fileName, json: json)
         let hostingView = NSHostingView(rootView: view)
 
@@ -20,5 +25,7 @@ enum UbvInfoWindowController {
         window.isReleasedWhenClosed = false
         window.center()
         window.makeKeyAndOrderFront(nil)
+
+        openWindows.append(window)
     }
 }

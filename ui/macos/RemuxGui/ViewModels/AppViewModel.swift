@@ -245,12 +245,13 @@ final class AppViewModel {
 
     func runDiagnostics(_ file: QueuedFile) {
         guard !isBusy else { return }
-        guard let fileIndex = files.firstIndex(where: { $0.id == file.id }) else { return }
+        guard files.contains(where: { $0.id == file.id }) else { return }
 
         isDiagnosticsProcessing = true
         file.status = .processing
         let path = file.path
         let fileName = file.fileName
+        let fileId = file.id
 
         Task.detached { [weak self] in
             RemuxFFI.initialize()
@@ -258,19 +259,17 @@ final class AppViewModel {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                let targetFile = self.files.first { $0.id == fileId }
+                let fileIndex = self.files.firstIndex { $0.id == fileId }
                 if let json {
-                    if fileIndex < self.files.count {
-                        self.files[fileIndex].status = .completed
-                    }
+                    targetFile?.status = .completed
                     self.ubvInfoPath = path
                     self.ubvInfoFileName = fileName
                     self.ubvInfoJSON = json
                     self.showUbvInfo = true
                 } else {
-                    if fileIndex < self.files.count {
-                        self.files[fileIndex].status = .failed
-                        self.files[fileIndex].error = error
-                    }
+                    targetFile?.status = .failed
+                    targetFile?.error = error
                     self.logLines.append(LogEntry(level: .error, message: error ?? "Unknown error", fileIndex: fileIndex))
                 }
                 self.isDiagnosticsProcessing = false
@@ -389,14 +388,21 @@ final class AppViewModel {
         saveCameras()
     }
 
-    func saveCameras() {
-        RemuxFFI.saveCameras(cameras)
-        hasUnsavedCameraChanges = false
+    @discardableResult
+    func saveCameras() -> String? {
+        let error = RemuxFFI.saveCameras(cameras)
+        if error == nil {
+            hasUnsavedCameraChanges = false
+        }
+        return error
     }
 
     func saveCamerasExplicit() {
-        saveCameras()
-        cameraSaveLabel = "Saved!"
+        let error = saveCameras()
+        if let error {
+            logLines.append(LogEntry(level: .error, message: "Failed to save cameras: \(error)"))
+        }
+        cameraSaveLabel = error == nil ? "Saved!" : "Error"
         Task {
             try? await Task.sleep(for: .milliseconds(1500))
             cameraSaveLabel = "Save"

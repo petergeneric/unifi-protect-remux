@@ -29,6 +29,7 @@ struct FilesView: View {
             bottomBar
         }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            guard !providers.isEmpty, !vm.isBusy else { return false }
             handleDrop(providers)
             return true
         }

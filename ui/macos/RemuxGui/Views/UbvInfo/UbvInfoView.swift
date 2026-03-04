@@ -276,8 +276,9 @@ struct UbvInfoView: View {
         let outputPath = ubvPath + ".json.gz"
         guard let jsonData = json.data(using: .utf8) else { return }
 
-        // Gzip compress
-        let destBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: jsonData.count)
+        // Gzip compress (allocate extra headroom for incompressible data)
+        let destCapacity = jsonData.count + max(jsonData.count / 10, 512)
+        let destBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: destCapacity)
         defer { destBuffer.deallocate() }
 
         let compressedSize = jsonData.withUnsafeBytes { srcBuf -> Int in
@@ -285,7 +286,7 @@ struct UbvInfoView: View {
                 return 0
             }
             return compression_encode_buffer(
-                destBuffer, jsonData.count,
+                destBuffer, destCapacity,
                 srcPtr, jsonData.count,
                 nil, COMPRESSION_ZLIB
             )
