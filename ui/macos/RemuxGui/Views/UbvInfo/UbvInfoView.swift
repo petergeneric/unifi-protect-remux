@@ -81,7 +81,7 @@ struct UbvInfoView: View {
                     }
                 }
             }
-            .listStyle(.sidebar)
+            .listStyle(.inset)
 
             Divider()
 
