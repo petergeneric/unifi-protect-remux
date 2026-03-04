@@ -5,12 +5,11 @@ struct ContentView: View {
 
     private var windowTitle: String {
         switch vm.currentView {
-        case 0: "UBV Remux"
-        case 1: "Settings"
-        case 2: "Log"
-        case 3: "Cameras"
-        case 4: "About"
-        default: "UBV Remux"
+        case .files: "UBV Remux"
+        case .settings: "Settings"
+        case .log: "Log"
+        case .cameras: "Cameras"
+        case .about: "About"
         }
     }
 
@@ -23,24 +22,24 @@ struct ContentView: View {
 
             ZStack {
                 FilesView()
-                    .opacity(vm.currentView == 0 ? 1 : 0)
-                    .allowsHitTesting(vm.currentView == 0)
+                    .opacity(vm.currentView == .files ? 1 : 0)
+                    .allowsHitTesting(vm.currentView == .files)
 
                 SettingsView()
-                    .opacity(vm.currentView == 1 ? 1 : 0)
-                    .allowsHitTesting(vm.currentView == 1)
+                    .opacity(vm.currentView == .settings ? 1 : 0)
+                    .allowsHitTesting(vm.currentView == .settings)
 
                 LogView()
-                    .opacity(vm.currentView == 2 ? 1 : 0)
-                    .allowsHitTesting(vm.currentView == 2)
+                    .opacity(vm.currentView == .log ? 1 : 0)
+                    .allowsHitTesting(vm.currentView == .log)
 
                 CamerasView()
-                    .opacity(vm.currentView == 3 ? 1 : 0)
-                    .allowsHitTesting(vm.currentView == 3)
+                    .opacity(vm.currentView == .cameras ? 1 : 0)
+                    .allowsHitTesting(vm.currentView == .cameras)
 
                 AboutView()
-                    .opacity(vm.currentView == 4 ? 1 : 0)
-                    .allowsHitTesting(vm.currentView == 4)
+                    .opacity(vm.currentView == .about ? 1 : 0)
+                    .allowsHitTesting(vm.currentView == .about)
             }
         }
         .frame(minWidth: 760, minHeight: 480)

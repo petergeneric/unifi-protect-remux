@@ -6,7 +6,7 @@ import AppKit
 final class AppViewModel {
 
     // MARK: - Navigation
-    var currentView: Int = 0
+    var currentView: NavigationTab = .files
 
     // MARK: - File queue
     var files: [QueuedFile] = []
@@ -379,7 +379,7 @@ final class AppViewModel {
         guard let file = selectedFile,
               let idx = files.firstIndex(where: { $0.id == file.id }) else { return }
         logFileFilter = idx
-        currentView = 2
+        currentView = .log
     }
 
     func clearLogFileFilter() {

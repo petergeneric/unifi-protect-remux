@@ -10,20 +10,20 @@ struct SidebarView: View {
             NavButton(
                 label: "Files",
                 icon: "folder",
-                index: 0,
+                tab: .files,
                 badge: vm.files.isEmpty ? nil : "\(vm.files.count)"
             )
 
             NavButton(
                 label: "Settings",
                 icon: "gearshape",
-                index: 1
+                tab: .settings
             )
 
             NavButton(
                 label: "Log",
                 icon: "doc.text",
-                index: 2,
+                tab: .log,
                 badge: vm.errorCount > 0 ? "\(vm.errorCount)" : nil,
                 badgeColor: .statusFailed
             )
@@ -31,7 +31,7 @@ struct SidebarView: View {
             NavButton(
                 label: "Cameras",
                 icon: "video",
-                index: 3
+                tab: .cameras
             )
 
             Spacer()
@@ -39,7 +39,7 @@ struct SidebarView: View {
             NavButton(
                 label: "About",
                 icon: "info.circle",
-                index: 4
+                tab: .about
             )
 
             Spacer().frame(height: 8)
@@ -54,17 +54,17 @@ private struct NavButton: View {
     @Environment(AppViewModel.self) private var vm
     let label: String
     let icon: String
-    let index: Int
+    let tab: NavigationTab
     var badge: String? = nil
     var badgeColor: Color = .accentColor
     @State private var isHovered = false
 
-    private var isActive: Bool { vm.currentView == index }
+    private var isActive: Bool { vm.currentView == tab }
 
     var body: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.15)) {
-                vm.currentView = index
+                vm.currentView = tab
             }
         } label: {
             HStack(spacing: 8) {

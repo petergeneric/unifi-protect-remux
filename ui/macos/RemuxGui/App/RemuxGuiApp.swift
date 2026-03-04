@@ -26,15 +26,15 @@ struct RemuxGuiApp: App {
                 }
             }
             CommandMenu("Navigate") {
-                Button("Files") { viewModel.currentView = 0 }
+                Button("Files") { viewModel.currentView = .files }
                     .keyboardShortcut("1", modifiers: .command)
-                Button("Settings") { viewModel.currentView = 1 }
+                Button("Settings") { viewModel.currentView = .settings }
                     .keyboardShortcut("2", modifiers: .command)
-                Button("Log") { viewModel.currentView = 2 }
+                Button("Log") { viewModel.currentView = .log }
                     .keyboardShortcut("3", modifiers: .command)
-                Button("Cameras") { viewModel.currentView = 3 }
+                Button("Cameras") { viewModel.currentView = .cameras }
                     .keyboardShortcut("4", modifiers: .command)
-                Button("About") { viewModel.currentView = 4 }
+                Button("About") { viewModel.currentView = .about }
                     .keyboardShortcut("5", modifiers: .command)
             }
         }
