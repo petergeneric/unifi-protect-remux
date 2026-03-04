@@ -61,6 +61,14 @@ private struct NavButton: View {
 
     private var isActive: Bool { vm.currentView == tab }
 
+    private var accessibilityLabel: String {
+        if let badge {
+            "\(label), \(badge)"
+        } else {
+            label
+        }
+    }
+
     var body: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -83,6 +91,7 @@ private struct NavButton: View {
                         .background(badgeColor.opacity(isActive ? 1 : 0.6))
                         .foregroundStyle(.white)
                         .clipShape(Capsule())
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, 10)
@@ -96,8 +105,9 @@ private struct NavButton: View {
             )
         }
         .buttonStyle(.plain)
-        .focusEffectDisabled()
         .onHover { isHovered = $0 }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     /// Return the filled variant of the SF Symbol when active.

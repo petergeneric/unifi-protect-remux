@@ -24,22 +24,27 @@ struct ContentView: View {
                 FilesView()
                     .opacity(vm.currentView == .files ? 1 : 0)
                     .allowsHitTesting(vm.currentView == .files)
+                    .accessibilityHidden(vm.currentView != .files)
 
                 SettingsView()
                     .opacity(vm.currentView == .settings ? 1 : 0)
                     .allowsHitTesting(vm.currentView == .settings)
+                    .accessibilityHidden(vm.currentView != .settings)
 
                 LogView()
                     .opacity(vm.currentView == .log ? 1 : 0)
                     .allowsHitTesting(vm.currentView == .log)
+                    .accessibilityHidden(vm.currentView != .log)
 
                 CamerasView()
                     .opacity(vm.currentView == .cameras ? 1 : 0)
                     .allowsHitTesting(vm.currentView == .cameras)
+                    .accessibilityHidden(vm.currentView != .cameras)
 
                 AboutView()
                     .opacity(vm.currentView == .about ? 1 : 0)
                     .allowsHitTesting(vm.currentView == .about)
+                    .accessibilityHidden(vm.currentView != .about)
             }
         }
         .frame(minWidth: 760, minHeight: 480)
