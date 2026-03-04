@@ -105,6 +105,7 @@ private struct NavButton: View {
             )
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
         .onHover { isHovered = $0 }
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isActive ? .isSelected : [])
