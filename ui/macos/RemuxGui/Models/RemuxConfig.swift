@@ -22,16 +22,4 @@ struct RemuxConfig: Codable {
         case videoTrack = "video_track"
         case baseName = "base_name"
     }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(withAudio, forKey: .withAudio)
-        try container.encode(withVideo, forKey: .withVideo)
-        try container.encode(forceRate, forKey: .forceRate)
-        try container.encode(fastStart, forKey: .fastStart)
-        try container.encode(outputFolder, forKey: .outputFolder)
-        try container.encode(mp4, forKey: .mp4)
-        try container.encode(videoTrack, forKey: .videoTrack)
-        try container.encodeIfPresent(baseName, forKey: .baseName)
-    }
 }

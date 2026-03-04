@@ -140,7 +140,11 @@ struct LogView: View {
             let text = vm.logLines.map { entry in
                 "\(entry.timestampLabel) [\(entry.level.rawValue)] \(entry.message)"
             }.joined(separator: "\n")
-            try? text.write(to: url, atomically: true, encoding: .utf8)
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                vm.logLines.append(LogEntry(level: .error, message: "Failed to export log: \(error.localizedDescription)"))
+            }
         }
     }
 }

@@ -20,7 +20,7 @@ struct FileDetailView: View {
                 // Info section
                 GroupBox("Details") {
                     Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-                        DetailGridRow(label: "Status", value: file.statusLabel, valueColor: statusColor)
+                        DetailGridRow(label: "Status", value: file.statusLabel, valueColor: file.status.color)
 
                         if let mac = file.macAddress {
                             DetailGridRow(label: "MAC", value: mac)
@@ -87,15 +87,6 @@ struct FileDetailView: View {
             .padding(12)
         }
         .background(Color(nsColor: .controlBackgroundColor))
-    }
-
-    private var statusColor: Color {
-        switch file.status {
-        case .pending: .statusPending
-        case .processing: .statusProcessing
-        case .completed: .statusCompleted
-        case .failed: .statusFailed
-        }
     }
 
     private var actionButtons: some View {

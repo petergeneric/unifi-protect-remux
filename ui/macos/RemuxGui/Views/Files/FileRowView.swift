@@ -5,20 +5,11 @@ struct FileRowView: View {
     let file: QueuedFile
     @State private var isHovered = false
 
-    private var statusColor: Color {
-        switch file.status {
-        case .pending: .statusPending
-        case .processing: .statusProcessing
-        case .completed: .statusCompleted
-        case .failed: .statusFailed
-        }
-    }
-
     var body: some View {
         HStack(spacing: 8) {
             // Status indicator
             Circle()
-                .fill(statusColor)
+                .fill(file.status.color)
                 .frame(width: 7, height: 7)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -56,7 +47,7 @@ struct FileRowView: View {
 
             Text(file.statusLabel)
                 .font(.caption)
-                .foregroundStyle(statusColor)
+                .foregroundStyle(file.status.color)
 
             if isHovered && !vm.isBusy {
                 Button {

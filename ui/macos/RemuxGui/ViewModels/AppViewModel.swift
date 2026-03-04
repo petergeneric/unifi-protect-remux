@@ -71,6 +71,7 @@ final class AppViewModel {
 
     // MARK: - Cancellation
     private var processingTask: Task<Void, Never>?
+    private var saveLabelResetTask: Task<Void, Never>?
 
     // MARK: - UBV Info
     var ubvInfoPath: String = ""
@@ -404,8 +405,10 @@ final class AppViewModel {
             logLines.append(LogEntry(level: .error, message: "Failed to save cameras: \(error)"))
         }
         cameraSaveLabel = error == nil ? "Saved!" : "Error"
-        Task {
+        saveLabelResetTask?.cancel()
+        saveLabelResetTask = Task {
             try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
             cameraSaveLabel = "Save"
         }
     }
@@ -430,12 +433,9 @@ final class AppViewModel {
 
     private func lookupCameraName(_ mac: String?) -> String? {
         guard let mac, !mac.isEmpty else { return nil }
-        for cam in cameras {
-            if cam.macAddress.caseInsensitiveCompare(mac) == .orderedSame,
-               !cam.friendlyName.trimmingCharacters(in: .whitespaces).isEmpty {
-                return cam.friendlyName
-            }
-        }
-        return nil
+        return cameras.first {
+            $0.macAddress.caseInsensitiveCompare(mac) == .orderedSame
+            && !$0.friendlyName.trimmingCharacters(in: .whitespaces).isEmpty
+        }?.friendlyName
     }
 }

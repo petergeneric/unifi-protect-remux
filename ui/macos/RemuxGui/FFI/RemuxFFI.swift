@@ -3,6 +3,39 @@ import Foundation
 /// Swift wrapper around the C FFI functions exposed by `libremux_ffi`.
 enum RemuxFFI {
 
+    // MARK: - Private helpers
+
+    private struct VersionInfo: Decodable {
+        let version: String
+        let gitCommit: String
+        enum CodingKeys: String, CodingKey {
+            case version
+            case gitCommit = "git_commit"
+        }
+    }
+
+    private struct ValidationResult: Decodable {
+        let valid: Bool
+        let error: String?
+    }
+
+    private struct CamerasPayload: Decodable {
+        let cameras: [CameraJSON]
+        struct CameraJSON: Decodable {
+            let mac: String
+            let name: String?
+        }
+    }
+
+    private struct DiagnosticsResult: Decodable {
+        let outputPath: String
+        enum CodingKeys: String, CodingKey {
+            case outputPath = "output_path"
+        }
+    }
+
+    private static let decoder = JSONDecoder()
+
     // MARK: - Lifecycle
 
     /// Initialise FFmpeg. Safe to call multiple times.
@@ -20,13 +53,10 @@ enum RemuxFFI {
         defer { remux_free_string(ptr) }
         let json = String(cString: ptr)
         guard let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let info = try? decoder.decode(VersionInfo.self, from: data) else {
             return ("unknown", "")
         }
-        return (
-            obj["version"] as? String ?? "unknown",
-            obj["git_commit"] as? String ?? ""
-        )
+        return (info.version, info.gitCommit)
     }
 
     /// Return third-party license information.
@@ -52,13 +82,10 @@ enum RemuxFFI {
         defer { remux_free_string(ptr) }
         let resultJson = String(cString: ptr)
         guard let data = resultJson.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let result = try? decoder.decode(ValidationResult.self, from: data) else {
             return "Failed to parse validation result"
         }
-        if obj["valid"] as? Bool == true {
-            return nil
-        }
-        return obj["error"] as? String ?? "Unknown validation error"
+        return result.valid ? nil : (result.error ?? "Unknown validation error")
     }
 
     // MARK: - Processing
@@ -142,14 +169,11 @@ enum RemuxFFI {
         defer { remux_free_string(ptr) }
         let json = String(cString: ptr)
         guard let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let cameras = obj["cameras"] as? [[String: Any]] else {
+              let payload = try? decoder.decode(CamerasPayload.self, from: data) else {
             return []
         }
-        return cameras.compactMap { dict in
-            guard let mac = dict["mac"] as? String else { return nil }
-            let name = dict["name"] as? String ?? ""
-            return CameraEntry(macAddress: mac, friendlyName: name)
+        return payload.cameras.map {
+            CameraEntry(macAddress: $0.mac, friendlyName: $0.name ?? "")
         }
     }
 
@@ -226,11 +250,10 @@ enum RemuxFFI {
         defer { remux_free_string(resultPtr) }
         let resultJSON = String(cString: resultPtr)
         guard let data = resultJSON.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let outputPath = obj["output_path"] as? String else {
+              let result = try? decoder.decode(DiagnosticsResult.self, from: data) else {
             return (nil, error ?? "Failed to parse diagnostics result")
         }
-        return (outputPath, nil)
+        return (result.outputPath, nil)
     }
 }
 
