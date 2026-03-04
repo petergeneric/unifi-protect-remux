@@ -49,16 +49,17 @@ struct FileRowView: View {
                 .font(.caption)
                 .foregroundStyle(file.status.color)
 
-            if isHovered && !vm.isBusy {
-                Button {
-                    vm.removeFile(file)
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-                .help("Remove from queue")
+            Button {
+                vm.removeFile(file)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.tertiary)
             }
+            .buttonStyle(.plain)
+            .opacity(isHovered && !vm.isBusy ? 1 : 0)
+            .disabled(vm.isBusy)
+            .help("Remove from queue")
+            .accessibilityLabel("Remove \(file.fileName)")
         }
         .padding(.vertical, 2)
         .onHover { isHovered = $0 }

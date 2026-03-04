@@ -86,16 +86,16 @@ private struct CameraRowView: View {
                     vm.refreshAllCameraNames()
                 }
 
-            if isHovered {
-                Button {
-                    vm.removeCamera(camera)
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Remove camera")
+            Button {
+                vm.removeCamera(camera)
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.secondary)
             }
+            .buttonStyle(.plain)
+            .opacity(isHovered ? 1 : 0)
+            .help("Remove camera")
+            .accessibilityLabel("Remove camera \(camera.displayName)")
         }
         .onHover { isHovered = $0 }
     }
