@@ -130,6 +130,9 @@ struct LogView: View {
                 .overlay(Capsule().stroke(isActive ? color.opacity(0.3) : Color.secondary.opacity(0.2), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Filter \(label)")
+        .accessibilityValue("\(count)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private func exportLog() {

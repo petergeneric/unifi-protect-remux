@@ -105,10 +105,13 @@ struct FilesView: View {
                 ProgressView(value: vm.progressPercent, total: 100)
                     .progressViewStyle(.linear)
                     .frame(width: 140)
+                    .accessibilityLabel(vm.progressText)
+                    .accessibilityValue("\(Int(vm.progressPercent)) percent")
                 Text(vm.progressText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+                    .accessibilityHidden(true)
             }
 
             Button("Browse\u{2026}") {

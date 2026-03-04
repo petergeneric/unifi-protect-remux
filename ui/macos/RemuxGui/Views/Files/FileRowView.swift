@@ -7,10 +7,11 @@ struct FileRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Status indicator
+            // Status indicator (decorative — statusLabel conveys this to VoiceOver)
             Circle()
                 .fill(file.status.color)
                 .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(file.fileName)

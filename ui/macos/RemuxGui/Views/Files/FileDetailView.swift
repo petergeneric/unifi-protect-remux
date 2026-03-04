@@ -15,6 +15,7 @@ struct FileDetailView: View {
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+                        .accessibilityLabel("Video thumbnail for \(file.fileName)")
                 }
 
                 // Info section
@@ -65,6 +66,7 @@ struct FileDetailView: View {
                                 .buttonStyle(.plain)
                                 .foregroundStyle(Color.accentColor)
                                 .help("Reveal in Finder")
+                                .accessibilityLabel("Reveal \(URL(fileURLWithPath: path).lastPathComponent) in Finder")
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -79,6 +81,8 @@ struct FileDetailView: View {
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Error: \(error)")
                 }
 
                 // Action buttons
