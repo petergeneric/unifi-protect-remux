@@ -232,6 +232,34 @@ fn extract_timestamp(filename: &str) -> Option<String> {
     None
 }
 
+/// Format a 12-character hex MAC address with colon separators.
+///
+/// `"AABBCCDDEEFF"` → `"AA:BB:CC:DD:EE:FF"`.  Returns `None` if the input
+/// is not exactly 12 hex characters.
+fn format_mac(mac: &str) -> Option<String> {
+    if mac.len() != 12 || !mac.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let formatted: Vec<&str> = (0..6).map(|i| &mac[i * 2..i * 2 + 2]).collect();
+    Some(formatted.join(":"))
+}
+
+/// Sanitise a camera name for use as a filename base.
+///
+/// Strips characters that are invalid in filenames on Windows/macOS/Linux
+/// and trims leading/trailing whitespace.  Returns `None` if the result is
+/// empty.
+fn sanitize_base_name(name: &str) -> Option<String> {
+    const INVALID: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    let sanitized: String = name.chars().filter(|c| !INVALID.contains(c)).collect();
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 /// Return the platform-specific path for the cameras JSON file.
 fn cameras_file_path() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
@@ -823,6 +851,70 @@ pub unsafe extern "C" fn remux_is_low_res_filename(filename: *const c_char) -> c
     })) {
         Ok(v) => v,
         Err(_) => 0,
+    }
+}
+
+/// Format a 12-character hex MAC address with colon separators.
+///
+/// `"AABBCCDDEEFF"` → `"AA:BB:CC:DD:EE:FF"`.
+///
+/// Returns a heap-allocated string on success, `NULL` if the input is not
+/// exactly 12 hex characters. The caller **must** free the returned string
+/// with `remux_free_string`.
+///
+/// # Safety
+///
+/// `mac` must be either null or a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_format_mac(mac: *const c_char) -> *mut c_char {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if mac.is_null() {
+            return std::ptr::null_mut();
+        }
+        let c_str = unsafe { CStr::from_ptr(mac) };
+        let s = match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        match format_mac(s) {
+            Some(formatted) => string_to_c(&formatted),
+            None => std::ptr::null_mut(),
+        }
+    })) {
+        Ok(ptr) => ptr,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Sanitise a string for use as a filename base.
+///
+/// Strips characters that are invalid in filenames on common platforms
+/// (`/\:*?"<>|`) and trims whitespace. Returns `NULL` if the result would
+/// be empty.
+///
+/// The caller **must** free the returned string with `remux_free_string`.
+///
+/// # Safety
+///
+/// `name` must be either null or a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remux_sanitize_base_name(name: *const c_char) -> *mut c_char {
+    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if name.is_null() {
+            return std::ptr::null_mut();
+        }
+        let c_str = unsafe { CStr::from_ptr(name) };
+        let s = match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        match sanitize_base_name(s) {
+            Some(sanitized) => string_to_c(&sanitized),
+            None => std::ptr::null_mut(),
+        }
+    })) {
+        Ok(ptr) => ptr,
+        Err(_) => std::ptr::null_mut(),
     }
 }
 

@@ -191,6 +191,36 @@ char *remux_extract_timestamp(const char *filename);
 int remux_is_low_res_filename(const char *filename);
 
 /**
+ * Format a 12-character hex MAC address with colon separators.
+ *
+ * `"AABBCCDDEEFF"` → `"AA:BB:CC:DD:EE:FF"`.
+ *
+ * Returns a heap-allocated string on success, `NULL` if the input is not
+ * exactly 12 hex characters. The caller **must** free the returned string
+ * with `remux_free_string`.
+ *
+ * # Safety
+ *
+ * `mac` must be either null or a valid NUL-terminated UTF-8 C string.
+ */
+char *remux_format_mac(const char *mac);
+
+/**
+ * Sanitise a string for use as a filename base.
+ *
+ * Strips characters that are invalid in filenames on common platforms
+ * (`/\:*?"<>|`) and trims whitespace. Returns `NULL` if the result would
+ * be empty.
+ *
+ * The caller **must** free the returned string with `remux_free_string`.
+ *
+ * # Safety
+ *
+ * `name` must be either null or a valid NUL-terminated UTF-8 C string.
+ */
+char *remux_sanitize_base_name(const char *name);
+
+/**
  * Load the cameras registry from the platform-specific application data
  * directory.
  *
