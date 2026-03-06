@@ -315,7 +315,8 @@ fn format_mac(mac: &str) -> Option<String> {
     if mac.len() != 12 || !mac.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
-    let formatted: Vec<&str> = (0..6).map(|i| &mac[i * 2..i * 2 + 2]).collect();
+    let upper = mac.to_ascii_uppercase();
+    let formatted: Vec<&str> = (0..6).map(|i| &upper[i * 2..i * 2 + 2]).collect();
     Some(formatted.join(":"))
 }
 
@@ -1394,7 +1395,9 @@ mod tests {
     #[test]
     fn format_mac_valid() {
         assert_eq!(format_mac("AABBCCDDEEFF"), Some("AA:BB:CC:DD:EE:FF".into()));
-        assert_eq!(format_mac("aabbccddeeff"), Some("aa:bb:cc:dd:ee:ff".into()));
+        // normalises to uppercase
+        assert_eq!(format_mac("aabbccddeeff"), Some("AA:BB:CC:DD:EE:FF".into()));
+        assert_eq!(format_mac("AaBbCcDdEeFf"), Some("AA:BB:CC:DD:EE:FF".into()));
     }
 
     #[test]
@@ -1407,10 +1410,11 @@ mod tests {
 
     #[test]
     fn sanitize_base_name_strips_invalid_chars() {
-        assert_eq!(sanitize_base_name("Front Door"), Some("Front Door".into()));
         assert_eq!(sanitize_base_name("cam/back\\yard"), Some("cambackyard".into()));
         assert_eq!(sanitize_base_name("test:file*name?"), Some("testfilename".into()));
         assert_eq!(sanitize_base_name("a<b>c\"d|e"), Some("abcde".into()));
+        // unicode passes through
+        assert_eq!(sanitize_base_name("Caméra Jardin"), Some("Caméra Jardin".into()));
     }
 
     #[test]
@@ -1434,8 +1438,9 @@ mod tests {
     #[test]
     fn extract_mac_invalid() {
         assert_eq!(extract_mac("short_file.ubv"), None);
-        assert_eq!(extract_mac("GGBBCCDDEEFF_file.ubv"), None);
-        assert_eq!(extract_mac("AABBCCDDEEFFAA_file.ubv"), None);
+        assert_eq!(extract_mac("GGBBCCDDEEFF_file.ubv"), None); // non-hex
+        assert_eq!(extract_mac("AABBCCDDEEFFAA_file.ubv"), None); // underscore at wrong position
+        assert_eq!(extract_mac("AABBCCDDEEFF.ubv"), None); // no underscore
     }
 
     #[test]
@@ -1452,15 +1457,22 @@ mod tests {
 
     #[test]
     fn extract_timestamp_invalid() {
-        assert_eq!(extract_timestamp("noext"), None);
-        assert_eq!(extract_timestamp("file_999999999999.ubv"), None); // below 1e12
+        assert_eq!(extract_timestamp("noext"), None); // no underscore
         assert_eq!(extract_timestamp("file_notanumber.ubv"), None);
+        // boundary: exactly 1e12 is excluded (must be > 1e12)
+        assert_eq!(extract_timestamp("file_1000000000000.ubv"), None);
+        // boundary: 1e13 is excluded (must be < 1e13)
+        assert_eq!(extract_timestamp("file_10000000000000.ubv"), None);
     }
 
     #[test]
     fn is_low_res_filename_detects_patterns() {
         assert!(is_low_res_filename("AABBCCDDEEFF_2_rotating_1700000000000.ubv"));
         assert!(is_low_res_filename("AABBCCDDEEFF_timelapse_1700000000000.ubv"));
+        // case-insensitive
+        assert!(is_low_res_filename("AABBCCDDEEFF_2_ROTATING_1700000000000.ubv"));
+        assert!(is_low_res_filename("AABBCCDDEEFF_Timelapse_1700000000000.ubv"));
+        // normal recordings don't match
         assert!(!is_low_res_filename("AABBCCDDEEFF_0_rotating_1700000000000.ubv"));
     }
 }
