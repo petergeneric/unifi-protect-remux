@@ -101,6 +101,81 @@ struct CameraDataEntry {
 }
 
 // ---------------------------------------------------------------------------
+// UBV info structured tree types
+// ---------------------------------------------------------------------------
+
+/// A single entry row in the info tree (frame, clock sync, or metadata record).
+#[derive(serde::Serialize)]
+struct UbvInfoEntry {
+    #[serde(rename = "type")]
+    entry_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    track_id: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keyframe: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dts: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wc: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock_rate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sequence: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    packet_position: Option<String>,
+}
+
+/// A group of entries (e.g. "Video (H.264)" or "Clock Syncs").
+#[derive(serde::Serialize)]
+struct UbvInfoGroup {
+    label: String,
+    count: usize,
+    entries: Vec<UbvInfoEntry>,
+}
+
+/// Partition header metadata.
+#[derive(serde::Serialize)]
+struct UbvInfoHeader {
+    index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_offset: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dts: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock_rate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format_code: Option<u16>,
+    total_entries: usize,
+    entry_counts: Vec<UbvInfoGroupCount>,
+}
+
+#[derive(serde::Serialize)]
+struct UbvInfoGroupCount {
+    label: String,
+    count: usize,
+}
+
+/// A partition node in the info tree.
+#[derive(serde::Serialize)]
+struct UbvInfoPartition {
+    label: String,
+    header: UbvInfoHeader,
+    groups: Vec<UbvInfoGroup>,
+}
+
+/// Top-level structured UBV info response.
+#[derive(serde::Serialize)]
+struct UbvInfoTree {
+    partitions: Vec<UbvInfoPartition>,
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -272,13 +347,154 @@ fn cameras_file_path() -> Option<std::path::PathBuf> {
     }
 }
 
-/// Parse a `.ubv` file and return the raw JSON string.
+/// Parse a `.ubv` file and return the structured info tree as JSON.
 fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    use std::collections::BTreeMap;
+    use ubv::partition::PartitionEntry;
+
     let ubv_path = std::path::Path::new(path);
     let mut reader = ubv::reader::open_ubv(ubv_path)?;
     let ubv_file = ubv::reader::parse_ubv(&mut reader)?;
-    let json = serde_json::to_string(&ubv_file)?;
+
+    let mut partitions = Vec::new();
+
+    for partition in &ubv_file.partitions {
+        let mut frame_groups: BTreeMap<u16, Vec<UbvInfoEntry>> = BTreeMap::new();
+        let mut clock_syncs = Vec::new();
+        let mut motion = Vec::new();
+        let mut smart_events = Vec::new();
+        let mut jpegs = Vec::new();
+        let mut skips = Vec::new();
+        let mut talkback = Vec::new();
+
+        for entry in &partition.entries {
+            match entry {
+                PartitionEntry::Frame(f) => {
+                    let h = &f.header;
+                    let row = UbvInfoEntry {
+                        entry_type: f.type_char.to_string(),
+                        track_id: Some(h.track_id),
+                        keyframe: Some(h.keyframe),
+                        offset: Some(h.data_offset),
+                        size: Some(h.data_size),
+                        dts: Some(h.dts),
+                        cts: Some(f.cts),
+                        wc: Some(f.wc),
+                        clock_rate: Some(h.clock_rate),
+                        sequence: Some(h.sequence),
+                        packet_position: Some(format!("{:?}", f.packet_position)),
+                    };
+                    frame_groups.entry(h.track_id).or_default().push(row);
+                }
+                PartitionEntry::ClockSync(cs) => {
+                    clock_syncs.push(UbvInfoEntry {
+                        entry_type: "CS".to_string(),
+                        track_id: None,
+                        keyframe: None,
+                        offset: None,
+                        size: None,
+                        dts: Some(cs.sc_dts),
+                        cts: None,
+                        wc: Some(cs.wc_ms),
+                        clock_rate: Some(cs.sc_rate),
+                        sequence: None,
+                        packet_position: None,
+                    });
+                }
+                PartitionEntry::Motion(m) => motion.push(metadata_to_entry("M", m)),
+                PartitionEntry::SmartEvent(m) => smart_events.push(metadata_to_entry("SE", m)),
+                PartitionEntry::Jpeg(m) => jpegs.push(metadata_to_entry("J", m)),
+                PartitionEntry::Skip(m) => skips.push(metadata_to_entry("Skip", m)),
+                PartitionEntry::Talkback(m) => talkback.push(metadata_to_entry("TB", m)),
+                _ => {}
+            }
+        }
+
+        // Build groups in canonical order: frame tracks (sorted), then metadata types
+        let mut groups = Vec::new();
+        for (track_id, entries) in frame_groups {
+            let name = ubv::track::track_display_name(track_id);
+            let count = entries.len();
+            groups.push(UbvInfoGroup {
+                label: format!("{} ({})", name, count),
+                count,
+                entries,
+            });
+        }
+
+        fn push_group(groups: &mut Vec<UbvInfoGroup>, label: &str, entries: Vec<UbvInfoEntry>) {
+            if !entries.is_empty() {
+                let count = entries.len();
+                groups.push(UbvInfoGroup {
+                    label: format!("{} ({})", label, count),
+                    count,
+                    entries,
+                });
+            }
+        }
+
+        push_group(&mut groups, "Clock Syncs", clock_syncs);
+        push_group(&mut groups, "Motion", motion);
+        push_group(&mut groups, "Smart Events", smart_events);
+        push_group(&mut groups, "JPEG", jpegs);
+        push_group(&mut groups, "Skip", skips);
+        push_group(&mut groups, "Talkback", talkback);
+
+        // Build header info
+        let total_entries: usize = groups.iter().map(|g| g.count).sum();
+        let entry_counts: Vec<UbvInfoGroupCount> = groups
+            .iter()
+            .map(|g| UbvInfoGroupCount {
+                label: g.label.clone(),
+                count: g.count,
+            })
+            .collect();
+
+        let mut header = UbvInfoHeader {
+            index: partition.index,
+            file_offset: None,
+            dts: None,
+            clock_rate: None,
+            format_code: None,
+            total_entries,
+            entry_counts,
+        };
+
+        if let Some(ph) = &partition.header {
+            header.file_offset = Some(ph.file_offset);
+            header.dts = Some(ph.dts);
+            header.clock_rate = Some(ph.clock_rate);
+            header.format_code = Some(ph.format_code.0);
+        }
+
+        partitions.push(UbvInfoPartition {
+            label: format!("Partition {}", partition.index),
+            header,
+            groups,
+        });
+    }
+
+    let tree = UbvInfoTree { partitions };
+    let json = serde_json::to_string(&tree)?;
     Ok(json)
+}
+
+/// Convert a metadata record into an entry row.
+fn metadata_to_entry(display_type: &str, m: &ubv::partition::MetadataRecord) -> UbvInfoEntry {
+    let h = &m.header;
+    UbvInfoEntry {
+        entry_type: display_type.to_string(),
+        track_id: Some(h.track_id),
+        keyframe: Some(h.keyframe),
+        offset: Some(m.file_offset),
+        size: Some(h.data_size),
+        dts: Some(h.dts),
+        cts: None,
+        wc: None,
+        clock_rate: Some(h.clock_rate),
+        sequence: Some(h.sequence),
+        packet_position: None,
+    }
 }
 
 /// Parse and decompress a `.ubv` file, serialise to JSON, gzip-compress,

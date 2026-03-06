@@ -106,6 +106,19 @@ pub fn is_media_track(track_id: u16) -> bool {
     track_info(track_id).is_some_and(|i| i.type_char.is_some())
 }
 
+/// Human-readable display name for a track ID (e.g. "Video (H.264)").
+pub fn track_display_name(track_id: u16) -> String {
+    match track_id {
+        TRACK_VIDEO => "Video (H.264)".to_string(),
+        TRACK_VIDEO_HEVC => "Video (HEVC)".to_string(),
+        TRACK_VIDEO_AV1 => "Video (AV1)".to_string(),
+        TRACK_AUDIO => "Audio (AAC)".to_string(),
+        TRACK_AUDIO_RAW => "Audio (Raw)".to_string(),
+        TRACK_AUDIO_OPUS => "Audio (Opus)".to_string(),
+        _ => format!("Track {}", track_id),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

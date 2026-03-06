@@ -46,25 +46,11 @@ public class UbvInfoEntry
     public string? PacketPosition { get; init; }
 }
 
+/// <summary>
+/// Parses the structured UBV info JSON returned by the FFI crate.
+/// </summary>
 public static class UbvInfoParser
 {
-    private static readonly Dictionary<ushort, string> TrackNames = new()
-    {
-        [7] = "Video (H.264)",
-        [1003] = "Video (HEVC)",
-        [1004] = "Video (AV1)",
-        [1000] = "Audio (AAC)",
-        [1001] = "Audio (Raw)",
-        [1002] = "Audio (Opus)",
-    };
-
-    private static string GetTrackName(ushort trackId)
-    {
-        return TrackNames.TryGetValue(trackId, out var name)
-            ? name
-            : $"Track {trackId}";
-    }
-
     public static List<UbvInfoTreeNode> Parse(string json)
     {
         var roots = new List<UbvInfoTreeNode>();
@@ -76,113 +62,62 @@ public static class UbvInfoParser
 
         foreach (var partition in partitions.EnumerateArray())
         {
-            var index = partition.GetProperty("index").GetInt32();
-            var partNode = new UbvInfoTreeNode($"Partition {index}", isPartition: true);
+            var label = partition.TryGetProperty("label", out var labelEl)
+                ? labelEl.GetString() ?? "Partition"
+                : "Partition";
+            var partNode = new UbvInfoTreeNode(label, isPartition: true);
 
-            // Group entries by type
-            var frameGroups = new Dictionary<ushort, List<UbvInfoEntry>>();
-            var clockSyncs = new List<UbvInfoEntry>();
-            var motionEntries = new List<UbvInfoEntry>();
-            var smartEventEntries = new List<UbvInfoEntry>();
-            var jpegEntries = new List<UbvInfoEntry>();
-            var skipEntries = new List<UbvInfoEntry>();
-            var talkbackEntries = new List<UbvInfoEntry>();
-
-            if (partition.TryGetProperty("entries", out var entries))
+            // Parse pre-built groups from FFI
+            if (partition.TryGetProperty("groups", out var groups))
             {
-                foreach (var entry in entries.EnumerateArray())
+                foreach (var group in groups.EnumerateArray())
                 {
-                    if (entry.TryGetProperty("Frame", out var frame))
-                    {
-                        var trackId = frame.GetProperty("track_id").GetUInt16();
-                        var row = new UbvInfoEntry
-                        {
-                            Type = frame.TryGetProperty("type_char", out var tc) ? tc.GetString() ?? "?" : "?",
-                            TrackId = trackId,
-                            Keyframe = frame.TryGetProperty("keyframe", out var kf) ? kf.GetBoolean() : null,
-                            Offset = frame.TryGetProperty("data_offset", out var off) ? off.GetUInt64() : null,
-                            Size = frame.TryGetProperty("data_size", out var sz) ? sz.GetUInt32() : null,
-                            Dts = frame.TryGetProperty("dts", out var dts) ? dts.GetUInt64() : null,
-                            Cts = frame.TryGetProperty("cts", out var cts) ? cts.GetInt64() : null,
-                            Wc = frame.TryGetProperty("wc", out var wc) ? wc.GetUInt64() : null,
-                            ClockRate = frame.TryGetProperty("clock_rate", out var cr) ? cr.GetUInt32() : null,
-                            Sequence = frame.TryGetProperty("sequence", out var seq) ? seq.GetUInt16() : null,
-                            PacketPosition = frame.TryGetProperty("packet_position", out var pp) ? pp.GetString() : null,
-                        };
+                    var groupLabel = group.TryGetProperty("label", out var gl)
+                        ? gl.GetString() ?? "Unknown"
+                        : "Unknown";
+                    var child = new UbvInfoTreeNode(groupLabel);
 
-                        if (!frameGroups.TryGetValue(trackId, out var list))
+                    if (group.TryGetProperty("entries", out var entries))
+                    {
+                        foreach (var entry in entries.EnumerateArray())
                         {
-                            list = new List<UbvInfoEntry>();
-                            frameGroups[trackId] = list;
+                            child.Entries.Add(ParseEntry(entry));
                         }
-                        list.Add(row);
                     }
-                    else if (entry.TryGetProperty("ClockSync", out var cs))
-                    {
-                        clockSyncs.Add(new UbvInfoEntry
-                        {
-                            Type = "CS",
-                            Dts = cs.TryGetProperty("sc_dts", out var dts) ? dts.GetUInt64() : null,
-                            ClockRate = cs.TryGetProperty("sc_rate", out var cr) ? cr.GetUInt32() : null,
-                            Wc = cs.TryGetProperty("wc_ms", out var wc) ? wc.GetUInt64() : null,
-                        });
-                    }
-                    else
-                    {
-                        // Motion, SmartEvent, Jpeg, Skip, Talkback — all MetadataRecord
-                        ParseMetadataEntry(entry, "Motion", "M", motionEntries);
-                        ParseMetadataEntry(entry, "SmartEvent", "SE", smartEventEntries);
-                        ParseMetadataEntry(entry, "Jpeg", "J", jpegEntries);
-                        ParseMetadataEntry(entry, "Skip", "Skip", skipEntries);
-                        ParseMetadataEntry(entry, "Talkback", "TB", talkbackEntries);
-                    }
+
+                    partNode.Children.Add(child);
                 }
             }
 
-            // Build child nodes — frames grouped by track
-            foreach (var (trackId, frames) in frameGroups)
-            {
-                var trackName = GetTrackName(trackId);
-                var child = new UbvInfoTreeNode($"{trackName} ({frames.Count})");
-                child.Entries.AddRange(frames);
-                partNode.Children.Add(child);
-            }
-
-            AddGroupNode(partNode, "Clock Syncs", clockSyncs);
-            AddGroupNode(partNode, "Motion", motionEntries);
-            AddGroupNode(partNode, "Smart Events", smartEventEntries);
-            AddGroupNode(partNode, "JPEG", jpegEntries);
-            AddGroupNode(partNode, "Skip", skipEntries);
-            AddGroupNode(partNode, "Talkback", talkbackEntries);
-
-            // Partition-level entries: flattened list of all child entries
-            int totalEntries = 0;
-            var entryCounts = new List<(string, int)>();
-            foreach (var child in partNode.Children)
-            {
-                partNode.Entries.AddRange(child.Entries);
-                entryCounts.Add((child.Label, child.Entries.Count));
-                totalEntries += child.Entries.Count;
-            }
-
-            // Parse partition header
-            var headerInfo = new PartitionHeaderInfo
-            {
-                Index = index,
-                TotalEntries = totalEntries,
-                EntryCounts = entryCounts,
-            };
+            // Parse header info
             if (partition.TryGetProperty("header", out var header))
             {
-                headerInfo = headerInfo with
+                var entryCounts = new List<(string, int)>();
+                if (header.TryGetProperty("entry_counts", out var counts))
                 {
+                    foreach (var count in counts.EnumerateArray())
+                    {
+                        var countLabel = count.TryGetProperty("label", out var cl)
+                            ? cl.GetString() ?? ""
+                            : "";
+                        var countValue = count.TryGetProperty("count", out var cv)
+                            ? cv.GetInt32()
+                            : 0;
+                        entryCounts.Add((countLabel, countValue));
+                    }
+                }
+
+                partNode.Header = new PartitionHeaderInfo
+                {
+                    Index = header.TryGetProperty("index", out var idx) ? idx.GetInt32() : 0,
                     FileOffset = header.TryGetProperty("file_offset", out var fo) ? fo.GetUInt64() : null,
-                    Dts = header.TryGetProperty("dts", out var hdts) ? hdts.GetUInt64() : null,
-                    ClockRate = header.TryGetProperty("clock_rate", out var hcr) ? hcr.GetUInt32() : null,
+                    Dts = header.TryGetProperty("dts", out var dts) ? dts.GetUInt64() : null,
+                    ClockRate = header.TryGetProperty("clock_rate", out var cr) ? cr.GetUInt32() : null,
                     FormatCode = header.TryGetProperty("format_code", out var fc) ? fc.GetUInt16() : null,
+                    TotalEntries = header.TryGetProperty("total_entries", out var te) ? te.GetInt32() : 0,
+                    EntryCounts = entryCounts,
                 };
             }
-            partNode.Header = headerInfo;
 
             roots.Add(partNode);
         }
@@ -190,31 +125,21 @@ public static class UbvInfoParser
         return roots;
     }
 
-    private static void ParseMetadataEntry(JsonElement entry, string key, string displayType, List<UbvInfoEntry> target)
+    private static UbvInfoEntry ParseEntry(JsonElement entry)
     {
-        if (!entry.TryGetProperty(key, out var meta))
-            return;
-
-        target.Add(new UbvInfoEntry
+        return new UbvInfoEntry
         {
-            Type = displayType,
-            TrackId = meta.TryGetProperty("track_id", out var tid) ? tid.GetUInt16() : null,
-            Keyframe = meta.TryGetProperty("keyframe", out var kf) ? kf.GetBoolean() : null,
-            Offset = meta.TryGetProperty("file_offset", out var fo)
-                ? fo.GetUInt64()
-                : (meta.TryGetProperty("data_offset", out var doff) ? doff.GetUInt64() : null),
-            Size = meta.TryGetProperty("data_size", out var sz) ? sz.GetUInt32() : null,
-            Dts = meta.TryGetProperty("dts", out var dts) ? dts.GetUInt64() : null,
-            ClockRate = meta.TryGetProperty("clock_rate", out var cr) ? cr.GetUInt32() : null,
-            Sequence = meta.TryGetProperty("sequence", out var seq) ? seq.GetUInt16() : null,
-        });
-    }
-
-    private static void AddGroupNode(UbvInfoTreeNode parent, string label, List<UbvInfoEntry> entries)
-    {
-        if (entries.Count == 0) return;
-        var node = new UbvInfoTreeNode($"{label} ({entries.Count})");
-        node.Entries.AddRange(entries);
-        parent.Children.Add(node);
+            Type = entry.TryGetProperty("type", out var t) ? t.GetString() ?? "?" : "?",
+            TrackId = entry.TryGetProperty("track_id", out var tid) ? tid.GetUInt16() : null,
+            Keyframe = entry.TryGetProperty("keyframe", out var kf) ? kf.GetBoolean() : null,
+            Offset = entry.TryGetProperty("offset", out var off) ? off.GetUInt64() : null,
+            Size = entry.TryGetProperty("size", out var sz) ? sz.GetUInt32() : null,
+            Dts = entry.TryGetProperty("dts", out var dts) ? dts.GetUInt64() : null,
+            Cts = entry.TryGetProperty("cts", out var cts) ? cts.GetInt64() : null,
+            Wc = entry.TryGetProperty("wc", out var wc) ? wc.GetUInt64() : null,
+            ClockRate = entry.TryGetProperty("clock_rate", out var cr) ? cr.GetUInt32() : null,
+            Sequence = entry.TryGetProperty("sequence", out var seq) ? seq.GetUInt16() : null,
+            PacketPosition = entry.TryGetProperty("packet_position", out var pp) ? pp.GetString() : null,
+        };
     }
 }
