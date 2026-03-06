@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using RemuxGui.Interop;
 
 namespace RemuxGui.Models;
 
@@ -65,8 +66,8 @@ public partial class QueuedFile : ObservableObject
     {
         Path = path;
         FileName = System.IO.Path.GetFileName(path);
-        MacAddress = ExtractMac(FileName);
-        FileTimestamp = ExtractTimestamp(FileName);
+        MacAddress = RemuxNative.ExtractMac(FileName);
+        FileTimestamp = ParseTimestamp(RemuxNative.ExtractTimestamp(FileName));
         if (FileTimestamp is DateTimeOffset ts)
             FileTimestampLabel = ts.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         OutputFiles.CollectionChanged += (_, _) =>
@@ -117,36 +118,12 @@ public partial class QueuedFile : ObservableObject
         return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
     }
 
-    private static string? ExtractMac(string fileName)
+    private static DateTimeOffset? ParseTimestamp(string? millisStr)
     {
-        var underscoreIdx = fileName.IndexOf('_');
-        if (underscoreIdx != 12)
+        if (millisStr == null)
             return null;
-
-        var prefix = fileName[..12].ToUpperInvariant();
-        if (prefix.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F')))
-            return prefix;
-
-        return null;
-    }
-
-    private static DateTimeOffset? ExtractTimestamp(string fileName)
-    {
-        // Strip extensions: .ubv or .ubv.gz
-        var name = fileName;
-        if (name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
-            name = name[..^3];
-        if (name.EndsWith(".ubv", StringComparison.OrdinalIgnoreCase))
-            name = name[..^4];
-
-        var lastUnderscore = name.LastIndexOf('_');
-        if (lastUnderscore < 0)
-            return null;
-
-        var segment = name[(lastUnderscore + 1)..];
-        if (long.TryParse(segment, out var millis) && millis > 1_000_000_000_000L && millis < 10_000_000_000_000L)
+        if (long.TryParse(millisStr, out var millis))
             return DateTimeOffset.FromUnixTimeMilliseconds(millis);
-
         return null;
     }
 }

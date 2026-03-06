@@ -249,14 +249,14 @@ public partial class MainViewModel : ViewModelBase
 
         foreach (var path in paths)
         {
-            var lower = path.ToLowerInvariant();
-            if (!lower.EndsWith(".ubv") && !lower.EndsWith(".ubv.gz"))
+            if (!path.EndsWith(".ubv", StringComparison.OrdinalIgnoreCase) &&
+                !path.EndsWith(".ubv.gz", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             if (Files.Any(f => f.Path == path))
                 continue;
 
-            if (lower.Contains("_2_rotating_") || lower.Contains("_timelapse_"))
+            if (RemuxNative.IsLowResFilename(System.IO.Path.GetFileName(path)))
             {
                 warnedPaths.Add(path);
             }
@@ -293,17 +293,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(name))
             return null;
-
-        var invalid = System.IO.Path.GetInvalidFileNameChars();
-        var sanitized = new System.Text.StringBuilder(name.Length);
-        foreach (var c in name)
-        {
-            if (Array.IndexOf(invalid, c) < 0)
-                sanitized.Append(c);
-        }
-
-        var result = sanitized.ToString().Trim();
-        return result.Length > 0 ? result : null;
+        return RemuxNative.SanitizeBaseName(name);
     }
 
     private RemuxConfig BuildConfig()
@@ -529,10 +519,6 @@ public partial class MainViewModel : ViewModelBase
 
     // --- Camera management ---
 
-    private static string CamerasFilePath => System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "RemuxGui", "cameras.json");
-
     [RelayCommand]
     private void RemoveCamera(CameraEntry? entry)
     {
@@ -601,12 +587,8 @@ public partial class MainViewModel : ViewModelBase
     {
         try
         {
-            var path = CamerasFilePath;
-            if (!File.Exists(path)) return;
-
-            var json = File.ReadAllText(path);
-            var data = JsonSerializer.Deserialize(json, AppJsonContext.Default.CameraData);
-            if (data?.Cameras == null) return;
+            var data = RemuxNative.LoadCameras();
+            if (data.Cameras == null) return;
 
             foreach (var dto in data.Cameras)
             {
@@ -629,12 +611,7 @@ public partial class MainViewModel : ViewModelBase
             foreach (var cam in Cameras.Where(c => !string.IsNullOrWhiteSpace(c.FriendlyName)))
                 data.Cameras.Add(new CameraDataEntry { Mac = cam.MacAddress, Name = cam.FriendlyName });
 
-            var dir = System.IO.Path.GetDirectoryName(CamerasFilePath);
-            if (dir != null)
-                Directory.CreateDirectory(dir);
-
-            var json = JsonSerializer.Serialize(data, AppJsonContext.Default.CameraData);
-            File.WriteAllText(CamerasFilePath, json);
+            RemuxNative.SaveCameras(data);
         }
         catch
         {

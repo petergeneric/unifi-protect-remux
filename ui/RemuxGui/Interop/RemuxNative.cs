@@ -88,6 +88,34 @@ public static partial class RemuxNative
         out IntPtr errorOut);
 
     [LibraryImport(LibName)]
+    private static partial IntPtr remux_extract_mac(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string filename);
+
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_extract_timestamp(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string filename);
+
+    [LibraryImport(LibName)]
+    private static partial int remux_is_low_res_filename(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string filename);
+
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_format_mac(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string mac);
+
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_sanitize_base_name(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string name);
+
+    [LibraryImport(LibName)]
+    private static partial IntPtr remux_load_cameras();
+
+    [LibraryImport(LibName)]
+    private static partial int remux_save_cameras(
+        [MarshalUsing(typeof(Utf8StringMarshaller))] string camerasJson,
+        out IntPtr errorOut);
+
+    [LibraryImport(LibName)]
     private static partial void remux_free_string(IntPtr s);
 
     /// <summary>
@@ -144,6 +172,32 @@ public static partial class RemuxNative
         if (doc.RootElement.TryGetProperty("error", out var errorProp))
             error = errorProp.GetString();
         return (valid, error);
+    }
+
+    public static string? ExtractMac(string filename) => ReadAndFreeString(remux_extract_mac(filename));
+
+    public static string? ExtractTimestamp(string filename) => ReadAndFreeString(remux_extract_timestamp(filename));
+
+    public static bool IsLowResFilename(string filename) => remux_is_low_res_filename(filename) != 0;
+
+    public static string? FormatMac(string mac) => ReadAndFreeString(remux_format_mac(mac));
+
+    public static string? SanitizeBaseName(string name) => ReadAndFreeString(remux_sanitize_base_name(name));
+
+    public static CameraData LoadCameras()
+    {
+        var json = ReadAndFreeString(remux_load_cameras());
+        if (json == null)
+            return new CameraData();
+        return JsonSerializer.Deserialize(json, AppJsonContext.Default.CameraData) ?? new CameraData();
+    }
+
+    public static string? SaveCameras(CameraData data)
+    {
+        var json = JsonSerializer.Serialize(data, AppJsonContext.Default.CameraData);
+        var ret = remux_save_cameras(json, out var errorPtr);
+        var error = ReadAndFreeString(errorPtr);
+        return ret == 0 ? null : (error ?? "Unknown error");
     }
 
     public static (string? resultJson, string? error) ProcessFile(

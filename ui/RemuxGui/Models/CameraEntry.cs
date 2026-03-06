@@ -1,5 +1,5 @@
-using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RemuxGui.Interop;
 
 namespace RemuxGui.Models;
 
@@ -11,15 +11,7 @@ public partial class CameraEntry : ObservableObject
     [ObservableProperty]
     private string _friendlyName = "";
 
-    public string MacAddressFormatted
-    {
-        get
-        {
-            if (MacAddress.Length != 12)
-                return MacAddress;
-            return string.Join(":", Enumerable.Range(0, 6).Select(i => MacAddress.Substring(i * 2, 2)));
-        }
-    }
+    public string MacAddressFormatted => RemuxNative.FormatMac(MacAddress) ?? MacAddress;
 
     public string DisplayName => !string.IsNullOrWhiteSpace(FriendlyName) ? FriendlyName : MacAddressFormatted;
 
