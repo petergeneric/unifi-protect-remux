@@ -1,5 +1,5 @@
 import SwiftUI
-import Compression
+import zlib
 
 struct UbvInfoView: View {
     let ubvPath: String
@@ -294,55 +294,13 @@ struct UbvInfoView: View {
         let outputPath = ubvPath + ".json.gz"
         guard let jsonData = json.data(using: .utf8) else { return }
 
-        // Gzip compress (allocate extra headroom for incompressible data)
-        let destCapacity = jsonData.count + max(jsonData.count / 10, 512)
-        let destBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: destCapacity)
-        defer { destBuffer.deallocate() }
-
-        let compressedSize = jsonData.withUnsafeBytes { srcBuf -> Int in
-            guard let srcPtr = srcBuf.baseAddress?.bindMemory(to: UInt8.self, capacity: jsonData.count) else {
-                return 0
-            }
-            return compression_encode_buffer(
-                destBuffer, destCapacity,
-                srcPtr, jsonData.count,
-                nil, COMPRESSION_ZLIB
-            )
+        let gz = gzopen(outputPath, "wb")
+        guard gz != nil else { return }
+        defer { gzclose(gz) }
+        jsonData.withUnsafeBytes { buf in
+            _ = gzwrite(gz, buf.baseAddress, UInt32(buf.count))
         }
 
-        guard compressedSize > 0 else { return }
-
-        // Write gzip file with proper header
-        var gzipData = Data()
-        // Gzip header
-        gzipData.append(contentsOf: [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03])
-        gzipData.append(Data(bytes: destBuffer, count: compressedSize))
-
-        // CRC32 and size footer
-        let crc = crc32(data: jsonData)
-        var crc32LE = crc.littleEndian
-        gzipData.append(Data(bytes: &crc32LE, count: 4))
-        var sizeLE = UInt32(jsonData.count & 0xFFFFFFFF).littleEndian
-        gzipData.append(Data(bytes: &sizeLE, count: 4))
-
-        try? gzipData.write(to: URL(fileURLWithPath: outputPath))
-
-        // Reveal in Finder
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: outputPath)])
-    }
-
-    private func crc32(data: Data) -> UInt32 {
-        var crc: UInt32 = 0xFFFFFFFF
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 {
-                if crc & 1 != 0 {
-                    crc = (crc >> 1) ^ 0xEDB88320
-                } else {
-                    crc >>= 1
-                }
-            }
-        }
-        return ~crc
     }
 }
