@@ -150,7 +150,7 @@ final class AppViewModel {
     }
 
     private func sanitizeBaseName(_ name: String?) -> String? {
-        guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        guard let name else { return nil }
         return RemuxFFI.sanitizeBaseName(name)
     }
 

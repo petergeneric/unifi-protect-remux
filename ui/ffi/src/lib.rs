@@ -335,6 +335,14 @@ fn sanitize_base_name(name: &str) -> Option<String> {
     }
 }
 
+/// Check whether a UBV filename indicates a low-resolution recording.
+///
+/// Matches `_2_rotating_` or `_timelapse_` (case-insensitive).
+fn is_low_res_filename(filename: &str) -> bool {
+    let lower = filename.to_ascii_lowercase();
+    lower.contains("_2_rotating_") || lower.contains("_timelapse_")
+}
+
 /// Return the platform-specific path for the cameras JSON file.
 fn cameras_file_path() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
@@ -406,7 +414,9 @@ fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
                 PartitionEntry::Jpeg(m) => jpegs.push(metadata_to_entry("J", m)),
                 PartitionEntry::Skip(m) => skips.push(metadata_to_entry("Skip", m)),
                 PartitionEntry::Talkback(m) => talkback.push(metadata_to_entry("TB", m)),
-                _ => {}
+                _ => {
+                    eprintln!("ubv_info: unknown partition entry variant, skipping");
+                }
             }
         }
 
@@ -1058,12 +1068,7 @@ pub unsafe extern "C" fn remux_is_low_res_filename(filename: *const c_char) -> c
             Ok(s) => s,
             Err(_) => return 0,
         };
-        let lower = name.to_ascii_lowercase();
-        if lower.contains("_2_rotating_") || lower.contains("_timelapse_") {
-            1
-        } else {
-            0
-        }
+        if is_low_res_filename(name) { 1 } else { 0 }
     })) {
         Ok(v) => v,
         Err(_) => 0,
@@ -1379,5 +1384,83 @@ pub unsafe extern "C" fn remux_free_string(s: *mut c_char) {
         unsafe {
             let _ = CString::from_raw(s);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_mac_valid() {
+        assert_eq!(format_mac("AABBCCDDEEFF"), Some("AA:BB:CC:DD:EE:FF".into()));
+        assert_eq!(format_mac("aabbccddeeff"), Some("aa:bb:cc:dd:ee:ff".into()));
+    }
+
+    #[test]
+    fn format_mac_invalid() {
+        assert_eq!(format_mac("AABBCCDDEE"), None); // too short
+        assert_eq!(format_mac("AABBCCDDEEFFAA"), None); // too long
+        assert_eq!(format_mac("GGBBCCDDEEFF"), None); // non-hex
+        assert_eq!(format_mac(""), None);
+    }
+
+    #[test]
+    fn sanitize_base_name_strips_invalid_chars() {
+        assert_eq!(sanitize_base_name("Front Door"), Some("Front Door".into()));
+        assert_eq!(sanitize_base_name("cam/back\\yard"), Some("cambackyard".into()));
+        assert_eq!(sanitize_base_name("test:file*name?"), Some("testfilename".into()));
+        assert_eq!(sanitize_base_name("a<b>c\"d|e"), Some("abcde".into()));
+    }
+
+    #[test]
+    fn sanitize_base_name_trims_whitespace() {
+        assert_eq!(sanitize_base_name("  hello  "), Some("hello".into()));
+    }
+
+    #[test]
+    fn sanitize_base_name_empty_results() {
+        assert_eq!(sanitize_base_name(""), None);
+        assert_eq!(sanitize_base_name("***"), None);
+        assert_eq!(sanitize_base_name("  "), None);
+    }
+
+    #[test]
+    fn extract_mac_valid() {
+        assert_eq!(extract_mac("AABBCCDDEEFF_0_rotating_1234567890123.ubv"), Some("AABBCCDDEEFF".into()));
+        assert_eq!(extract_mac("aabbccddeeff_0_rotating_1234567890123.ubv"), Some("AABBCCDDEEFF".into()));
+    }
+
+    #[test]
+    fn extract_mac_invalid() {
+        assert_eq!(extract_mac("short_file.ubv"), None);
+        assert_eq!(extract_mac("GGBBCCDDEEFF_file.ubv"), None);
+        assert_eq!(extract_mac("AABBCCDDEEFFAA_file.ubv"), None);
+    }
+
+    #[test]
+    fn extract_timestamp_valid() {
+        assert_eq!(
+            extract_timestamp("AABBCCDDEEFF_0_rotating_1700000000000.ubv"),
+            Some("1700000000000".into())
+        );
+        assert_eq!(
+            extract_timestamp("AABBCCDDEEFF_0_rotating_1700000000000.ubv.gz"),
+            Some("1700000000000".into())
+        );
+    }
+
+    #[test]
+    fn extract_timestamp_invalid() {
+        assert_eq!(extract_timestamp("noext"), None);
+        assert_eq!(extract_timestamp("file_999999999999.ubv"), None); // below 1e12
+        assert_eq!(extract_timestamp("file_notanumber.ubv"), None);
+    }
+
+    #[test]
+    fn is_low_res_filename_detects_patterns() {
+        assert!(is_low_res_filename("AABBCCDDEEFF_2_rotating_1700000000000.ubv"));
+        assert!(is_low_res_filename("AABBCCDDEEFF_timelapse_1700000000000.ubv"));
+        assert!(!is_low_res_filename("AABBCCDDEEFF_0_rotating_1700000000000.ubv"));
     }
 }
