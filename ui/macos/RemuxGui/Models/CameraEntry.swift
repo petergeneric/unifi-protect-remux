@@ -7,12 +7,7 @@ final class CameraEntry: Identifiable {
     var friendlyName: String
 
     var macAddressFormatted: String {
-        guard macAddress.count == 12 else { return macAddress }
-        return stride(from: 0, to: 12, by: 2).map { i in
-            let start = macAddress.index(macAddress.startIndex, offsetBy: i)
-            let end = macAddress.index(start, offsetBy: 2)
-            return String(macAddress[start..<end])
-        }.joined(separator: ":")
+        RemuxFFI.formatMAC(macAddress) ?? macAddress
     }
 
     var displayName: String {

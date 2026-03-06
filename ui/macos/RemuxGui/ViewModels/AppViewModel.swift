@@ -151,12 +151,7 @@ final class AppViewModel {
 
     private func sanitizeBaseName(_ name: String?) -> String? {
         guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        let invalidChars = CharacterSet(charactersIn: "/\\:*?\"<>|")
-        let sanitized = name.unicodeScalars
-            .filter { !invalidChars.contains($0) }
-            .map { Character($0) }
-        let result = String(sanitized).trimmingCharacters(in: .whitespaces)
-        return result.isEmpty ? nil : result
+        return RemuxFFI.sanitizeBaseName(name)
     }
 
     // MARK: - Processing

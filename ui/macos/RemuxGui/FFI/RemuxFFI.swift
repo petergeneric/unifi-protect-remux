@@ -161,6 +161,20 @@ enum RemuxFFI {
         filename.withCString { remux_is_low_res_filename($0) } != 0
     }
 
+    /// Format a 12-char hex MAC with colon separators (e.g. "AA:BB:CC:DD:EE:FF").
+    static func formatMAC(_ mac: String) -> String? {
+        guard let ptr = mac.withCString({ remux_format_mac($0) }) else { return nil }
+        defer { remux_free_string(ptr) }
+        return String(cString: ptr)
+    }
+
+    /// Sanitise a string for use as a filename base.
+    static func sanitizeBaseName(_ name: String) -> String? {
+        guard let ptr = name.withCString({ remux_sanitize_base_name($0) }) else { return nil }
+        defer { remux_free_string(ptr) }
+        return String(cString: ptr)
+    }
+
     // MARK: - Camera persistence
 
     /// Load cameras from the platform-specific data directory.
