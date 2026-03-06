@@ -1,6 +1,4 @@
 using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -40,9 +38,7 @@ public partial class AboutWindow : Window
 
             if (!string.IsNullOrEmpty(info.GitCommit))
             {
-                CommitText.Text = info.GitCommit.Length > 10
-                    ? info.GitCommit[..10]
-                    : info.GitCommit;
+                CommitText.Text = info.ShortCommit;
             }
             else
             {
@@ -60,20 +56,7 @@ public partial class AboutWindow : Window
 
     private void OnGithubLinkClick(object? sender, PointerPressedEventArgs e)
     {
-        var url = "https://github.com/petergeneric/unifi-protect-remux";
-        try
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                Process.Start("open", url);
-            else
-                Process.Start("xdg-open", url);
-        }
-        catch
-        {
-            // Silently ignore if we can't open the browser
-        }
+        PlatformHelper.OpenUrl("https://github.com/petergeneric/unifi-protect-remux");
     }
 
     private void OnClose(object? sender, RoutedEventArgs e)

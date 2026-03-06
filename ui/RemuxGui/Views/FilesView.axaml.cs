@@ -1,9 +1,8 @@
-using System.Diagnostics;
 using System.Linq;
-using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using RemuxGui.Interop;
 using RemuxGui.ViewModels;
 
 namespace RemuxGui.Views;
@@ -59,18 +58,6 @@ public partial class FilesView : UserControl
         if (sender is not Button button || button.Tag is not string path)
             return;
 
-        try
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                Process.Start("explorer.exe", $"/select,\"{path}\"");
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                Process.Start("open", $"-R \"{path}\"");
-            else
-                Process.Start("xdg-open", System.IO.Path.GetDirectoryName(path) ?? path);
-        }
-        catch
-        {
-            // Silently ignore if we can't open the file browser
-        }
+        PlatformHelper.RevealInFileBrowser(path);
     }
 }

@@ -9,4 +9,7 @@ public class VersionInfo
 
     [JsonPropertyName("git_commit")]
     public string GitCommit { get; set; } = "";
+
+    [JsonIgnore]
+    public string ShortCommit => GitCommit.Length > 10 ? GitCommit[..10] : GitCommit;
 }

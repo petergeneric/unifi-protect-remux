@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -31,9 +29,7 @@ public partial class AboutView : UserControl
 
             if (!string.IsNullOrEmpty(info.GitCommit))
             {
-                CommitText.Text = info.GitCommit.Length > 10
-                    ? info.GitCommit[..10]
-                    : info.GitCommit;
+                CommitText.Text = info.ShortCommit;
             }
             else
             {
@@ -84,37 +80,20 @@ public partial class AboutView : UserControl
         LibrariesList.ItemsSource = items;
     }
 
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                Process.Start("open", url);
-            else
-                Process.Start("xdg-open", url);
-        }
-        catch
-        {
-            // Silently ignore if we can't open the browser
-        }
-    }
-
     private void OnGithubLinkClick(object? sender, PointerPressedEventArgs e)
     {
-        OpenUrl("https://github.com/petergeneric/unifi-protect-remux");
+        PlatformHelper.OpenUrl("https://github.com/petergeneric/unifi-protect-remux");
     }
 
     private void OnLicenseLinkClick(object? sender, RoutedEventArgs e)
     {
-        OpenUrl("https://www.gnu.org/licenses/agpl-3.0.html");
+        PlatformHelper.OpenUrl("https://www.gnu.org/licenses/agpl-3.0.html");
     }
 
     private void OnLibraryLinkClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string url } && !string.IsNullOrEmpty(url))
-            OpenUrl(url);
+            PlatformHelper.OpenUrl(url);
     }
 }
 
