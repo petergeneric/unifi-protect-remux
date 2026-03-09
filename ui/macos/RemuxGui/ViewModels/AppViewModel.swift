@@ -81,6 +81,7 @@ final class AppViewModel {
 
     // MARK: - Output folder sandbox access
     private var outputFolderURL: URL?
+    private var activeSourceDirURLs: [URL] = []
     var needsOutputFolder = false
 
     // MARK: - Init
@@ -162,7 +163,8 @@ final class AppViewModel {
 
     /// Ensure we have write access to every source directory needed for SRC-FOLDER output.
     /// Tries bookmarks first, then prompts the user via NSOpenPanel for each unwritable directory.
-    /// Returns false if any directory remains unwritable (user declined the prompt).
+    /// If the user picks a different directory, it becomes the output folder.
+    /// Returns false if the user cancelled the prompt.
     private func ensureSourceDirAccess(for filesToCheck: [QueuedFile]) -> Bool {
         // Collect unique parent directories that aren't writable
         var unwritableDirs: [URL] = []
@@ -176,18 +178,34 @@ final class AppViewModel {
             if FileManager.default.isWritableFile(atPath: dirPath) { continue }
 
             // Try restoring a saved bookmark
-            if SandboxAccess.restoreSourceDirAccess(for: dirPath) { continue }
+            if SandboxAccess.restoreSourceDirAccess(for: dirPath) {
+                activeSourceDirURLs.append(dirURL)
+                continue
+            }
 
             unwritableDirs.append(dirURL)
         }
 
         // Prompt the user for each directory we still can't write to
         for dirURL in unwritableDirs {
-            if !SandboxAccess.requestSourceDirAccess(for: dirURL) {
+            guard let pickedURL = SandboxAccess.requestSourceDirAccess(for: dirURL) else {
                 return false
             }
+            // User picked a different directory — use it as the output folder
+            if pickedURL.path != dirURL.path {
+                setOutputFolder(pickedURL)
+                return true
+            }
+            activeSourceDirURLs.append(pickedURL)
         }
         return true
+    }
+
+    private func releaseSourceDirAccess() {
+        for url in activeSourceDirURLs {
+            url.stopAccessingSecurityScopedResource()
+        }
+        activeSourceDirURLs.removeAll()
     }
 
     // MARK: - Config
@@ -260,6 +278,7 @@ final class AppViewModel {
             await MainActor.run { [weak self] in
                 self?.isProcessing = false
                 self?.processingTask = nil
+                self?.releaseSourceDirAccess()
             }
         }
     }
@@ -300,6 +319,7 @@ final class AppViewModel {
             await MainActor.run { [weak self] in
                 self?.isProcessing = false
                 self?.processingTask = nil
+                self?.releaseSourceDirAccess()
             }
         }
     }

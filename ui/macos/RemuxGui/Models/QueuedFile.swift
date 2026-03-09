@@ -11,6 +11,7 @@ final class QueuedFile: Identifiable {
 
     let id = UUID()
     let url: URL
+    private var securityScopeActive: Bool
     let path: String
     let fileName: String
     let fileSize: Int64?
@@ -45,7 +46,7 @@ final class QueuedFile: Identifiable {
     }
 
     init(url: URL) {
-        _ = url.startAccessingSecurityScopedResource()
+        self.securityScopeActive = url.startAccessingSecurityScopedResource()
         self.url = url
         self.path = url.path
         self.fileName = url.lastPathComponent
@@ -71,7 +72,15 @@ final class QueuedFile: Identifiable {
         }
     }
 
+    deinit {
+        if securityScopeActive {
+            url.stopAccessingSecurityScopedResource()
+        }
+    }
+
     func releaseAccess() {
+        guard securityScopeActive else { return }
+        securityScopeActive = false
         url.stopAccessingSecurityScopedResource()
     }
 

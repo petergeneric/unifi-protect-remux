@@ -69,8 +69,8 @@ enum SandboxAccess {
     }
 
     /// Present an NSOpenPanel asking the user to grant access to the given directory.
-    /// Returns true if the user granted access.
-    static func requestSourceDirAccess(for directoryURL: URL) -> Bool {
+    /// Returns the URL the user selected, or nil if they cancelled.
+    static func requestSourceDirAccess(for directoryURL: URL) -> URL? {
         let panel = NSOpenPanel()
         panel.message = "UBV Remux needs access to this folder to write output files next to your source files."
         panel.prompt = "Grant Access"
@@ -78,10 +78,10 @@ enum SandboxAccess {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = directoryURL
-        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
         _ = url.startAccessingSecurityScopedResource()
         saveSourceDirBookmark(for: url)
-        return true
+        return url
     }
 
     private static func loadSourceDirBookmarksRaw() -> [String: Data] {
