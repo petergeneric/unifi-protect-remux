@@ -1,0 +1,291 @@
+name: Release Swift GUI (macOS)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach assets to (leave empty for build-only test)"
+        required: false
+      sign:
+        description: "Code sign and notarise (uncheck to test build logic only)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: aarch64
+            xcode_arch: arm64
+          - target: x86_64-apple-darwin
+            arch: x86_64
+            xcode_arch: x86_64
+
+    name: swift-gui-macos-${{ matrix.arch }}
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build deps
+        run: brew install nasm pkg-config openssl brotli create-dmg
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: swift-release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            swift-release-${{ matrix.target }}-
+
+      - name: Set up code signing
+        id: codesign
+        env:
+          DEVELOPER_ID_CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.sign }}" == "false" ]]; then
+            echo "Signing disabled via workflow input — will produce unsigned output"
+            echo "CODESIGN_ENABLED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [[ -z "${DEVELOPER_ID_CERT_P12:-}" ]]; then
+            echo "No signing certificate configured — will produce unsigned output"
+            echo "CODESIGN_ENABLED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          echo "CODESIGN_ENABLED=true" >> "$GITHUB_ENV"
+
+          # Create temporary keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$DEVELOPER_ID_CERT_P12" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$DEVELOPER_ID_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          rm "$CERT_PATH"
+
+          # Allow codesign to access the keychain without UI prompt
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          # Extract signing identity
+          echo "Available codesigning identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/' || true)
+          if [[ -z "$IDENTITY" ]]; then
+            echo "ERROR: No 'Developer ID Application' identity found after import" >&2
+            exit 1
+          fi
+          echo "Signing identity: $IDENTITY"
+          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          # Write App Store Connect API key for notarytool
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "$APP_STORE_CONNECT_KEY_P8" > "$NOTARY_KEY_PATH"
+          echo "NOTARY_KEY_PATH=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build remux-ffi
+        run: cargo build --release --target ${{ matrix.target }} -p remux-ffi
+
+      - name: Build Swift GUI
+        run: |
+          set -euo pipefail
+          mkdir -p ui/macos/lib
+          cp "target/${{ matrix.target }}/release/libremux_ffi.dylib" ui/macos/lib/
+
+          # Fix dylib install name before linking so the linker records @rpath
+          install_name_tool -id @rpath/libremux_ffi.dylib ui/macos/lib/libremux_ffi.dylib
+
+          VERSION="${{ github.event.release.tag_name || github.ref_name }}"
+          MARKETING_VERSION="$(echo "$VERSION" | sed 's/^v//; s/-.*//')"
+
+          xcodebuild \
+            -project ui/macos/RemuxGui.xcodeproj \
+            -scheme RemuxGui \
+            -configuration Release \
+            -derivedDataPath ui/macos/build \
+            ARCHS=${{ matrix.xcode_arch }} \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Test
+        run: cargo nextest run --release --target ${{ matrix.target }} --profile ci
+
+      - name: Publish test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests (swift-gui-macos-${{ matrix.arch }})
+          path: target/nextest/ci/junit.xml
+          reporter: java-junit
+
+      - name: Package and sign
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          APP_NAME="UBV Remux"
+
+          APP_BUNDLE="$(find ui/macos/build -name "${APP_NAME}.app" -type d | head -1)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "ERROR: ${APP_NAME}.app not found in build output" >&2
+            exit 1
+          fi
+
+          # --- Embed dylib in Frameworks ---
+          echo "=== Embedding dylib ==="
+          mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+          cp ui/macos/lib/libremux_ffi.dylib "$APP_BUNDLE/Contents/Frameworks/"
+
+          if [[ "$CODESIGN_ENABLED" == "true" ]]; then
+            # --- Sign .app bundle ---
+            echo "=== Signing .app bundle ==="
+            ENTITLEMENTS="ui/macos/RemuxGui/RemuxGui.entitlements"
+
+            echo "  Signing dylibs inside bundle..."
+            find -L "$APP_BUNDLE/Contents" -type f -name '*.dylib' | while read -r macho; do
+              echo "    $(basename "$macho")"
+              codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
+                --keychain "$SIGNING_KEYCHAIN" --timestamp "$macho"
+            done
+
+            echo "  Signing main executable..."
+            codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
+              --keychain "$SIGNING_KEYCHAIN" --timestamp \
+              --entitlements "$ENTITLEMENTS" \
+              "$APP_BUNDLE/Contents/MacOS/${APP_NAME}"
+
+            echo "  Signing app bundle..."
+            codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
+              --keychain "$SIGNING_KEYCHAIN" --timestamp \
+              --entitlements "$ENTITLEMENTS" \
+              "$APP_BUNDLE"
+            codesign --verify --verbose "$APP_BUNDLE"
+
+            # --- Notarize .app ---
+            echo "=== Notarizing ==="
+            NOTARIZE_ZIP="$RUNNER_TEMP/notarize-submission.zip"
+            ditto -c -k "$APP_BUNDLE" "$NOTARIZE_ZIP"
+
+            xcrun notarytool submit "$NOTARIZE_ZIP" \
+              --key "$NOTARY_KEY_PATH" \
+              --key-id "$APP_STORE_CONNECT_KEY_ID" \
+              --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
+              --wait
+
+            echo "  Stapling .app..."
+            xcrun stapler staple "$APP_BUNDLE"
+
+            # --- Create signed DMG ---
+            echo "=== Creating DMG ==="
+            VOLICON="assets/appicon.icns"
+            DMG_STAGING="$RUNNER_TEMP/dmg-staging"
+            mkdir -p "$DMG_STAGING"
+            cp -a "$APP_BUNDLE" "$DMG_STAGING/"
+
+            # create-dmg returns exit code 2 when the DMG was created successfully
+            # but hdiutil couldn't cleanly eject the temp mount — treat that as success.
+            create-dmg \
+              --volname "$APP_NAME" \
+              --volicon "$VOLICON" \
+              --window-size 600 400 \
+              --icon-size 128 \
+              --icon "${APP_NAME}.app" 150 185 \
+              --app-drop-link 450 185 \
+              --hide-extension "${APP_NAME}.app" \
+              --no-internet-enable \
+              "swift-gui-macos-${{ matrix.arch }}.dmg" \
+              "$DMG_STAGING" \
+              || test $? -eq 2
+
+            echo "=== Signing DMG ==="
+            codesign --force --sign "$CODESIGN_IDENTITY" \
+              --keychain "$SIGNING_KEYCHAIN" --timestamp \
+              "swift-gui-macos-${{ matrix.arch }}.dmg"
+
+            echo "=== Notarizing DMG ==="
+            xcrun notarytool submit "swift-gui-macos-${{ matrix.arch }}.dmg" \
+              --key "$NOTARY_KEY_PATH" \
+              --key-id "$APP_STORE_CONNECT_KEY_ID" \
+              --issuer "$APP_STORE_CONNECT_ISSUER_ID" \
+              --wait
+
+            xcrun stapler staple "swift-gui-macos-${{ matrix.arch }}.dmg"
+            echo "GUI_OUTPUT=swift-gui-macos-${{ matrix.arch }}.dmg" >> "$GITHUB_ENV"
+            echo "GUI_ARTIFACT_PATH=swift-gui-macos-${{ matrix.arch }}.dmg" >> "$GITHUB_ENV"
+          else
+            # --- Unsigned fallback: tarball ---
+            echo "=== Creating unsigned GUI tarball ==="
+            DMG_STAGING="$RUNNER_TEMP/dmg-staging"
+            mkdir -p "$DMG_STAGING"
+            cp -a "$APP_BUNDLE" "$DMG_STAGING/"
+            tar czf "swift-gui-macos-unsigned-${{ matrix.arch }}.tar.gz" --exclude '*.dSYM' -C "$DMG_STAGING" .
+            echo "GUI_OUTPUT=swift-gui-macos-unsigned-${{ matrix.arch }}.tar.gz" >> "$GITHUB_ENV"
+            echo "GUI_ARTIFACT_PATH=$DMG_STAGING/" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-gui-macos-${{ matrix.arch }}
+          path: ${{ env.GUI_ARTIFACT_PATH }}
+
+      - name: Determine release tag
+        id: tag
+        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release asset
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" "${{ env.GUI_OUTPUT }}"
+
+      - name: Clean up signing credentials
+        if: always()
+        run: |
+          if [[ -f "${SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$SIGNING_KEYCHAIN" || true
+          fi
+          rm -f "${NOTARY_KEY_PATH:-}" || true
+          rm -f "$RUNNER_TEMP/entitlements.plist" || true
