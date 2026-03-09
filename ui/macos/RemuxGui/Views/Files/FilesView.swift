@@ -8,6 +8,7 @@ struct FilesView: View {
     @State private var isDropTargeted = false
 
     var body: some View {
+        @Bindable var vm = vm
         VStack(spacing: 0) {
             // Main content
             HStack(spacing: 0) {
@@ -32,6 +33,12 @@ struct FilesView: View {
             guard !providers.isEmpty, !vm.isBusy else { return false }
             handleDrop(providers)
             return true
+        }
+        .alert("Output Folder Required", isPresented: $vm.needsOutputFolder) {
+            Button("Choose Output Folder\u{2026}") { vm.currentView = .settings }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Cannot write output files next to source files. Choose an output folder in Settings, or re-add your files by browsing their parent folder.")
         }
         .alert("Low Resolution Files", isPresented: $showLowResAlert) {
             Button("Add Anyway") {
@@ -130,13 +137,29 @@ struct FilesView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseFiles = true
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
         panel.allowedContentTypes = [
             UTType(filenameExtension: "ubv") ?? .data,
             UTType(filenameExtension: "gz") ?? .data,
+            .folder,
         ]
         if panel.runModal() == .OK {
-            let warned = vm.addFiles(panel.urls)
+            var fileURLs: [URL] = []
+            for url in panel.urls {
+                if url.hasDirectoryPath {
+                    if let contents = try? FileManager.default.contentsOfDirectory(
+                        at: url, includingPropertiesForKeys: nil
+                    ) {
+                        fileURLs.append(contentsOf: contents.filter {
+                            let ext = $0.pathExtension.lowercased()
+                            return ext == "ubv" || $0.lastPathComponent.lowercased().hasSuffix(".ubv.gz")
+                        })
+                    }
+                } else {
+                    fileURLs.append(url)
+                }
+            }
+            let warned = vm.addFiles(fileURLs)
             if !warned.isEmpty {
                 lowResWarningURLs = warned
                 showLowResAlert = true

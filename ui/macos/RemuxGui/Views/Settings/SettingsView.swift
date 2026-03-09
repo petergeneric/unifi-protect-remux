@@ -58,7 +58,7 @@ struct SettingsView: View {
                             }
                             if vm.outputFolder != RemuxConfig.defaultOutputFolder {
                                 Button("Reset to Source Folder") {
-                                    vm.outputFolder = RemuxConfig.defaultOutputFolder
+                                    vm.resetOutputFolder()
                                 }
                                 .controlSize(.small)
                             }
@@ -104,7 +104,7 @@ struct SettingsView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
-            vm.outputFolder = url.path
+            vm.setOutputFolder(url)
         }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import zlib
 
 struct UbvInfoView: View {
@@ -289,18 +290,21 @@ struct UbvInfoView: View {
     }
 
     private func saveJSON() {
-        guard !json.isEmpty, !ubvPath.isEmpty else { return }
-
-        let outputPath = ubvPath + ".json.gz"
+        guard !json.isEmpty else { return }
         guard let jsonData = json.data(using: .utf8) else { return }
 
-        let gz = gzopen(outputPath, "wb")
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "gz") ?? .data]
+        panel.nameFieldStringValue = fileName + ".json.gz"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let gz = gzopen(url.path, "wb")
         guard gz != nil else { return }
         defer { gzclose(gz) }
         jsonData.withUnsafeBytes { buf in
             _ = gzwrite(gz, buf.baseAddress, UInt32(buf.count))
         }
 
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: outputPath)])
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }

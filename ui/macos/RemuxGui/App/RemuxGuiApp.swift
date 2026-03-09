@@ -76,7 +76,10 @@ struct RemuxGuiApp: App {
         let urls = args.compactMap { arg -> URL? in
             let lower = arg.lowercased()
             guard lower.hasSuffix(".ubv") || lower.hasSuffix(".ubv.gz") else { return nil }
-            return URL(fileURLWithPath: arg)
+            let url = URL(fileURLWithPath: arg)
+            // Under sandbox, CLI paths have no security scope — verify readable
+            guard FileManager.default.isReadableFile(atPath: url.path) else { return nil }
+            return url
         }
         if !urls.isEmpty {
             _ = viewModel.addFiles(urls)

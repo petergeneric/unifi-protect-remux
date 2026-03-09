@@ -10,6 +10,7 @@ final class QueuedFile: Identifiable {
     }()
 
     let id = UUID()
+    let url: URL
     let path: String
     let fileName: String
     let fileSize: Int64?
@@ -43,9 +44,10 @@ final class QueuedFile: Identifiable {
         }
     }
 
-    init(path: String) {
-        let url = URL(fileURLWithPath: path)
-        self.path = path
+    init(url: URL) {
+        _ = url.startAccessingSecurityScopedResource()
+        self.url = url
+        self.path = url.path
         self.fileName = url.lastPathComponent
         self.macAddress = RemuxFFI.extractMAC(filename: url.lastPathComponent)
 
@@ -59,7 +61,7 @@ final class QueuedFile: Identifiable {
             self.fileTimestampLabel = nil
         }
 
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
            let size = attrs[.size] as? Int64 {
             self.fileSize = size
             self.fileSizeLabel = Self.formatFileSize(size)
@@ -67,6 +69,10 @@ final class QueuedFile: Identifiable {
             self.fileSize = nil
             self.fileSizeLabel = nil
         }
+    }
+
+    func releaseAccess() {
+        url.stopAccessingSecurityScopedResource()
     }
 
     func updateOutputSize() {

@@ -79,9 +79,18 @@ final class AppViewModel {
     var ubvInfoJSON: String = ""
     var showUbvInfo = false
 
+    // MARK: - Output folder sandbox access
+    private var outputFolderURL: URL?
+    var needsOutputFolder = false
+
     // MARK: - Init
     init() {
         loadCameras()
+        if let url = SandboxAccess.loadOutputFolderURL() {
+            _ = url.startAccessingSecurityScopedResource()
+            outputFolderURL = url
+            outputFolder = url.path
+        }
     }
 
     // MARK: - File management
@@ -100,7 +109,7 @@ final class AppViewModel {
             if RemuxFFI.isLowResFilename(filename) {
                 warnedPaths.append(url)
             } else {
-                let qf = QueuedFile(path: path)
+                let qf = QueuedFile(url: url)
                 ensureCameraEntry(qf.macAddress)
                 qf.cameraName = lookupCameraName(qf.macAddress)
                 files.append(qf)
@@ -116,7 +125,7 @@ final class AppViewModel {
     /// Add previously-warned paths after user confirmation.
     func addWarnedFiles(_ urls: [URL]) {
         for url in urls {
-            let qf = QueuedFile(path: url.path)
+            let qf = QueuedFile(url: url)
             ensureCameraEntry(qf.macAddress)
             qf.cameraName = lookupCameraName(qf.macAddress)
             files.append(qf)
@@ -130,9 +139,55 @@ final class AppViewModel {
         guard !isBusy else { return }
         guard let idx = files.firstIndex(where: { $0.id == file.id }) else { return }
         files.remove(at: idx)
+        file.releaseAccess()
         if selectedFile?.id == file.id {
             selectedFile = files.isEmpty ? nil : files[min(idx, files.count - 1)]
         }
+    }
+
+    func setOutputFolder(_ url: URL) {
+        outputFolderURL?.stopAccessingSecurityScopedResource()
+        _ = url.startAccessingSecurityScopedResource()
+        outputFolderURL = url
+        outputFolder = url.path
+        SandboxAccess.saveOutputFolderBookmark(for: url)
+    }
+
+    func resetOutputFolder() {
+        outputFolderURL?.stopAccessingSecurityScopedResource()
+        outputFolderURL = nil
+        outputFolder = RemuxConfig.defaultOutputFolder
+        SandboxAccess.clearOutputFolderBookmark()
+    }
+
+    /// Ensure we have write access to every source directory needed for SRC-FOLDER output.
+    /// Tries bookmarks first, then prompts the user via NSOpenPanel for each unwritable directory.
+    /// Returns false if any directory remains unwritable (user declined the prompt).
+    private func ensureSourceDirAccess(for filesToCheck: [QueuedFile]) -> Bool {
+        // Collect unique parent directories that aren't writable
+        var unwritableDirs: [URL] = []
+        var seen = Set<String>()
+        for file in filesToCheck {
+            let dirURL = file.url.deletingLastPathComponent()
+            let dirPath = dirURL.path
+            guard !seen.contains(dirPath) else { continue }
+            seen.insert(dirPath)
+
+            if FileManager.default.isWritableFile(atPath: dirPath) { continue }
+
+            // Try restoring a saved bookmark
+            if SandboxAccess.restoreSourceDirAccess(for: dirPath) { continue }
+
+            unwritableDirs.append(dirURL)
+        }
+
+        // Prompt the user for each directory we still can't write to
+        for dirURL in unwritableDirs {
+            if !SandboxAccess.requestSourceDirAccess(for: dirURL) {
+                return false
+            }
+        }
+        return true
     }
 
     // MARK: - Config
@@ -158,6 +213,13 @@ final class AppViewModel {
 
     func startAll() {
         guard !isBusy, !files.isEmpty else { return }
+
+        if outputFolder == RemuxConfig.defaultOutputFolder {
+            if !ensureSourceDirAccess(for: files) {
+                needsOutputFolder = true
+                return
+            }
+        }
 
         logLines.removeAll()
         progressText = ""
@@ -205,6 +267,13 @@ final class AppViewModel {
     func convertFile(_ file: QueuedFile) {
         guard !isBusy else { return }
         guard let fileIndex = files.firstIndex(where: { $0.id == file.id }) else { return }
+
+        if outputFolder == RemuxConfig.defaultOutputFolder {
+            if !ensureSourceDirAccess(for: [file]) {
+                needsOutputFolder = true
+                return
+            }
+        }
 
         file.status = .pending
         file.outputFiles.removeAll()
