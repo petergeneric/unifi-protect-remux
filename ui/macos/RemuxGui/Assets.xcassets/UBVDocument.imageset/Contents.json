@@ -1,0 +1,18 @@
+{
+  "images" : [
+    {
+      "filename" : "ubv-document-256.png",
+      "idiom" : "mac",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "ubv-document-512.png",
+      "idiom" : "mac",
+      "scale" : "2x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

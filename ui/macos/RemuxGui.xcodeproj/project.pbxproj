@@ -279,7 +279,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = "-lremux_ffi";
 				PRODUCT_BUNDLE_IDENTIFIER = com.remuxgui.macos;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "UBV Remux";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "RemuxGui/FFI/BridgingHeader.h";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -308,7 +308,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = "-lremux_ffi";
 				PRODUCT_BUNDLE_IDENTIFIER = com.remuxgui.macos;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "UBV Remux";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "RemuxGui/FFI/BridgingHeader.h";
 				SWIFT_STRICT_CONCURRENCY = complete;

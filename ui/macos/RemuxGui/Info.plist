@@ -4,5 +4,40 @@
 <dict>
 	<key>CFBundleIconFile</key>
 	<string>appicon</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Ubiquiti UBV Video</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.ubnt.ubv</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.ubnt.ubv</string>
+			<key>UTTypeDescription</key>
+			<string>Ubiquiti UBV Video</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeIconName</key>
+			<string>UBVDocument</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ubv</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

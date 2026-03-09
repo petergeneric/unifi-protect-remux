@@ -50,10 +50,10 @@ xcodebuild \
     MARKETING_VERSION="$MARKETING_VERSION" \
     build
 
-APP_PATH="$(find "$MACOS_DIR/build" -name 'RemuxGui.app' -type d | head -1)"
+APP_PATH="$(find "$MACOS_DIR/build" -name 'UBV Remux.app' -type d | head -1)"
 
 if [ -z "$APP_PATH" ]; then
-    echo "ERROR: RemuxGui.app not found in build output" >&2
+    echo "ERROR: UBV Remux.app not found in build output" >&2
     exit 1
 fi
 

@@ -80,7 +80,7 @@ final class QueuedFile: Identifiable {
         outputSizeLabel = total > 0 ? Self.formatFileSize(total) : nil
     }
 
-    private static let fileSizeFormatter: ByteCountFormatter = {
+    private nonisolated(unsafe) static let fileSizeFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.countStyle = .binary
         return f
