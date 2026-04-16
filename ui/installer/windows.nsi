@@ -7,6 +7,7 @@
 ;   ├── ubv-info.exe
 ;   ├── ubv-anonymise.exe
 ;   ├── *.dll              (FFmpeg shared libs)
+;   ├── vc_redist.x64.exe  (Visual C++ 2015-2022 Redistributable bootstrapper)
 ;   └── RemuxGui/
 ;       ├── RemuxGui.exe
 ;       └── ...
@@ -102,6 +103,36 @@ VIAddVersionKey "LegalCopyright" "AGPL-3.0-only"
 ;-----------------------------------------------------------------------------
 ; Installer sections
 ;-----------------------------------------------------------------------------
+
+; Visual C++ Runtime — always installed (not optional, hidden from UI)
+; Required by the FFmpeg DLLs and Rust MSVC binaries at runtime.
+; Uses $PLUGINSDIR (auto-cleaned on any exit, including user cancel) rather
+; than $TEMP (which would leak the bootstrapper on aborted installs).
+Section "-Visual C++ Runtime" SEC_VCREDIST
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "${STAGING_DIR}\vc_redist.x64.exe"
+  DetailPrint "Installing Visual C++ 2015-2022 Runtime (this may take a minute)..."
+  ; Sentinel so we can detect the case where ExecWait itself failed to launch
+  ; the bootstrapper (e.g. AV quarantine) and $0 was left unchanged.
+  StrCpy $0 "launch-failed"
+  ClearErrors
+  ; /passive shows the MS progress dialog so the user knows it isn't hung.
+  ExecWait '"$PLUGINSDIR\vc_redist.x64.exe" /install /passive /norestart' $0
+  IfErrors vcredist_launch_failed 0
+  ; Exit codes: 0 = installed, 1638 = newer already present, 3010 = reboot pending
+  StrCmp $0 "0" vcredist_done
+  StrCmp $0 "1638" vcredist_done
+  StrCmp $0 "3010" vcredist_reboot
+  MessageBox MB_OK|MB_ICONEXCLAMATION "Visual C++ Runtime installation returned error code $0.$\n$\nUBV Remux may fail to launch until the Visual C++ 2015-2022 Redistributable is installed manually from:$\nhttps://aka.ms/vc14/vc_redist.x64.exe"
+  Goto vcredist_done
+  vcredist_launch_failed:
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Could not launch the Visual C++ Runtime installer ($PLUGINSDIR\vc_redist.x64.exe).$\n$\nUBV Remux may fail to launch until the Visual C++ 2015-2022 Redistributable is installed manually from:$\nhttps://aka.ms/vc14/vc_redist.x64.exe"
+    Goto vcredist_done
+  vcredist_reboot:
+    DetailPrint "Visual C++ Runtime installed; a reboot is recommended to complete installation."
+  vcredist_done:
+SectionEnd
 
 ; Core files — always installed (not optional)
 Section "-Core Files" SEC_CORE

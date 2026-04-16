@@ -37,6 +37,51 @@ jobs:
           echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
           echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
 
+      - name: Download VC++ redistributable
+        shell: pwsh
+        run: |
+          # Bundle Microsoft's VC++ 2015-2022 Redistributable bootstrapper so
+          # end users don't need it pre-installed. The NSIS installer runs it
+          # silently during install; CLI-zip users can run it manually once.
+          # Retry on download failure.
+          $url = "https://aka.ms/vc14/vc_redist.x64.exe"
+          $maxAttempts = 5
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile vc_redist.x64.exe -UseBasicParsing
+              break
+            } catch {
+              if ($attempt -eq $maxAttempts) { throw }
+              Write-Host "Download attempt $attempt failed: $_ - retrying in $($attempt * 5)s..."
+              Start-Sleep -Seconds ($attempt * 5)
+            }
+          }
+          $VCRedistPath = (Resolve-Path vc_redist.x64.exe).Path
+          echo "VC_REDIST=$VCRedistPath" >> $env:GITHUB_ENV
+
+      - name: Verify VC++ redistributable Authenticode signature
+        shell: pwsh
+        run: |
+          # Validate the exe signature. We match on the signer
+          # organization (O=Microsoft Corporation) in both Subject and Issuer
+          # rather than pinning a thumbprint, because Microsoft rotated their
+          # code-signing PCAs in 2025 and will rotate them again. Organization
+          # matching chains to Microsoft's roots regardless of PCA version.
+          $sig = Get-AuthenticodeSignature vc_redist.x64.exe
+          if ($sig.Status -ne 'Valid') {
+            throw "Authenticode signature status is '$($sig.Status)': $($sig.StatusMessage)"
+          }
+          if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "Unexpected signer subject: $($sig.SignerCertificate.Subject)"
+          }
+          if ($sig.SignerCertificate.Issuer -notmatch 'O=Microsoft Corporation') {
+            throw "Unexpected signer issuer: $($sig.SignerCertificate.Issuer)"
+          }
+          Write-Host "Authenticode signature verified."
+          Write-Host "  Subject:    $($sig.SignerCertificate.Subject)"
+          Write-Host "  Issuer:     $($sig.SignerCertificate.Issuer)"
+          Write-Host "  Thumbprint: $($sig.SignerCertificate.Thumbprint)"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -93,6 +138,10 @@ jobs:
           Copy-Item target/x86_64-pc-windows-msvc/release/ubv-anonymise.exe staging/
           # Bundle FFmpeg DLLs so users don't need a separate FFmpeg install
           Copy-Item "$env:FFMPEG_DIR\bin\*.dll" staging/
+          # Bundle VC++ 2015-2022 Redistributable bootstrapper
+          Copy-Item "$env:VC_REDIST" staging/
+          # README with first-time setup instructions
+          Copy-Item ui/installer/cli-readme.txt staging/README.txt
 
       - name: Upload artifact (CLI)
         uses: actions/upload-artifact@v4
@@ -131,7 +180,10 @@ jobs:
       - name: Create release archive
         if: steps.tag.outputs.tag != ''
         shell: pwsh
-        run: Compress-Archive -Path staging/remux.exe,staging/ubv-info.exe,staging/ubv-anonymise.exe,staging/*.dll -DestinationPath cli-windows-x86_64.zip
+        # Explicit path list (not staging/*) because by this point the earlier
+        # "Stage GUI and build installer" step has added staging/RemuxGui/ for
+        # the NSIS installer, and that must NOT end up in the CLI zip.
+        run: Compress-Archive -Path staging/remux.exe,staging/ubv-info.exe,staging/ubv-anonymise.exe,staging/*.dll,staging/vc_redist.x64.exe,staging/README.txt -DestinationPath cli-windows-x86_64.zip
 
       - name: Upload release asset (zip)
         if: steps.tag.outputs.tag != ''
