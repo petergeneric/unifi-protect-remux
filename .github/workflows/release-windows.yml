@@ -30,10 +30,17 @@ jobs:
           choco install llvm --yes --no-progress
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
 
-          # Pre-built FFmpeg 8 shared libs
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-win64-lgpl-shared-8.0.zip" -OutFile ffmpeg.zip
+          # Pre-built FFmpeg 8 shared libs.
+          # Pinned to a dated BtbN autobuild tag (immutable) rather than the
+          # rolling "latest" tag, which drops older FFmpeg branch assets when
+          # new versions ship (broke CI when 8.1 bumped 8.0 off the latest tag).
+          # To bump: pick a newer autobuild-YYYY-MM-DD-HH-MM tag and update the
+          # filename (it embeds the upstream git commit hash).
+          $ffmpegTag = "autobuild-2026-04-15-13-19"
+          $ffmpegName = "ffmpeg-n8.1-8-g735c84b57f-win64-lgpl-shared-8.1"
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/$ffmpegTag/$ffmpegName.zip" -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath .
-          $ffmpegDir = (Resolve-Path "ffmpeg-n8.0-latest-win64-lgpl-shared-8.0").Path
+          $ffmpegDir = (Resolve-Path $ffmpegName).Path
           echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
           echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
 

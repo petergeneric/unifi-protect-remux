@@ -40,10 +40,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang pkg-config libxv-dev libc++-dev nasm
-          curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-linux64-lgpl-shared-8.0.tar.xz -o ffmpeg.tar.xz
+          # Pinned to a dated BtbN autobuild tag (immutable) rather than the
+          # rolling "latest" tag, which drops older FFmpeg branch assets when
+          # new versions ship (broke CI when 8.1 bumped 8.0 off the latest tag).
+          FFMPEG_TAG="autobuild-2026-04-15-13-19"
+          FFMPEG_NAME="ffmpeg-n8.1-8-g735c84b57f-linux64-lgpl-shared-8.1"
+          curl -L "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_TAG}/${FFMPEG_NAME}.tar.xz" -o ffmpeg.tar.xz
           tar -xf ffmpeg.tar.xz
-          echo "FFMPEG_DIR=${PWD}/ffmpeg-n8.0-latest-linux64-lgpl-shared-8.0" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=${PWD}/ffmpeg-n8.0-latest-linux64-lgpl-shared-8.0/lib" >> "$GITHUB_ENV"
+          echo "FFMPEG_DIR=${PWD}/${FFMPEG_NAME}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${PWD}/${FFMPEG_NAME}/lib" >> "$GITHUB_ENV"
 
       - name: Install FFmpeg and LLVM (Windows)
         if: runner.os == 'Windows'
@@ -53,10 +58,16 @@ jobs:
           choco install llvm --yes --no-progress
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
 
-          # Pre-built FFmpeg 8 shared libs
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-win64-lgpl-shared-8.0.zip" -OutFile ffmpeg.zip
+          # Pre-built FFmpeg 8 shared libs.
+          # Pinned to a dated BtbN autobuild tag (immutable) rather than the
+          # rolling "latest" tag, which drops older FFmpeg branch assets when
+          # new versions ship (broke CI when 8.1 bumped 8.0 off the latest tag).
+          # Keep in sync with release-windows.yml.
+          $ffmpegTag = "autobuild-2026-04-15-13-19"
+          $ffmpegName = "ffmpeg-n8.1-8-g735c84b57f-win64-lgpl-shared-8.1"
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/$ffmpegTag/$ffmpegName.zip" -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath .
-          $ffmpegDir = (Resolve-Path "ffmpeg-n8.0-latest-win64-lgpl-shared-8.0").Path
+          $ffmpegDir = (Resolve-Path $ffmpegName).Path
           echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
           echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
 
