@@ -2,11 +2,13 @@
 set -euo pipefail
 
 # End-to-end sanity script:
-#   1. Generate SMPTE colour bars + 1 kHz test tone via ffmpeg.
+#   1. Generate a `testsrc2` pattern (has a built-in running timecode and
+#      frame counter in the top-left) + 1 kHz test tone via ffmpeg.
 #   2. Feed it to `create-ubv` to produce samples/synthetic.ubv.
 #   3. Run `remux` on that .ubv to produce samples/synthetic-out.mp4.
 #
-# Handy for eyeballing the whole pipeline after making pipeline changes.
+# Handy for eyeballing the whole pipeline after making pipeline changes —
+# the timecode overlay makes frame drops / timing issues obvious.
 #
 # Requirements: ffmpeg on PATH, cargo, system FFmpeg for the debug build
 # (linked via pkg-config).
@@ -22,12 +24,18 @@ SOURCE_MP4="$TMPDIR/source.mp4"
 REMUX_OUT_DIR="$TMPDIR/remux-out"
 mkdir -p "$SAMPLES_DIR" "$REMUX_OUT_DIR"
 
-echo "=== Generating SMPTE bars + 1 kHz tone (5s, 640x480 @ 30fps) ==="
+echo "=== Generating testsrc2 pattern + 1 kHz tone (5s, 640x480 @ 30fps) ==="
+# testsrc2 renders a running HH:MM:SS.mmm timecode and frame counter in the
+# top-left corner natively — no freetype/drawtext required.
+#
+# `-g 30` + scenecut=0 forces a keyframe every second (5 GOPs over 5s) so the
+# remux pipeline exercises keyframe-boundary handling, not just a single GOP.
 ffmpeg -y -loglevel error \
-    -f lavfi -i "smptebars=size=640x480:rate=30" \
+    -f lavfi -i "testsrc2=size=640x480:rate=30" \
     -f lavfi -i "sine=frequency=1000:sample_rate=48000" \
     -t 5 \
     -c:v libx264 -pix_fmt yuv420p -profile:v baseline -level 3.0 \
+    -g 30 -x264-params "scenecut=0" \
     -c:a aac -b:a 128k \
     -shortest -movflags +faststart \
     "$SOURCE_MP4"
