@@ -172,16 +172,27 @@ struct FilesView: View {
         Task { @MainActor in
             var urls: [URL] = []
             for provider in providers {
-                if let url = try? await provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data {
-                    if let fileURL = URL(dataRepresentation: url, relativeTo: nil) {
-                        urls.append(fileURL)
-                    }
+                if let fileURL = await loadFileURL(from: provider) {
+                    urls.append(fileURL)
                 }
             }
             let warned = vm.addFiles(urls)
             if !warned.isEmpty {
                 lowResWarningURLs = warned
                 showLowResAlert = true
+            }
+        }
+    }
+
+    private func loadFileURL(from provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<URL?, Never>) in
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                if let data = item as? Data,
+                   let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    continuation.resume(returning: url)
+                } else {
+                    continuation.resume(returning: nil)
+                }
             }
         }
     }
