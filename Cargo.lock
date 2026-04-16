@@ -266,6 +266,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "create-ubv"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "env_logger",
+ "ffmpeg-next",
+ "ffmpeg-sys-next",
+ "log",
+ "ubv",
+]
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -818,6 +830,7 @@ name = "remux-lib"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "create-ubv",
  "ffmpeg-next",
  "ffmpeg-sys-next",
  "libc",

@@ -1,23 +1,18 @@
 [package]
-name = "remux-lib"
+name = "create-ubv"
 version.workspace = true
 edition.workspace = true
 license = "AGPL-3.0-only"
 authors.workspace = true
-description = "Core remux logic for converting .ubv files to MP4"
+description = "Synthesise a .ubv file from a source MP4, for generating test fixtures"
 
 [dependencies]
 ubv = { path = "../ubv" }
-chrono = "0.4"
-libc = "0.2"
+clap = { version = "4", features = ["derive"] }
 log = "0.4"
+env_logger = "0.11"
 ffmpeg-next = "8"
 ffmpeg-sys-next = "8"
-
-[dev-dependencies]
-# End-to-end smoke test synthesises a .ubv from a checked-in MP4 and feeds it
-# back through process_file.
-create-ubv = { path = "../create-ubv", default-features = false }
 
 [features]
 default = ["ffmpeg-static"]
