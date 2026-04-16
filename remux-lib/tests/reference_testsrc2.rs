@@ -1,17 +1,23 @@
-//! Reference-fixture test: demuxes `testdata/essence/testsrc2.ubv` to raw
-//! H.264 and AAC bitstreams and verifies their md5 hashes against pinned values.
+//! Reference-fixture tests against `testdata/essence/testsrc2.ubv`.
 //!
-//! Catches regressions in the demux path (UBV record envelope parsing, NAL
-//! length-prefix → Annex B start code conversion, ADTS audio passthrough).
-//! Output bytes are pure rearrangement of the input UBV — no FFmpeg is
-//! involved on the write path — so the hashes are platform-independent and
-//! stable across FFmpeg versions.
+//! - `demux_testsrc2_matches_reference_md5` runs the raw demux path (mp4=false)
+//!   and asserts md5 hashes of the H.264 and AAC bitstreams. Output bytes are a
+//!   pure rearrangement of the input UBV — no FFmpeg on the write path — so the
+//!   hashes are platform-independent and stable across FFmpeg versions.
+//! - `mp4_mux_testsrc2_produces_expected_stream` runs the default MP4-mux path
+//!   (mp4=true) and opens the result with ffmpeg-next to verify codec,
+//!   resolution, and frame count. This is the only place FFmpeg ABI/behaviour
+//!   drift on the mux path would be caught.
 //!
 //! `testdata/essence/testsrc2.ubv` is a synthetic fixture produced by
 //! `create-ubv` from an `ffmpeg testsrc2` source (see `create-ubv/README.md`).
 
-use std::path::PathBuf;
+extern crate ffmpeg_next as ffmpeg;
 
+use std::path::{Path, PathBuf};
+
+use ffmpeg::codec::Id as CodecId;
+use ffmpeg::media::Type;
 use remux_lib::{process_file, ProgressEvent, RemuxConfig};
 
 /// md5 of the Annex-B H.264 elementary stream demuxed from testsrc2.ubv.
@@ -86,6 +92,90 @@ fn demux_testsrc2_matches_reference_md5() {
 fn file_md5(path: &str) -> String {
     let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     format!("{:x}", md5::compute(&bytes))
+}
+
+// Dimensions / frame count of the testsrc2 source (see
+// scripts/create-test-ubv-round-trip.sh): 640x480 @ 30 fps for 5 s.
+const EXPECTED_WIDTH: u32 = 640;
+const EXPECTED_HEIGHT: u32 = 480;
+const EXPECTED_VIDEO_FRAMES: usize = 150;
+
+#[test]
+fn mp4_mux_testsrc2_produces_expected_stream() {
+    let ubv = fixture_ubv();
+    assert!(
+        ubv.exists(),
+        "reference fixture missing: {}",
+        ubv.display()
+    );
+
+    let tmpdir = make_tmpdir();
+    // mp4=true (the default) drives the FFmpeg MOV muxer — the path that would
+    // break on FFmpeg ABI drift between minor versions.
+    let config = RemuxConfig {
+        output_folder: tmpdir.to_string_lossy().into_owned(),
+        ..RemuxConfig::default()
+    };
+
+    let mut outputs: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    let result = process_file(ubv.to_str().unwrap(), &config, &mut |ev| match ev {
+        ProgressEvent::OutputGenerated { path } => outputs.push(path),
+        ProgressEvent::PartitionError { error, .. } => errors.push(error),
+        _ => {}
+    })
+    .expect("process_file returned an error");
+
+    assert!(errors.is_empty(), "partition errors: {errors:?}");
+    assert!(
+        result.errors.is_empty(),
+        "FileResult carried errors: {:?}",
+        result.errors
+    );
+    assert_eq!(
+        outputs.len(),
+        1,
+        "expected exactly one MP4 output, got: {outputs:?}"
+    );
+
+    verify_mp4_output(Path::new(&outputs[0]));
+}
+
+/// Open the produced MP4 with ffmpeg-next and verify codec/resolution/frames.
+fn verify_mp4_output(path: &Path) {
+    ffmpeg::init().expect("ffmpeg init failed");
+    let mut ictx = ffmpeg::format::input(&path)
+        .unwrap_or_else(|e| panic!("open output {}: {e}", path.display()));
+
+    let stream = ictx
+        .streams()
+        .best(Type::Video)
+        .expect("output MP4 has no video stream");
+    let stream_index = stream.index();
+    let params = stream.parameters();
+    assert_eq!(
+        params.id(),
+        CodecId::H264,
+        "expected H.264 output, got {:?}",
+        params.id()
+    );
+
+    let (w, h) = unsafe {
+        let raw = params.as_ptr();
+        ((*raw).width as u32, (*raw).height as u32)
+    };
+    assert_eq!(w, EXPECTED_WIDTH, "width mismatch");
+    assert_eq!(h, EXPECTED_HEIGHT, "height mismatch");
+
+    // Packet count == frame count for non-fragmented H.264 in MP4.
+    let packet_count = ictx
+        .packets()
+        .filter(|(s, _)| s.index() == stream_index)
+        .count();
+    assert_eq!(
+        packet_count, EXPECTED_VIDEO_FRAMES,
+        "video frame count mismatch: expected {EXPECTED_VIDEO_FRAMES}, got {packet_count}"
+    );
 }
 
 fn make_tmpdir() -> PathBuf {

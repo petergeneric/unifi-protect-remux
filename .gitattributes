@@ -1,0 +1,4 @@
+# Reference fixtures consumed byte-exact by tests. Never let Git rewrite line
+# endings on checkout — a CRLF conversion on Windows trips the length/md5
+# comparisons in `ubv::reference_testsrc2` et al.
+testdata/** -text

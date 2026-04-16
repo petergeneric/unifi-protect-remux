@@ -15,9 +15,6 @@ ffmpeg-next = "8"
 ffmpeg-sys-next = "8"
 
 [dev-dependencies]
-# End-to-end smoke test synthesises a .ubv from a checked-in MP4 and feeds it
-# back through process_file.
-create-ubv = { path = "../create-ubv", default-features = false }
 # Bitstream md5 verification in tests/reference_testsrc2.rs.
 md5 = "0.7"
 

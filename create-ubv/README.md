@@ -78,15 +78,16 @@ synth_from_mp4(
   source. Disable with `--no-default-features` for fast iteration against
   system FFmpeg via `pkg-config`.
 
-## Regenerating the test fixture
+## Regenerating the reference fixture
+
+The checked-in `testdata/essence/testsrc2.ubv` is the canonical output used by
+the workspace tests (`ubv::reference_testsrc2`, `remux-lib::reference_testsrc2`).
+It was produced by feeding an ffmpeg `testsrc2` MP4 through this crate (see
+`scripts/create-test-ubv-round-trip.sh` for the MP4-generation recipe).
+
+After regenerating the `.ubv`, refresh the paired JSON checksum:
 
 ```
-ffmpeg -y -f lavfi -i testsrc=size=64x64:rate=30:duration=0.2 \
-    -c:v libx264 -profile:v baseline -level 3.0 \
-    -g 2 -x264-params keyint=2:scenecut=0 \
-    -pix_fmt yuv420p -movflags +faststart \
-    tests/fixtures/tiny.mp4
+cargo run -p ubv-info -- --json testdata/essence/testsrc2.ubv \
+    > testdata/essence/testsrc2.json
 ```
-
-Produces a ~3.5 KB MP4 with 6 frames (3 I + 3 P) used by
-`tests/roundtrip.rs` and by `remux-lib/tests/e2e_synthetic.rs`.
