@@ -32,23 +32,23 @@ fn check_json_checksum(ubv_gz_path: &str, expected_sha256: &str) {
 #[test]
 fn test_json_checksum_old_h264() {
     check_json_checksum(
-        "../testdata/sample1_0_rotating_1683867159535.ubv.gz",
-        "3188bdd2d308ba85f1575c38d93d0b68979f3a5614f47de7cc96b806fe7540cb",
+        "../testdata/anonymised/sample1_0_rotating_1770769558568.ubv.gz",
+        "5e7f29ed18759b70eb33ea7a9c968ee0a596d18c1f7ab9fa9c9a58556600a2fe",
     );
 }
 
 #[test]
 fn test_json_checksum_new_h264() {
     check_json_checksum(
-        "../testdata/sample2_0_rotating_1770769558568.ubv.gz",
-        "580a50c408851ffc8bc950ac370af44fdd97215f70c680c100aa87a5278c6934",
+        "../testdata/anonymised/sample2_0_rotating_1683867159535.ubv.gz",
+        "2df7159b5dbbd3ffbf166878608dbc4888254e9f1b2e6badbdbec5877d44cc10",
     );
 }
 
 #[test]
 fn test_json_checksum_hevc() {
     check_json_checksum(
-        "../testdata/sample3_0_rotating_1770695988380.ubv.gz",
+        "../testdata/anonymised/sample3_0_rotating_1770695988380.ubv.gz",
         "e0963fcc97ecd65a45e47fea2a154ce64bf3efde29b0e0c660c23d791530cede",
     );
 }
