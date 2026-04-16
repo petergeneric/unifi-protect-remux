@@ -9,7 +9,6 @@ remux-gui-cs/RemuxGui/native/**/*.so
 
 
 # Essence files
-*.ubv
 *.mp4
 *.h264
 *.hevc
