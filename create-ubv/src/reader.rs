@@ -1,6 +1,10 @@
-//! Read an MP4, emit video frames in UBV's native wire format:
-//! length-prefixed NAL units with SPS/PPS (or VPS/SPS/PPS) injected inline
-//! on every keyframe so downstream probing can discover them.
+//! Read an MP4, emit:
+//!   * Video frames in UBV's native wire format: length-prefixed NAL units
+//!     with SPS/PPS (or VPS/SPS/PPS) injected inline on every keyframe so
+//!     downstream probing can discover them.
+//!   * AAC audio frames wrapped in ADTS headers (real UBV files store audio
+//!     this way, and the remux probe path uses the "aac" demuxer which
+//!     expects ADTS).
 
 extern crate ffmpeg_next as ffmpeg;
 
@@ -10,7 +14,7 @@ use std::path::Path;
 use ffmpeg::codec::Id as CodecId;
 use ffmpeg::media::Type;
 
-/// Which in-band codec this file carries.
+/// Which in-band video codec this file carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Codec {
     H264,
@@ -32,67 +36,116 @@ pub struct VideoStream {
     pub frames: Vec<VideoFrame>,
 }
 
-/// Open an MP4 file and return all video frames reformatted for UBV.
-pub fn read_video_frames(path: &Path) -> io::Result<VideoStream> {
+/// One AAC audio frame, ADTS-wrapped.
+#[derive(Debug)]
+pub struct AudioFrame {
+    /// DTS in sample units (clock = sample_rate).
+    pub dts_samples: u64,
+    /// Full ADTS frame (7-byte header + raw AAC payload).
+    pub adts_frame: Vec<u8>,
+}
+
+pub struct AudioStream {
+    pub sample_rate: u32,
+    /// UBV sample-rate index (byte 5 low nibble) for this stream's sample rate.
+    pub sri: u8,
+    pub frames: Vec<AudioFrame>,
+}
+
+pub struct StreamBundle {
+    pub video: VideoStream,
+    pub audio: Option<AudioStream>,
+}
+
+/// Open an MP4 file and extract video (always) and audio (if present, AAC only).
+pub fn read_streams(path: &Path) -> io::Result<StreamBundle> {
     ffmpeg::init()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ffmpeg init failed: {e}")))?;
 
     let mut ictx = ffmpeg::format::input(&path)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("open {:?}: {e}", path)))?;
 
-    let stream = ictx
+    let video_stream = ictx
         .streams()
         .best(Type::Video)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no video stream in MP4"))?;
+    let video_index = video_stream.index();
+    let video_plan = plan_video(&video_stream)?;
 
-    let stream_index = stream.index();
+    let audio_plan_opt = ictx
+        .streams()
+        .best(Type::Audio)
+        .map(|s| plan_audio(&s).map(|p| (s.index(), p)))
+        .transpose()?;
+
+    // First pass: collect raw packets per stream.
+    let mut raw_video: Vec<(i64, bool, Vec<u8>)> = Vec::new();
+    let mut raw_audio: Vec<(i64, Vec<u8>)> = Vec::new();
+    for (s, packet) in ictx.packets() {
+        let si = s.index();
+        let data = match packet.data() {
+            Some(d) => d.to_vec(),
+            None => continue,
+        };
+        let dts = packet.dts().unwrap_or(0);
+        if si == video_index {
+            raw_video.push((dts, packet.is_key(), data));
+        } else if let Some((ai, _)) = &audio_plan_opt
+            && si == *ai
+        {
+            raw_audio.push((dts, data));
+        }
+    }
+
+    let video = build_video(video_plan, raw_video)?;
+    let audio = match audio_plan_opt {
+        Some((_, plan)) if !raw_audio.is_empty() => Some(build_audio(plan, raw_audio)?),
+        _ => None,
+    };
+
+    Ok(StreamBundle { video, audio })
+}
+
+struct VideoPlan {
+    codec: Codec,
+    tb_num: i64,
+    tb_den: i64,
+    keyframe_prefix: Vec<u8>,
+}
+
+fn plan_video(stream: &ffmpeg::format::stream::Stream) -> io::Result<VideoPlan> {
     let codec = match stream.parameters().id() {
         CodecId::H264 => Codec::H264,
         CodecId::HEVC => Codec::Hevc,
         other => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("unsupported codec {:?}; need H.264 or HEVC", other),
+                format!("unsupported video codec {:?}; need H.264 or HEVC", other),
             ))
         }
     };
 
-    // Timebase conversion: stream packets use stream.time_base (a rational
-    // number of seconds per tick). UBV video uses 90 kHz. The scale factor is
+    // Timebase: convert stream ticks -> 90 kHz via
     //   dts_90k = dts_stream * 90000 * tb.num / tb.den
-    // We compute in u128 to avoid overflow on long files.
     let tb = stream.time_base();
     let tb_num = tb.numerator() as i64;
     let tb_den = tb.denominator() as i64;
     if tb_num <= 0 || tb_den <= 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("invalid stream timebase {tb_num}/{tb_den}"),
+            format!("invalid video stream timebase {tb_num}/{tb_den}"),
         ));
     }
 
-    // Extract SPS/PPS (or VPS/SPS/PPS) from codecpar.extradata for inline
-    // injection on keyframes. The extradata is in avcC/hvcC form.
     let params = stream.parameters();
-    let extradata = unsafe {
-        let raw = params.as_ptr();
-        let ptr = (*raw).extradata;
-        let len = (*raw).extradata_size as usize;
-        if ptr.is_null() || len == 0 {
-            Vec::new()
-        } else {
-            std::slice::from_raw_parts(ptr as *const u8, len).to_vec()
-        }
-    };
+    let extradata = codec_extradata(&params);
     let keyframe_prefix = match codec {
         Codec::H264 => extract_h264_param_sets(&extradata)?,
         Codec::Hevc => extract_hevc_param_sets(&extradata)?,
     };
 
-    // For H.264/HEVC in MP4, packets are length-prefixed. The prefix size is
-    // encoded in the extradata (lengthSizeMinusOne field). We only support
-    // 4-byte prefixes since that is by far the most common in practice and
-    // matches UBV's wire format verbatim (no re-encoding needed for packet body).
+    // MP4 stores length-prefixed NALs; only 4-byte prefixes match UBV's wire
+    // format directly so we reject anything else.
     let length_size = match codec {
         Codec::H264 => length_size_h264(&extradata),
         Codec::Hevc => length_size_hevc(&extradata),
@@ -107,42 +160,26 @@ pub fn read_video_frames(path: &Path) -> io::Result<VideoStream> {
         ));
     }
 
-    // First pass: collect packets with their raw DTS (may be negative-ish if
-    // FFmpeg returns NOPTS). We'll rebase to non-negative and rescale to 90 kHz.
-    let mut raw_packets: Vec<(i64, bool, Vec<u8>)> = Vec::new();
-    for (s, packet) in ictx.packets() {
-        if s.index() != stream_index {
-            continue;
-        }
-        let dts = packet.dts().unwrap_or(0);
-        let keyframe = packet.is_key();
-        let data = packet
-            .data()
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "empty packet from MP4 demuxer")
-            })?
-            .to_vec();
-        raw_packets.push((dts, keyframe, data));
-    }
+    Ok(VideoPlan { codec, tb_num, tb_den, keyframe_prefix })
+}
 
-    if raw_packets.is_empty() {
+fn build_video(plan: VideoPlan, raw: Vec<(i64, bool, Vec<u8>)>) -> io::Result<VideoStream> {
+    if raw.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "no video packets in MP4",
         ));
     }
-
-    let base_dts = raw_packets[0].0;
-    let mut frames = Vec::with_capacity(raw_packets.len());
-    for (dts, keyframe, data) in raw_packets {
-        // Rescale (dts - base_dts) * 90000 * tb_num / tb_den.
+    let base_dts = raw[0].0;
+    let mut frames = Vec::with_capacity(raw.len());
+    for (dts, keyframe, data) in raw {
         let delta = (dts - base_dts) as i128;
-        let scaled = delta * 90_000i128 * tb_num as i128 / tb_den as i128;
+        let scaled = delta * 90_000i128 * plan.tb_num as i128 / plan.tb_den as i128;
         let dts_90k = if scaled < 0 { 0u64 } else { scaled as u64 };
 
         let payload = if keyframe {
-            let mut out = Vec::with_capacity(keyframe_prefix.len() + data.len());
-            out.extend_from_slice(&keyframe_prefix);
+            let mut out = Vec::with_capacity(plan.keyframe_prefix.len() + data.len());
+            out.extend_from_slice(&plan.keyframe_prefix);
             out.extend_from_slice(&data);
             out
         } else {
@@ -156,7 +193,163 @@ pub fn read_video_frames(path: &Path) -> io::Result<VideoStream> {
         });
     }
 
-    Ok(VideoStream { codec, frames })
+    Ok(VideoStream { codec: plan.codec, frames })
+}
+
+struct AudioPlan {
+    sample_rate: u32,
+    sri: u8,
+    profile: u8,
+    sfi: u8,
+    channel_cfg: u8,
+}
+
+fn plan_audio(stream: &ffmpeg::format::stream::Stream) -> io::Result<AudioPlan> {
+    let params = stream.parameters();
+    if params.id() != CodecId::AAC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "unsupported audio codec {:?}; need AAC (other codecs would require \
+                 a UBV track type beyond AAC)",
+                params.id()
+            ),
+        ));
+    }
+
+    // MP4 AAC stores raw frames (no ADTS) plus an AudioSpecificConfig in
+    // extradata that tells us profile/SFI/channels needed to build ADTS headers.
+    let extradata = codec_extradata(&params);
+    let (profile, sfi, channel_cfg) = parse_aac_asc(&extradata)?;
+
+    let sample_rate = unsafe { (*params.as_ptr()).sample_rate as u32 };
+    if sample_rate == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "AAC stream has zero sample rate",
+        ));
+    }
+    let sri = sri_for_sample_rate(sample_rate).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "AAC sample rate {sample_rate} Hz has no matching UBV sample-rate-index"
+            ),
+        )
+    })?;
+
+    Ok(AudioPlan { sample_rate, sri, profile, sfi, channel_cfg })
+}
+
+fn build_audio(plan: AudioPlan, raw: Vec<(i64, Vec<u8>)>) -> io::Result<AudioStream> {
+    // AAC-LC is always 1024 samples per frame. We ignore the demuxer's DTS
+    // (which is stable but in stream ticks) and synthesise monotonic
+    // sample-counter DTS starting at 0 — mirrors how real UBV audio records
+    // look in practice.
+    const AAC_SAMPLES_PER_FRAME: u64 = 1024;
+    let mut frames = Vec::with_capacity(raw.len());
+    for (i, (_dts, data)) in raw.into_iter().enumerate() {
+        let adts_frame = wrap_adts(plan.profile, plan.sfi, plan.channel_cfg, &data);
+        frames.push(AudioFrame {
+            dts_samples: i as u64 * AAC_SAMPLES_PER_FRAME,
+            adts_frame,
+        });
+    }
+    Ok(AudioStream {
+        sample_rate: plan.sample_rate,
+        sri: plan.sri,
+        frames,
+    })
+}
+
+fn codec_extradata(params: &ffmpeg::codec::Parameters) -> Vec<u8> {
+    unsafe {
+        let raw = params.as_ptr();
+        let ptr = (*raw).extradata;
+        let len = (*raw).extradata_size as usize;
+        if ptr.is_null() || len == 0 {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(ptr as *const u8, len).to_vec()
+        }
+    }
+}
+
+/// Parse the AudioSpecificConfig (first 2 bytes) out of AAC extradata.
+/// Returns (profile, sampling_frequency_index, channel_configuration).
+/// Profile is ADTS-form (AudioObjectType − 1, so AAC-LC → 1).
+fn parse_aac_asc(extradata: &[u8]) -> io::Result<(u8, u8, u8)> {
+    if extradata.len() < 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "AAC extradata < 2 bytes; no AudioSpecificConfig",
+        ));
+    }
+    let b0 = extradata[0];
+    let b1 = extradata[1];
+    let object_type = b0 >> 3;
+    let sfi = ((b0 & 0x07) << 1) | (b1 >> 7);
+    let channel_cfg = (b1 >> 3) & 0x0F;
+    if sfi == 15 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "AAC extradata uses explicit 24-bit sampling frequency (unsupported)",
+        ));
+    }
+    if !(1..=4).contains(&object_type) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "AAC AudioObjectType {object_type} not representable in ADTS (need 1..=4)"
+            ),
+        ));
+    }
+    let profile = object_type - 1;
+    Ok((profile, sfi, channel_cfg))
+}
+
+/// Map a sample rate in Hz to the UBV sample-rate-index (low nibble of byte 5).
+fn sri_for_sample_rate(rate: u32) -> Option<u8> {
+    // CLOCK_RATES indices with matching sample rates (skip reserved/special).
+    for (i, r) in ubv::format::CLOCK_RATES.iter().enumerate() {
+        if i < 3 || *r == 0 {
+            continue;
+        }
+        if *r == rate {
+            return Some(i as u8);
+        }
+    }
+    None
+}
+
+/// Wrap a raw AAC access unit in a 7-byte ADTS header (no CRC).
+fn wrap_adts(profile: u8, sfi: u8, channel_cfg: u8, aac: &[u8]) -> Vec<u8> {
+    let frame_len = 7 + aac.len();
+    // VBR: buffer_fullness = 0x7FF (11 bits all 1s).
+    const BUFFER_FULLNESS: u32 = 0x7FF;
+
+    let mut out = Vec::with_capacity(frame_len);
+    out.push(0xFF);
+    // 1111 0001 — sync (4) + MPEG-4 (1 bit =0) + layer (2 bits =0) + protection_absent (1 =1).
+    out.push(0xF1);
+    out.push(
+        ((profile & 0x03) << 6)
+            | ((sfi & 0x0F) << 2)
+            | ((channel_cfg >> 2) & 0x01),
+    );
+    out.push(
+        ((channel_cfg & 0x03) << 6)
+            | (((frame_len >> 11) & 0x03) as u8),
+    );
+    out.push(((frame_len >> 3) & 0xFF) as u8);
+    out.push(
+        (((frame_len & 0x07) << 5) as u8)
+            | ((BUFFER_FULLNESS >> 6) & 0x1F) as u8,
+    );
+    // low 6 bits of buffer_fullness << 2, with num_raw_data_blocks_in_frame = 0
+    out.push(((BUFFER_FULLNESS & 0x3F) as u8) << 2);
+    out.extend_from_slice(aac);
+    out
 }
 
 /// Extract SPS and PPS NAL units from an avcC extradata blob and return

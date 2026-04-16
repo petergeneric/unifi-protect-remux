@@ -46,14 +46,14 @@ impl Default for SynthConfig {
 
 /// Read an MP4 file and write an equivalent-ish `.ubv` file.
 pub fn synth_from_mp4(mp4_path: &Path, ubv_path: &Path, config: &SynthConfig) -> io::Result<()> {
-    let frames = reader::read_video_frames(mp4_path)?;
-    if frames.frames.is_empty() {
+    let bundle = reader::read_streams(mp4_path)?;
+    if bundle.video.frames.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "MP4 contains no video frames",
         ));
     }
-    if !frames.frames[0].keyframe {
+    if !bundle.video.frames[0].keyframe {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "first MP4 video frame is not a keyframe — cannot anchor the partition",
@@ -102,31 +102,87 @@ pub fn synth_from_mp4(mp4_path: &Path, ubv_path: &Path, config: &SynthConfig) ->
     };
     offset += cs.write_to(&mut out, offset)?;
 
-    // 3. Video frames (track 7 or 1003). DTS is rescaled to 90 kHz.
-    let track_id = match frames.codec {
+    // 3. Media frames — video (track 7 or 1003) and, if present, AAC audio
+    //    (track 1000). Real UBV files interleave them in approximate
+    //    wall-clock order; we do the same by comparing each head-of-queue
+    //    frame's DTS after normalising to microseconds.
+    let video_track_id = match bundle.video.codec {
         reader::Codec::H264 => ubv::track::TRACK_VIDEO,
         reader::Codec::Hevc => ubv::track::TRACK_VIDEO_HEVC,
     };
-    for (i, frame) in frames.frames.iter().enumerate() {
-        let byte4 = if frame.keyframe {
-            fc::KEYFRAME
+
+    let mut vi = 0usize;
+    let mut ai = 0usize;
+    let mut v_seq: u16 = 0;
+    let mut a_seq: u16 = 0;
+    let video_frames = &bundle.video.frames;
+    let (audio_frames, audio_sample_rate, audio_sri): (&[reader::AudioFrame], u32, u8) =
+        match &bundle.audio {
+            Some(a) => (a.frames.as_slice(), a.sample_rate, a.sri),
+            None => (&[], 0, 0),
+        };
+
+    loop {
+        let v_remaining = vi < video_frames.len();
+        let a_remaining = ai < audio_frames.len();
+
+        // Decide which stream to emit next based on normalised-microsecond DTS.
+        let pick_video = match (v_remaining, a_remaining) {
+            (true, true) => {
+                let v_us = dts_to_us(video_frames[vi].dts_90k, 90_000);
+                let a_us = dts_to_us(audio_frames[ai].dts_samples, audio_sample_rate);
+                v_us <= a_us
+            }
+            (true, false) => true,
+            (false, true) => false,
+            (false, false) => break,
+        };
+
+        if pick_video {
+            let frame = &video_frames[vi];
+            let byte4 = if frame.keyframe { fc::KEYFRAME } else { fc::NON_KEYFRAME };
+            let rec = writer::Record {
+                track_id: video_track_id,
+                byte4,
+                byte5: SRI_90K,
+                sequence: v_seq,
+                dts: frame.dts_90k,
+                clock_rate_in_stream: None,
+                extra: None,
+                duration: None,
+                payload: &frame.length_prefixed_nals,
+            };
+            offset += rec.write_to(&mut out, offset)?;
+            vi += 1;
+            v_seq = v_seq.wrapping_add(1);
         } else {
-            fc::NON_KEYFRAME
-        };
-        let rec = writer::Record {
-            track_id,
-            byte4,
-            byte5: SRI_90K,
-            sequence: i as u16,
-            dts: frame.dts_90k,
-            clock_rate_in_stream: None,
-            extra: None,
-            duration: None,
-            payload: &frame.length_prefixed_nals,
-        };
-        offset += rec.write_to(&mut out, offset)?;
+            let frame = &audio_frames[ai];
+            let rec = writer::Record {
+                track_id: ubv::track::TRACK_AUDIO,
+                byte4: fc::KEYFRAME,
+                byte5: audio_sri,
+                sequence: a_seq,
+                dts: frame.dts_samples,
+                clock_rate_in_stream: None,
+                extra: None,
+                duration: None,
+                payload: &frame.adts_frame,
+            };
+            offset += rec.write_to(&mut out, offset)?;
+            ai += 1;
+            a_seq = a_seq.wrapping_add(1);
+        }
     }
 
     out.flush()?;
     Ok(())
+}
+
+/// Convert a DTS in `clock_rate` ticks to microseconds, saturating if the
+/// inputs are degenerate (zero clock rate).
+fn dts_to_us(dts: u64, clock_rate: u32) -> u128 {
+    if clock_rate == 0 {
+        return u128::MAX;
+    }
+    dts as u128 * 1_000_000 / clock_rate as u128
 }

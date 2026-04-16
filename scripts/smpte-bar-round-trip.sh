@@ -8,11 +8,6 @@ set -euo pipefail
 #
 # Handy for eyeballing the whole pipeline after making pipeline changes.
 #
-# Note: `create-ubv` currently produces video-only .ubv files. The audio tone
-# is included in the source MP4 (to match the classic "bars + tone" pattern)
-# but is discarded during the UBV conversion, so the output MP4 has video
-# only.
-#
 # Requirements: ffmpeg on PATH, cargo, system FFmpeg for the debug build
 # (linked via pkg-config).
 
