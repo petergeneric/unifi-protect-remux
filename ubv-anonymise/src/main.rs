@@ -3,7 +3,7 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read as _, Seek, SeekFrom, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use ubv::reader::open_ubv;
 use ubv::record;
 use ubv::track;
@@ -39,7 +39,7 @@ fn zero_region(file: &mut File, offset: u64, size: u32) -> io::Result<()> {
 }
 
 /// Derive a default output path: anonymised-<stem>.ubv.gz in the current directory.
-fn default_output_path(input: &PathBuf) -> PathBuf {
+fn default_output_path(input: &Path) -> PathBuf {
     let stem = input.file_stem().unwrap_or_default().to_string_lossy();
     PathBuf::from(format!("anonymised-{stem}.ubv.gz"))
 }

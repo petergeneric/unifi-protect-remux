@@ -54,12 +54,12 @@ char *remux_validate_config(const char *config_json);
  * - `ubv_path`          - Path to the `.ubv` file (UTF-8 C string).
  * - `config_json`       - Remux configuration as a JSON C string.
  * - `progress_callback` - Called with `(json_event, file_index)` for every
- *                         progress event. May be `NULL` to suppress events.
+ *   progress event. May be `NULL` to suppress events.
  * - `file_index`        - Opaque index passed through to the callback so
- *                         callers can correlate events to files.
+ *   callers can correlate events to files.
  * - `error_out`         - On error, receives a heap-allocated error message.
- *                         The caller must free it with `remux_free_string`.
- *                         May be `NULL` if the caller does not need it.
+ *   The caller must free it with `remux_free_string`.
+ *   May be `NULL` if the caller does not need it.
  *
  * # Returns
  *
@@ -88,8 +88,8 @@ char *remux_process_file(const char *ubv_path,
  *
  * - `ubv_path`  - Path to the `.ubv` file (UTF-8 C string).
  * - `error_out` - On error, receives a heap-allocated error message.
- *                 The caller must free it with `remux_free_string`.
- *                 May be `NULL`.
+ *   The caller must free it with `remux_free_string`.
+ *   May be `NULL`.
  *
  * # Returns
  *
@@ -111,8 +111,8 @@ char *remux_produce_diagnostics(const char *ubv_path, char **error_out);
  *
  * - `ubv_path`  - Path to the `.ubv` file (UTF-8 C string).
  * - `error_out` - On error, receives a heap-allocated error message.
- *                 The caller must free it with `remux_free_string`.
- *                 May be `NULL`.
+ *   The caller must free it with `remux_free_string`.
+ *   May be `NULL`.
  *
  * # Returns
  *
@@ -136,8 +136,8 @@ char *remux_ubv_info(const char *ubv_path, char **error_out);
  * - `output_path` - Where to write the JPEG thumbnail (UTF-8 C string).
  * - `max_width`   - Maximum thumbnail width in pixels.
  * - `error_out`   - On error, receives a heap-allocated error message.
- *                   The caller must free it with `remux_free_string`.
- *                   May be `NULL`.
+ *   The caller must free it with `remux_free_string`.
+ *   May be `NULL`.
  *
  * # Returns
  *

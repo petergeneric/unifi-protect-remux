@@ -646,12 +646,12 @@ pub unsafe extern "C" fn remux_validate_config(config_json: *const c_char) -> *m
 /// - `ubv_path`          - Path to the `.ubv` file (UTF-8 C string).
 /// - `config_json`       - Remux configuration as a JSON C string.
 /// - `progress_callback` - Called with `(json_event, file_index)` for every
-///                         progress event. May be `NULL` to suppress events.
+///   progress event. May be `NULL` to suppress events.
 /// - `file_index`        - Opaque index passed through to the callback so
-///                         callers can correlate events to files.
+///   callers can correlate events to files.
 /// - `error_out`         - On error, receives a heap-allocated error message.
-///                         The caller must free it with `remux_free_string`.
-///                         May be `NULL` if the caller does not need it.
+///   The caller must free it with `remux_free_string`.
+///   May be `NULL` if the caller does not need it.
 ///
 /// # Returns
 ///
@@ -775,8 +775,8 @@ pub unsafe extern "C" fn remux_process_file(
 ///
 /// - `ubv_path`  - Path to the `.ubv` file (UTF-8 C string).
 /// - `error_out` - On error, receives a heap-allocated error message.
-///                 The caller must free it with `remux_free_string`.
-///                 May be `NULL`.
+///   The caller must free it with `remux_free_string`.
+///   May be `NULL`.
 ///
 /// # Returns
 ///
@@ -844,8 +844,8 @@ pub unsafe extern "C" fn remux_produce_diagnostics(
 ///
 /// - `ubv_path`  - Path to the `.ubv` file (UTF-8 C string).
 /// - `error_out` - On error, receives a heap-allocated error message.
-///                 The caller must free it with `remux_free_string`.
-///                 May be `NULL`.
+///   The caller must free it with `remux_free_string`.
+///   May be `NULL`.
 ///
 /// # Returns
 ///
@@ -911,8 +911,8 @@ pub unsafe extern "C" fn remux_ubv_info(
 /// - `output_path` - Where to write the JPEG thumbnail (UTF-8 C string).
 /// - `max_width`   - Maximum thumbnail width in pixels.
 /// - `error_out`   - On error, receives a heap-allocated error message.
-///                   The caller must free it with `remux_free_string`.
-///                   May be `NULL`.
+///   The caller must free it with `remux_free_string`.
+///   May be `NULL`.
 ///
 /// # Returns
 ///
@@ -1052,7 +1052,7 @@ pub unsafe extern "C" fn remux_extract_timestamp(filename: *const c_char) -> *mu
 /// `filename` must be either null or a valid NUL-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn remux_is_low_res_filename(filename: *const c_char) -> c_int {
-    match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if filename.is_null() {
             return 0;
         }
@@ -1062,10 +1062,8 @@ pub unsafe extern "C" fn remux_is_low_res_filename(filename: *const c_char) -> c
             Err(_) => return 0,
         };
         if is_low_res_filename(name) { 1 } else { 0 }
-    })) {
-        Ok(v) => v,
-        Err(_) => 0,
-    }
+    }))
+    .unwrap_or_default()
 }
 
 /// Format a 12-character hex MAC address with colon separators.
