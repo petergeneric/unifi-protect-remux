@@ -56,7 +56,9 @@ fn format_name_for_track(track_id: u16) -> Option<&'static str> {
     match track_id {
         TRACK_VIDEO => Some("h264"),
         TRACK_VIDEO_HEVC => Some("hevc"),
-        TRACK_VIDEO_AV1 => Some("av1"),
+        // FFmpeg's "av1" demuxer parses AV1 Annex B, UBV uses Low Overhead Bitstream Format
+        // which is the "obu" demuxer.
+        TRACK_VIDEO_AV1 => Some("obu"),
         TRACK_AUDIO => Some("aac"),
         TRACK_AUDIO_OPUS => Some("ogg"),
         TRACK_AUDIO_RAW => Some("alaw"),
@@ -94,7 +96,7 @@ pub fn probe_stream_params(
     let probe_frames = &frames[..probe_count];
     let mut data = Vec::new();
     if is_video_track(track_id) {
-        demux::demux_video_frames(ubv_path, probe_frames, &mut data)
+        demux::demux_video_frames(ubv_path, probe_frames, track_id, &mut data)
             .map_err(|e| io::Error::new(e.kind(), format!(
                 "Failed to demux {} frames for probing (track {}): {}",
                 track_kind, track_id, e

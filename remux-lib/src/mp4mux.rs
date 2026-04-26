@@ -101,6 +101,12 @@ fn is_hevc(video_track_num: u16) -> bool {
         .unwrap_or(false)
 }
 
+fn is_av1(video_track_num: u16) -> bool {
+    track_info(video_track_num)
+        .map(|ti| ti.track_type == TrackType::VideoAv1)
+        .unwrap_or(false)
+}
+
 /// Set the codec_tag on an output stream's codec parameters.
 ///
 /// # Safety
@@ -228,6 +234,7 @@ pub fn stream_to_mp4(
         .filter(|t| t.frame_count > 0);
 
     let hevc = is_hevc(video_track_num);
+    let av1 = is_av1(video_track_num);
     let cfr = force_rate.is_some();
     let nominal_fps = force_rate.unwrap_or(video_track.nominal_fps);
     let rate = Rational(nominal_fps as i32, 1);
@@ -272,6 +279,8 @@ pub fn stream_to_mp4(
         ost.set_avg_frame_rate(rate);
         if hevc {
             set_codec_tag(&mut ost, u32::from_le_bytes(*b"hvc1"));
+        } else if av1 {
+            set_codec_tag(&mut ost, u32::from_le_bytes(*b"av01"));
         } else {
             set_codec_tag(&mut ost, 0);
         }
@@ -331,10 +340,13 @@ pub fn stream_to_mp4(
 
     // Write video packets
     //
-    // Packets are in Annex B format (start code separated NALs) to match the Annex B
-    // extradata produced by probing. The MOV muxer detects the Annex B format and
-    // converts both extradata and packet data to the length-prefixed format required
-    // by the MP4 container (hvcC/avcC boxes and sample data).
+    // For H.264/HEVC, packets are in Annex B (start-code separated NALs) matching
+    // the Annex B extradata produced by probing; the MOV muxer converts both to
+    // length-prefixed sample data and the avcC/hvcC config boxes.
+    //
+    // For AV1, packets are the raw OBU bitstream from the UBV file (sequence
+    // header inline in keyframes); the MOV muxer extracts the sequence header
+    // into the av1C box and writes packets as-is into av01 sample entries.
     let mut ubv_file = File::open(ubv_path)
         .map_err(|e| io::Error::new(e.kind(), format!(
             "Opening UBV file '{}' for frame reading: {}", ubv_path, e
@@ -353,9 +365,10 @@ pub fn stream_to_mp4(
             log::info!("Video: CFR {} fps (forced)", nominal_fps);
             let video_tb = Rational(rate.denominator(), rate.numerator());
             for (i, frame) in video_frames.iter().enumerate() {
-                crate::demux::read_video_frame_annexb(
+                crate::demux::read_video_frame(
                     &mut ubv_file,
                     frame,
+                    video_track_num,
                     &mut annexb_buf,
                     &mut read_buf,
                 )
@@ -394,9 +407,10 @@ pub fn stream_to_mp4(
                     );
                     break;
                 }
-                crate::demux::read_video_frame_annexb(
+                crate::demux::read_video_frame(
                     &mut ubv_file,
                     frame,
+                    video_track_num,
                     &mut annexb_buf,
                     &mut read_buf,
                 )
