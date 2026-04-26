@@ -185,11 +185,11 @@ struct UbvInfoTree {
 ///
 /// `error_out` must be either null or point to a valid `*mut c_char` location.
 unsafe fn set_error(error_out: *mut *mut c_char, msg: &str) {
-    if !error_out.is_null() {
-        if let Ok(c) = CString::new(msg) {
-            unsafe {
-                *error_out = c.into_raw();
-            }
+    if !error_out.is_null()
+        && let Ok(c) = CString::new(msg)
+    {
+        unsafe {
+            *error_out = c.into_raw();
         }
     }
 }
@@ -293,10 +293,11 @@ fn extract_timestamp(filename: &str) -> Option<String> {
     let last_underscore = name.rfind('_')?;
     let segment = &name[last_underscore + 1..];
 
-    if let Ok(millis) = segment.parse::<i64>() {
-        if millis > 1_000_000_000_000 && millis < 10_000_000_000_000 {
-            return Some(segment.to_string());
-        }
+    if let Ok(millis) = segment.parse::<i64>()
+        && millis > 1_000_000_000_000
+        && millis < 10_000_000_000_000
+    {
+        return Some(segment.to_string());
     }
     None
 }
@@ -735,10 +736,10 @@ pub unsafe extern "C" fn remux_process_file(
         let mut progress_fn = |event: ProgressEvent| {
             if let Some(cb) = progress_callback {
                 let json_event = event_to_json(&event);
-                if let Ok(json) = serde_json::to_string(&json_event) {
-                    if let Ok(c_json) = CString::new(json) {
-                        cb(c_json.as_ptr(), file_index);
-                    }
+                if let Ok(json) = serde_json::to_string(&json_event)
+                    && let Ok(c_json) = CString::new(json)
+                {
+                    cb(c_json.as_ptr(), file_index);
                 }
             }
         };
@@ -1233,13 +1234,13 @@ pub unsafe extern "C" fn remux_save_cameras(
             }
         };
 
-        if let Some(parent) = path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                unsafe {
-                    set_error(error_out, &format!("Failed to create directory: {}", e));
-                }
-                return 1;
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            unsafe {
+                set_error(error_out, &format!("Failed to create directory: {}", e));
             }
+            return 1;
         }
 
         match std::fs::write(&path, json_str) {
@@ -1352,10 +1353,10 @@ pub unsafe extern "C" fn remux_process_file_ctx(
         let mut progress_fn = |event: ProgressEvent| {
             if let Some(cb) = progress_callback {
                 let json_event = event_to_json(&event);
-                if let Ok(json) = serde_json::to_string(&json_event) {
-                    if let Ok(c_json) = CString::new(json) {
-                        cb(c_json.as_ptr(), file_index, raw_ctx);
-                    }
+                if let Ok(json) = serde_json::to_string(&json_event)
+                    && let Ok(c_json) = CString::new(json)
+                {
+                    cb(c_json.as_ptr(), file_index, raw_ctx);
                 }
             }
         };

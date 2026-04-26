@@ -82,13 +82,13 @@ fn ensure_init() {
 }
 
 fn ffmpeg_err(context: &str) -> impl FnOnce(ffmpeg::Error) -> io::Error + '_ {
-    move |e: ffmpeg::Error| io::Error::new(io::ErrorKind::Other, format!("{}: {}", context, e))
+    move |e: ffmpeg::Error| io::Error::other(format!("{}: {}", context, e))
 }
 
 /// Like `ffmpeg_err` but defers context string construction to the error path,
 /// avoiding a `format!` allocation on every successful frame.
 fn ffmpeg_err_lazy<F: FnOnce() -> String>(context: F) -> impl FnOnce(ffmpeg::Error) -> io::Error {
-    move |e: ffmpeg::Error| io::Error::new(io::ErrorKind::Other, format!("{}: {}", context(), e))
+    move |e: ffmpeg::Error| io::Error::other(format!("{}: {}", context(), e))
 }
 
 fn is_hevc(video_track_num: u16) -> bool {

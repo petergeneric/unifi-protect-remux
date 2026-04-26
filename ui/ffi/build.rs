@@ -95,10 +95,8 @@ fn generate_licenses_json() {
                             })
                             .unwrap_or(false);
 
-                        if is_normal {
-                            if let Some(pkg_id) = dep["pkg"].as_str() {
-                                dep_ids.insert(pkg_id.to_string());
-                            }
+                        if is_normal && let Some(pkg_id) = dep["pkg"].as_str() {
+                            dep_ids.insert(pkg_id.to_string());
                         }
                     }
                 }

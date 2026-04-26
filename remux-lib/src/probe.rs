@@ -13,10 +13,7 @@ const AVIO_BUF_SIZE: usize = 4096;
 /// Convert a raw FFmpeg AVERROR return code into a human-readable io::Error.
 fn averror(code: c_int, context: &str) -> io::Error {
     let desc = ffmpeg::Error::from(code);
-    io::Error::new(
-        io::ErrorKind::Other,
-        format!("{}: {} (AVERROR {})", context, desc, code),
-    )
+    io::Error::other(format!("{}: {} (AVERROR {})", context, desc, code))
 }
 
 /// AVERROR_EOF: -(MKTAG('E','O','F',' '))
@@ -180,10 +177,7 @@ unsafe fn probe_from_buffer(
         unsafe {
             av_free(avio_buf as *mut c_void);
         }
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "avio_alloc_context failed",
-        ));
+        return Err(io::Error::other("avio_alloc_context failed"));
     }
 
     // Probe using the AVIO context; cleanup AVIO afterwards regardless of result
@@ -209,19 +203,16 @@ unsafe fn do_probe(
     let fmt_cstr = CString::new(format_name).unwrap();
     let input_fmt = unsafe { av_find_input_format(fmt_cstr.as_ptr()) };
     if input_fmt.is_null() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Unknown format '{}' for probing", format_name),
-        ));
+        return Err(io::Error::other(format!(
+            "Unknown format '{}' for probing",
+            format_name
+        )));
     }
 
     // Create format context with our custom AVIO
     let mut fmt_ctx = unsafe { avformat_alloc_context() };
     if fmt_ctx.is_null() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "avformat_alloc_context failed",
-        ));
+        return Err(io::Error::other("avformat_alloc_context failed"));
     }
     unsafe {
         (*fmt_ctx).pb = avio_ctx;

@@ -64,10 +64,10 @@ pub fn demux_partition(
                     write_video_frame(&mut ubv_file, frame, vw, &mut buffer)?;
                 }
             }
-        } else if is_audio_track(frame.track_id) {
-            if let Some(ref mut aw) = audio_writer {
-                write_audio_frame(&mut ubv_file, frame, aw, &mut buffer)?;
-            }
+        } else if is_audio_track(frame.track_id)
+            && let Some(ref mut aw) = audio_writer
+        {
+            write_audio_frame(&mut ubv_file, frame, aw, &mut buffer)?;
         }
     }
 

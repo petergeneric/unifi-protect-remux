@@ -111,10 +111,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 PartitionEntry::Frame(frame) => {
                     // Apply track filter if specified
-                    if let Some(filter) = args.track_filter {
-                        if frame.header.track_id != filter {
-                            continue;
-                        }
+                    if let Some(filter) = args.track_filter
+                        && frame.header.track_id != filter
+                    {
+                        continue;
                     }
 
                     // Compute inter-frame wall-clock delta in milliseconds
@@ -148,10 +148,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | PartitionEntry::Jpeg(m)
                 | PartitionEntry::Skip(m)
                 | PartitionEntry::Talkback(m) => {
-                    if let Some(filter) = args.track_filter {
-                        if m.header.track_id != filter {
-                            continue;
-                        }
+                    if let Some(filter) = args.track_filter
+                        && m.header.track_id != filter
+                    {
+                        continue;
                     }
 
                     let type_char = match entry {

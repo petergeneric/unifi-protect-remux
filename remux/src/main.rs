@@ -218,10 +218,10 @@ fn remux_cli(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     let config = args_to_config(args);
 
     for ubv_path in &files {
-        if let Err(e) = process_file(args, &config, ubv_path, &mut errors) {
-            if args.fail_fast {
-                return Err(e);
-            }
+        if let Err(e) = process_file(args, &config, ubv_path, &mut errors)
+            && args.fail_fast
+        {
+            return Err(e);
         }
     }
 

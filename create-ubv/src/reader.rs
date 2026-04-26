@@ -59,11 +59,10 @@ pub struct StreamBundle {
 
 /// Open an MP4 file and extract video (always) and audio (if present, AAC only).
 pub fn read_streams(path: &Path) -> io::Result<StreamBundle> {
-    ffmpeg::init()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ffmpeg init failed: {e}")))?;
+    ffmpeg::init().map_err(|e| io::Error::other(format!("ffmpeg init failed: {e}")))?;
 
     let mut ictx = ffmpeg::format::input(&path)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("open {:?}: {e}", path)))?;
+        .map_err(|e| io::Error::other(format!("open {:?}: {e}", path)))?;
 
     let video_stream = ictx
         .streams()

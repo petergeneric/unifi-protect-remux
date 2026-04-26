@@ -167,9 +167,9 @@ unsafe fn encode_mjpeg(
 }
 
 fn io_err(msg: String) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, msg)
+    io::Error::other(msg)
 }
 
 fn io_err_s(msg: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, msg)
+    io::Error::other(msg)
 }
