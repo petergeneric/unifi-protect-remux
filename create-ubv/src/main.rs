@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
-use create_ubv::{synth_from_mp4, SynthConfig};
+use create_ubv::{SynthConfig, synth_from_mp4};
 
 #[derive(Parser)]
 #[command(

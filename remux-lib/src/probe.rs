@@ -1,4 +1,4 @@
-use std::ffi::{c_int, c_void, CString};
+use std::ffi::{CString, c_int, c_void};
 use std::io;
 use std::ptr;
 
@@ -75,7 +75,11 @@ pub fn probe_stream_params(
     frames: &[RecordHeader],
     track_id: u16,
 ) -> io::Result<ffmpeg::codec::Parameters> {
-    let track_kind = if is_video_track(track_id) { "video" } else { "audio" };
+    let track_kind = if is_video_track(track_id) {
+        "video"
+    } else {
+        "audio"
+    };
 
     if frames.is_empty() {
         return Err(io::Error::new(
@@ -96,17 +100,25 @@ pub fn probe_stream_params(
     let probe_frames = &frames[..probe_count];
     let mut data = Vec::new();
     if is_video_track(track_id) {
-        demux::demux_video_frames(ubv_path, probe_frames, track_id, &mut data)
-            .map_err(|e| io::Error::new(e.kind(), format!(
-                "Failed to demux {} frames for probing (track {}): {}",
-                track_kind, track_id, e
-            )))?;
+        demux::demux_video_frames(ubv_path, probe_frames, track_id, &mut data).map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to demux {} frames for probing (track {}): {}",
+                    track_kind, track_id, e
+                ),
+            )
+        })?;
     } else {
-        demux::demux_audio_frames(ubv_path, probe_frames, &mut data)
-            .map_err(|e| io::Error::new(e.kind(), format!(
-                "Failed to demux {} frames for probing (track {}): {}",
-                track_kind, track_id, e
-            )))?;
+        demux::demux_audio_frames(ubv_path, probe_frames, &mut data).map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to demux {} frames for probing (track {}): {}",
+                    track_kind, track_id, e
+                ),
+            )
+        })?;
     }
 
     if data.is_empty() {
@@ -121,10 +133,13 @@ pub fn probe_stream_params(
 
     unsafe {
         probe_from_buffer(data, format_name).map_err(|e| {
-            io::Error::new(e.kind(), format!(
-                "FFmpeg probe failed for {} track {} (format '{}'): {}",
-                track_kind, track_id, format_name, e
-            ))
+            io::Error::new(
+                e.kind(),
+                format!(
+                    "FFmpeg probe failed for {} track {} (format '{}'): {}",
+                    track_kind, track_id, format_name, e
+                ),
+            )
         })
     }
 }
@@ -213,8 +228,7 @@ unsafe fn do_probe(
     }
 
     // Open input — on failure, avformat_open_input frees fmt_ctx
-    let ret =
-        unsafe { avformat_open_input(&mut fmt_ctx, ptr::null(), input_fmt, ptr::null_mut()) };
+    let ret = unsafe { avformat_open_input(&mut fmt_ctx, ptr::null(), input_fmt, ptr::null_mut()) };
     if ret < 0 {
         // fmt_ctx is already freed by avformat_open_input on error
         return Err(averror(ret, "avformat_open_input failed"));
@@ -251,7 +265,11 @@ unsafe fn do_probe(
     let extradata_size = p.extradata_size;
     let extradata_fmt = if extradata_size > 0 && !p.extradata.is_null() {
         let first_byte = unsafe { *p.extradata };
-        if first_byte == 0x01 { "AVCC" } else { "Annex B" }
+        if first_byte == 0x01 {
+            "AVCC"
+        } else {
+            "Annex B"
+        }
     } else {
         "EMPTY"
     };

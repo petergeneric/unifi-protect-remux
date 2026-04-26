@@ -22,9 +22,15 @@ pub enum UbvError {
     UnexpectedEof { offset: u64 },
 
     #[error("back-size mismatch at offset 0x{offset:X}: expected {expected}, got {got}")]
-    BackSizeMismatch { offset: u64, expected: u32, got: u32 },
+    BackSizeMismatch {
+        offset: u64,
+        expected: u32,
+        got: u32,
+    },
 
-    #[error("clock sync payload too short at record offset 0x{offset:X}: expected at least {expected} bytes, got {got}")]
+    #[error(
+        "clock sync payload too short at record offset 0x{offset:X}: expected at least {expected} bytes, got {got}"
+    )]
     ShortPayload {
         offset: u64,
         expected: usize,

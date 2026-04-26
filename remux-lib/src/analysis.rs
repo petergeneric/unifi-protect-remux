@@ -86,7 +86,8 @@ pub fn compute_nominal_fps(dts_values: &[u64], clock_rate: u32) -> u32 {
 pub fn generate_timecode(start: &DateTime<Utc>, framerate: u32) -> String {
     let hms = start.format("%H:%M:%S");
     let nanos = start.timestamp_subsec_nanos() as u64;
-    let frame = ((nanos * framerate as u64 + 500_000_000) / 1_000_000_000 + 1).min(framerate as u64);
+    let frame =
+        ((nanos * framerate as u64 + 500_000_000) / 1_000_000_000 + 1).min(framerate as u64);
     format!("{}:{:02}", hms, frame)
 }
 
@@ -373,8 +374,8 @@ mod tests {
     /// Helper: parse a .ubv.gz testdata file and run analysis on the first partition.
     fn analyse_testdata(filename: &str) -> Option<AnalysedPartition> {
         use std::path::Path;
-        use ubv::reader::{open_ubv, parse_ubv};
         use ubv::partition::PartitionEntry;
+        use ubv::reader::{open_ubv, parse_ubv};
 
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
@@ -410,7 +411,12 @@ mod tests {
         }
         assert_eq!(track.dts_values[0], 0, "first DTS should be rebased to 0");
         for w in track.dts_values.windows(2) {
-            assert!(w[1] > w[0], "DTS not strictly monotonic: {} >= {}", w[1], w[0]);
+            assert!(
+                w[1] > w[0],
+                "DTS not strictly monotonic: {} >= {}",
+                w[1],
+                w[0]
+            );
         }
         if expect_video {
             assert_eq!(track.clock_rate, 90000);

@@ -58,12 +58,28 @@ pub enum LogLevel {
 #[derive(Debug, Clone)]
 pub enum ProgressEvent {
     Log(LogLevel, String),
-    FileStarted { path: String },
-    PartitionsFound { count: usize },
-    PartitionStarted { index: usize, total: usize },
-    OutputGenerated { path: String },
-    PartitionError { index: usize, error: String },
-    FileCompleted { path: String, outputs: Vec<String>, errors: Vec<String> },
+    FileStarted {
+        path: String,
+    },
+    PartitionsFound {
+        count: usize,
+    },
+    PartitionStarted {
+        index: usize,
+        total: usize,
+    },
+    OutputGenerated {
+        path: String,
+    },
+    PartitionError {
+        index: usize,
+        error: String,
+    },
+    FileCompleted {
+        path: String,
+        outputs: Vec<String>,
+        errors: Vec<String>,
+    },
 }
 
 /// Result of processing a single .ubv file.
@@ -434,15 +450,11 @@ where
                 ));
             } else {
                 if let Some(ref path) = video_file {
-                    progress(ProgressEvent::OutputGenerated {
-                        path: path.clone(),
-                    });
+                    progress(ProgressEvent::OutputGenerated { path: path.clone() });
                     result.output_files.push(path.clone());
                 }
                 if let Some(ref path) = audio_file {
-                    progress(ProgressEvent::OutputGenerated {
-                        path: path.clone(),
-                    });
+                    progress(ProgressEvent::OutputGenerated { path: path.clone() });
                     result.output_files.push(path.clone());
                 }
             }

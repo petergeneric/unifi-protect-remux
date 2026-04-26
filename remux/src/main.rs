@@ -118,7 +118,8 @@ fn expand_globs(patterns: &[String]) -> Vec<String> {
         // Only attempt glob expansion if the argument contains metacharacters
         // AND does not match an existing file on disk (so that filenames
         // containing '[', '?' etc. are handled correctly).
-        let has_glob_chars = pattern.contains('*') || pattern.contains('?') || pattern.contains('[');
+        let has_glob_chars =
+            pattern.contains('*') || pattern.contains('?') || pattern.contains('[');
         if has_glob_chars && !Path::new(pattern).exists() {
             match glob::glob(pattern) {
                 Ok(paths) => {
@@ -153,8 +154,7 @@ fn validate_args(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
 
     if args.mp4 && !args.with_video {
         return Err(
-            "MP4 output requires video; --with-video=false is not supported with --mp4=true"
-                .into(),
+            "MP4 output requires video; --with-video=false is not supported with --mp4=true".into(),
         );
     }
 
@@ -346,7 +346,10 @@ mod tests {
 
         let result = process_file(&args, &config, "nonexistent.ubv", &mut errors);
         assert!(result.is_err());
-        assert!(errors.is_empty(), "fail-fast should not push deferred errors");
+        assert!(
+            errors.is_empty(),
+            "fail-fast should not push deferred errors"
+        );
     }
 
     #[test]

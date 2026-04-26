@@ -121,7 +121,7 @@ fn plan_video(stream: &ffmpeg::format::stream::Stream) -> io::Result<VideoPlan> 
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unsupported video codec {:?}; need H.264 or HEVC", other),
-            ))
+            ));
         }
     };
 
@@ -160,7 +160,12 @@ fn plan_video(stream: &ffmpeg::format::stream::Stream) -> io::Result<VideoPlan> 
         ));
     }
 
-    Ok(VideoPlan { codec, tb_num, tb_den, keyframe_prefix })
+    Ok(VideoPlan {
+        codec,
+        tb_num,
+        tb_den,
+        keyframe_prefix,
+    })
 }
 
 fn build_video(plan: VideoPlan, raw: Vec<(i64, bool, Vec<u8>)>) -> io::Result<VideoStream> {
@@ -193,7 +198,10 @@ fn build_video(plan: VideoPlan, raw: Vec<(i64, bool, Vec<u8>)>) -> io::Result<Vi
         });
     }
 
-    Ok(VideoStream { codec: plan.codec, frames })
+    Ok(VideoStream {
+        codec: plan.codec,
+        frames,
+    })
 }
 
 struct AudioPlan {
@@ -232,13 +240,17 @@ fn plan_audio(stream: &ffmpeg::format::stream::Stream) -> io::Result<AudioPlan> 
     let sri = sri_for_sample_rate(sample_rate).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "AAC sample rate {sample_rate} Hz has no matching UBV sample-rate-index"
-            ),
+            format!("AAC sample rate {sample_rate} Hz has no matching UBV sample-rate-index"),
         )
     })?;
 
-    Ok(AudioPlan { sample_rate, sri, profile, sfi, channel_cfg })
+    Ok(AudioPlan {
+        sample_rate,
+        sri,
+        profile,
+        sfi,
+        channel_cfg,
+    })
 }
 
 fn build_audio(plan: AudioPlan, raw: Vec<(i64, Vec<u8>)>) -> io::Result<AudioStream> {
@@ -299,9 +311,7 @@ fn parse_aac_asc(extradata: &[u8]) -> io::Result<(u8, u8, u8)> {
     if !(1..=4).contains(&object_type) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "AAC AudioObjectType {object_type} not representable in ADTS (need 1..=4)"
-            ),
+            format!("AAC AudioObjectType {object_type} not representable in ADTS (need 1..=4)"),
         ));
     }
     let profile = object_type - 1;
@@ -332,20 +342,10 @@ fn wrap_adts(profile: u8, sfi: u8, channel_cfg: u8, aac: &[u8]) -> Vec<u8> {
     out.push(0xFF);
     // 1111 0001 — sync (4) + MPEG-4 (1 bit =0) + layer (2 bits =0) + protection_absent (1 =1).
     out.push(0xF1);
-    out.push(
-        ((profile & 0x03) << 6)
-            | ((sfi & 0x0F) << 2)
-            | ((channel_cfg >> 2) & 0x01),
-    );
-    out.push(
-        ((channel_cfg & 0x03) << 6)
-            | (((frame_len >> 11) & 0x03) as u8),
-    );
+    out.push(((profile & 0x03) << 6) | ((sfi & 0x0F) << 2) | ((channel_cfg >> 2) & 0x01));
+    out.push(((channel_cfg & 0x03) << 6) | (((frame_len >> 11) & 0x03) as u8));
     out.push(((frame_len >> 3) & 0xFF) as u8);
-    out.push(
-        (((frame_len & 0x07) << 5) as u8)
-            | ((BUFFER_FULLNESS >> 6) & 0x1F) as u8,
-    );
+    out.push((((frame_len & 0x07) << 5) as u8) | ((BUFFER_FULLNESS >> 6) & 0x1F) as u8);
     // low 6 bits of buffer_fullness << 2, with num_raw_data_blocks_in_frame = 0
     out.push(((BUFFER_FULLNESS & 0x3F) as u8) << 2);
     out.extend_from_slice(aac);

@@ -2,8 +2,8 @@ use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use ubv::clock::wc_ticks_to_millis;
 use ubv::partition::PartitionEntry;
 

@@ -4,8 +4,8 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::panic;
 use std::sync::Once;
 
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use remux_lib::{LogLevel, ProgressEvent, RemuxConfig};
 
 extern crate ffmpeg_next;
@@ -214,19 +214,19 @@ fn event_to_json(event: &ProgressEvent) -> ProgressEventJson {
             },
             message: msg.clone(),
         },
-        ProgressEvent::FileStarted { path } => ProgressEventJson::FileStarted {
-            path: path.clone(),
-        },
-        ProgressEvent::PartitionsFound { count } => ProgressEventJson::PartitionsFound {
-            count: *count,
-        },
+        ProgressEvent::FileStarted { path } => {
+            ProgressEventJson::FileStarted { path: path.clone() }
+        }
+        ProgressEvent::PartitionsFound { count } => {
+            ProgressEventJson::PartitionsFound { count: *count }
+        }
         ProgressEvent::PartitionStarted { index, total } => ProgressEventJson::PartitionStarted {
             index: *index,
             total: *total,
         },
-        ProgressEvent::OutputGenerated { path } => ProgressEventJson::OutputGenerated {
-            path: path.clone(),
-        },
+        ProgressEvent::OutputGenerated { path } => {
+            ProgressEventJson::OutputGenerated { path: path.clone() }
+        }
         ProgressEvent::PartitionError { index, error } => ProgressEventJson::PartitionError {
             index: *index,
             error: error.clone(),
@@ -252,10 +252,7 @@ fn ffi_config_to_remux_config(ffi: &FfiRemuxConfig) -> RemuxConfig {
         with_video: ffi.with_video.unwrap_or(defaults.with_video),
         force_rate: ffi.force_rate.unwrap_or(defaults.force_rate),
         fast_start: ffi.fast_start.unwrap_or(defaults.fast_start),
-        output_folder: ffi
-            .output_folder
-            .clone()
-            .unwrap_or(defaults.output_folder),
+        output_folder: ffi.output_folder.clone().unwrap_or(defaults.output_folder),
         mp4: ffi.mp4.unwrap_or(defaults.mp4),
         video_track: ffi.video_track.unwrap_or(defaults.video_track),
         base_name: ffi.base_name.clone(),
@@ -272,10 +269,7 @@ fn extract_mac(filename: &str) -> Option<String> {
         return None;
     }
     let prefix = &filename[..12];
-    if prefix
-        .chars()
-        .all(|c| c.is_ascii_hexdigit())
-    {
+    if prefix.chars().all(|c| c.is_ascii_hexdigit()) {
         Some(prefix.to_ascii_uppercase())
     } else {
         None
@@ -710,10 +704,7 @@ pub unsafe extern "C" fn remux_process_file(
             Ok(s) => s,
             Err(e) => {
                 unsafe {
-                    set_error(
-                        error_out,
-                        &format!("Invalid UTF-8 in config_json: {}", e),
-                    );
+                    set_error(error_out, &format!("Invalid UTF-8 in config_json: {}", e));
                 }
                 return std::ptr::null_mut();
             }
@@ -1199,18 +1190,24 @@ pub unsafe extern "C" fn remux_save_cameras(
 ) -> c_int {
     match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if !error_out.is_null() {
-            unsafe { *error_out = std::ptr::null_mut(); }
+            unsafe {
+                *error_out = std::ptr::null_mut();
+            }
         }
 
         if cameras_json.is_null() {
-            unsafe { set_error(error_out, "cameras_json is NULL"); }
+            unsafe {
+                set_error(error_out, "cameras_json is NULL");
+            }
             return 1;
         }
         let c_str = unsafe { CStr::from_ptr(cameras_json) };
         let json_str = match c_str.to_str() {
             Ok(s) => s,
             Err(e) => {
-                unsafe { set_error(error_out, &format!("Invalid UTF-8: {}", e)); }
+                unsafe {
+                    set_error(error_out, &format!("Invalid UTF-8: {}", e));
+                }
                 return 1;
             }
         };
@@ -1219,7 +1216,9 @@ pub unsafe extern "C" fn remux_save_cameras(
         let _data: CameraData = match serde_json::from_str(json_str) {
             Ok(d) => d,
             Err(e) => {
-                unsafe { set_error(error_out, &format!("Invalid JSON: {}", e)); }
+                unsafe {
+                    set_error(error_out, &format!("Invalid JSON: {}", e));
+                }
                 return 1;
             }
         };
@@ -1227,14 +1226,18 @@ pub unsafe extern "C" fn remux_save_cameras(
         let path = match cameras_file_path() {
             Some(p) => p,
             None => {
-                unsafe { set_error(error_out, "Cannot determine application data directory"); }
+                unsafe {
+                    set_error(error_out, "Cannot determine application data directory");
+                }
                 return 1;
             }
         };
 
         if let Some(parent) = path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
-                unsafe { set_error(error_out, &format!("Failed to create directory: {}", e)); }
+                unsafe {
+                    set_error(error_out, &format!("Failed to create directory: {}", e));
+                }
                 return 1;
             }
         }
@@ -1242,14 +1245,18 @@ pub unsafe extern "C" fn remux_save_cameras(
         match std::fs::write(&path, json_str) {
             Ok(()) => 0,
             Err(e) => {
-                unsafe { set_error(error_out, &format!("Failed to write file: {}", e)); }
+                unsafe {
+                    set_error(error_out, &format!("Failed to write file: {}", e));
+                }
                 1
             }
         }
     })) {
         Ok(code) => code,
         Err(_) => {
-            unsafe { set_error(error_out, "Internal panic during remux_save_cameras"); }
+            unsafe {
+                set_error(error_out, "Internal panic during remux_save_cameras");
+            }
             1
         }
     }
@@ -1284,7 +1291,9 @@ pub unsafe extern "C" fn remux_process_file_ctx(
     match panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         // Clear error_out
         if !error_out.is_null() {
-            unsafe { *error_out = std::ptr::null_mut(); }
+            unsafe {
+                *error_out = std::ptr::null_mut();
+            }
         }
 
         // Validate ubv_path
@@ -1295,7 +1304,9 @@ pub unsafe extern "C" fn remux_process_file_ctx(
         let ubv_path_str = match unsafe { CStr::from_ptr(ubv_path) }.to_str() {
             Ok(s) => s.to_string(),
             Err(e) => {
-                unsafe { set_error(error_out, &format!("Invalid UTF-8 in ubv_path: {}", e)); }
+                unsafe {
+                    set_error(error_out, &format!("Invalid UTF-8 in ubv_path: {}", e));
+                }
                 return std::ptr::null_mut();
             }
         };
@@ -1308,7 +1319,9 @@ pub unsafe extern "C" fn remux_process_file_ctx(
         let config_str = match unsafe { CStr::from_ptr(config_json) }.to_str() {
             Ok(s) => s,
             Err(e) => {
-                unsafe { set_error(error_out, &format!("Invalid UTF-8 in config_json: {}", e)); }
+                unsafe {
+                    set_error(error_out, &format!("Invalid UTF-8 in config_json: {}", e));
+                }
                 return std::ptr::null_mut();
             }
         };
@@ -1410,11 +1423,20 @@ mod tests {
 
     #[test]
     fn sanitize_base_name_strips_invalid_chars() {
-        assert_eq!(sanitize_base_name("cam/back\\yard"), Some("cambackyard".into()));
-        assert_eq!(sanitize_base_name("test:file*name?"), Some("testfilename".into()));
+        assert_eq!(
+            sanitize_base_name("cam/back\\yard"),
+            Some("cambackyard".into())
+        );
+        assert_eq!(
+            sanitize_base_name("test:file*name?"),
+            Some("testfilename".into())
+        );
         assert_eq!(sanitize_base_name("a<b>c\"d|e"), Some("abcde".into()));
         // unicode passes through
-        assert_eq!(sanitize_base_name("Caméra Jardin"), Some("Caméra Jardin".into()));
+        assert_eq!(
+            sanitize_base_name("Caméra Jardin"),
+            Some("Caméra Jardin".into())
+        );
     }
 
     #[test]
@@ -1431,8 +1453,14 @@ mod tests {
 
     #[test]
     fn extract_mac_valid() {
-        assert_eq!(extract_mac("AABBCCDDEEFF_0_rotating_1234567890123.ubv"), Some("AABBCCDDEEFF".into()));
-        assert_eq!(extract_mac("aabbccddeeff_0_rotating_1234567890123.ubv"), Some("AABBCCDDEEFF".into()));
+        assert_eq!(
+            extract_mac("AABBCCDDEEFF_0_rotating_1234567890123.ubv"),
+            Some("AABBCCDDEEFF".into())
+        );
+        assert_eq!(
+            extract_mac("aabbccddeeff_0_rotating_1234567890123.ubv"),
+            Some("AABBCCDDEEFF".into())
+        );
     }
 
     #[test]
@@ -1467,12 +1495,22 @@ mod tests {
 
     #[test]
     fn is_low_res_filename_detects_patterns() {
-        assert!(is_low_res_filename("AABBCCDDEEFF_2_rotating_1700000000000.ubv"));
-        assert!(is_low_res_filename("AABBCCDDEEFF_timelapse_1700000000000.ubv"));
+        assert!(is_low_res_filename(
+            "AABBCCDDEEFF_2_rotating_1700000000000.ubv"
+        ));
+        assert!(is_low_res_filename(
+            "AABBCCDDEEFF_timelapse_1700000000000.ubv"
+        ));
         // case-insensitive
-        assert!(is_low_res_filename("AABBCCDDEEFF_2_ROTATING_1700000000000.ubv"));
-        assert!(is_low_res_filename("AABBCCDDEEFF_Timelapse_1700000000000.ubv"));
+        assert!(is_low_res_filename(
+            "AABBCCDDEEFF_2_ROTATING_1700000000000.ubv"
+        ));
+        assert!(is_low_res_filename(
+            "AABBCCDDEEFF_Timelapse_1700000000000.ubv"
+        ));
         // normal recordings don't match
-        assert!(!is_low_res_filename("AABBCCDDEEFF_0_rotating_1700000000000.ubv"));
+        assert!(!is_low_res_filename(
+            "AABBCCDDEEFF_0_rotating_1700000000000.ubv"
+        ));
     }
 }

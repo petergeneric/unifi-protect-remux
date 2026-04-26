@@ -40,7 +40,9 @@ pub struct SynthConfig {
 impl Default for SynthConfig {
     fn default() -> Self {
         // 2024-01-01T00:00:00Z
-        Self { wall_clock_secs: 1_704_067_200 }
+        Self {
+            wall_clock_secs: 1_704_067_200,
+        }
     }
 }
 
@@ -140,7 +142,11 @@ pub fn synth_from_mp4(mp4_path: &Path, ubv_path: &Path, config: &SynthConfig) ->
 
         if pick_video {
             let frame = &video_frames[vi];
-            let byte4 = if frame.keyframe { fc::KEYFRAME } else { fc::NON_KEYFRAME };
+            let byte4 = if frame.keyframe {
+                fc::KEYFRAME
+            } else {
+                fc::NON_KEYFRAME
+            };
             let rec = writer::Record {
                 track_id: video_track_id,
                 byte4,

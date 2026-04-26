@@ -44,10 +44,7 @@ impl Seek for UbvReader {
 /// operate on plain `.ubv` files, so we prefer the simplest seekable approach
 /// here over adding a more complex seekable-gzip implementation.
 pub fn open_ubv(path: &Path) -> std::io::Result<UbvReader> {
-    let is_gz = path
-        .to_str()
-        .map(|s| s.ends_with(".gz"))
-        .unwrap_or(false);
+    let is_gz = path.to_str().map(|s| s.ends_with(".gz")).unwrap_or(false);
 
     if is_gz {
         let file = File::open(path)?;
@@ -116,7 +113,8 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
             track::TrackType::ClockSync => {
                 // Parse clock sync from payload
                 if let Some(payload) = &rec.payload {
-                    let cs = ClockSync::from_record(rec.dts, rec.clock_rate, rec.file_offset, payload)?;
+                    let cs =
+                        ClockSync::from_record(rec.dts, rec.clock_rate, rec.file_offset, payload)?;
                     current_clock_sync = Some(cs);
 
                     if let Some(p) = current_partition.as_mut() {

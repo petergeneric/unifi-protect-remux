@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use ffmpeg::codec::Id as CodecId;
 use ffmpeg::media::Type;
-use remux_lib::{process_file, ProgressEvent, RemuxConfig};
+use remux_lib::{ProgressEvent, RemuxConfig, process_file};
 
 /// md5 of the Annex-B H.264 elementary stream demuxed from testsrc2.ubv.
 const EXPECTED_H264_MD5: &str = "304044c46466cc7926a17ace81be9114";
@@ -34,11 +34,7 @@ fn fixture_ubv() -> PathBuf {
 #[test]
 fn demux_testsrc2_matches_reference_md5() {
     let ubv = fixture_ubv();
-    assert!(
-        ubv.exists(),
-        "reference fixture missing: {}",
-        ubv.display()
-    );
+    assert!(ubv.exists(), "reference fixture missing: {}", ubv.display());
 
     let tmpdir = make_tmpdir();
     let config = RemuxConfig {
@@ -103,11 +99,7 @@ const EXPECTED_VIDEO_FRAMES: usize = 150;
 #[test]
 fn mp4_mux_testsrc2_produces_expected_stream() {
     let ubv = fixture_ubv();
-    assert!(
-        ubv.exists(),
-        "reference fixture missing: {}",
-        ubv.display()
-    );
+    assert!(ubv.exists(), "reference fixture missing: {}", ubv.display());
 
     let tmpdir = make_tmpdir();
     // mp4=true (the default) drives the FFmpeg MOV muxer — the path that would

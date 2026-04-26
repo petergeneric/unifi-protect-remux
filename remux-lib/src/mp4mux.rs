@@ -4,11 +4,11 @@ use std::sync::Once;
 
 extern crate ffmpeg_next as ffmpeg;
 extern crate ffmpeg_sys_next as ffi;
-use ffmpeg::{codec, encoder, format, Rational};
+use ffmpeg::{Rational, codec, encoder, format};
 
-use crate::analysis::{generate_timecode, AnalysedPartition, AnalysedTrack};
+use crate::analysis::{AnalysedPartition, AnalysedTrack, generate_timecode};
 use ubv::frame::RecordHeader;
-use ubv::track::{is_audio_track, track_info, TrackType};
+use ubv::track::{TrackType, is_audio_track, track_info};
 
 static FFMPEG_INIT: Once = Once::new();
 
@@ -82,17 +82,13 @@ fn ensure_init() {
 }
 
 fn ffmpeg_err(context: &str) -> impl FnOnce(ffmpeg::Error) -> io::Error + '_ {
-    move |e: ffmpeg::Error| {
-        io::Error::new(io::ErrorKind::Other, format!("{}: {}", context, e))
-    }
+    move |e: ffmpeg::Error| io::Error::new(io::ErrorKind::Other, format!("{}: {}", context, e))
 }
 
 /// Like `ffmpeg_err` but defers context string construction to the error path,
 /// avoiding a `format!` allocation on every successful frame.
 fn ffmpeg_err_lazy<F: FnOnce() -> String>(context: F) -> impl FnOnce(ffmpeg::Error) -> io::Error {
-    move |e: ffmpeg::Error| {
-        io::Error::new(io::ErrorKind::Other, format!("{}: {}", context(), e))
-    }
+    move |e: ffmpeg::Error| io::Error::new(io::ErrorKind::Other, format!("{}: {}", context(), e))
 }
 
 fn is_hevc(video_track_num: u16) -> bool {
@@ -228,10 +224,7 @@ pub fn stream_to_mp4(
             return Ok(());
         }
     };
-    let audio_track = partition
-        .audio_track
-        .as_ref()
-        .filter(|t| t.frame_count > 0);
+    let audio_track = partition.audio_track.as_ref().filter(|t| t.frame_count > 0);
 
     let hevc = is_hevc(video_track_num);
     let av1 = is_av1(video_track_num);
@@ -254,8 +247,7 @@ pub fn stream_to_mp4(
         .collect();
 
     // Probe codec parameters from first few frames
-    let video_params =
-        crate::probe::probe_stream_params(ubv_path, &video_frames, video_track_num)?;
+    let video_params = crate::probe::probe_stream_params(ubv_path, &video_frames, video_track_num)?;
     let audio_params = match audio_track {
         Some(at) if !audio_frames.is_empty() => Some(crate::probe::probe_stream_params(
             ubv_path,
@@ -266,8 +258,7 @@ pub fn stream_to_mp4(
     };
 
     // Create MP4 output
-    let mut octx = format::output(&mp4_file)
-        .map_err(ffmpeg_err("Creating MP4 output file"))?;
+    let mut octx = format::output(&mp4_file).map_err(ffmpeg_err("Creating MP4 output file"))?;
 
     // Add video stream (index 0)
     {
@@ -301,8 +292,7 @@ pub fn stream_to_mp4(
     // (num_frames - 1) * clock_rate / nominal_fps.
     let video_max_dts = if cfr {
         if video_frames.len() > 1 && nominal_fps > 0 {
-            (video_frames.len() as u64 - 1) * video_track.clock_rate as u64
-                / nominal_fps as u64
+            (video_frames.len() as u64 - 1) * video_track.clock_rate as u64 / nominal_fps as u64
         } else {
             0
         }
@@ -313,7 +303,8 @@ pub fn stream_to_mp4(
     if let Some(ts) = video_timescale {
         log::info!(
             "Video timescale reduced from {} to {} Hz to fit MOV 32-bit DTS limit",
-            video_track.clock_rate, ts
+            video_track.clock_rate,
+            ts
         );
     }
 
@@ -322,7 +313,11 @@ pub fn stream_to_mp4(
     if let Some(at) = audio_track {
         let audio_max_dts = if cfr {
             let spf = audio_samples_per_frame(at.track_id) as u64;
-            if !audio_frames.is_empty() { (audio_frames.len() as u64 - 1) * spf } else { 0 }
+            if !audio_frames.is_empty() {
+                (audio_frames.len() as u64 - 1) * spf
+            } else {
+                0
+            }
         } else {
             at.dts_values.last().copied().unwrap_or(0)
         };
@@ -330,7 +325,8 @@ pub fn stream_to_mp4(
             log::warn!(
                 "Audio DTS values exceed MOV 32-bit limit ({} > {}); \
                  output may be corrupt or fail to write",
-                audio_max_dts, MOV_DTS_MAX
+                audio_max_dts,
+                MOV_DTS_MAX
             );
         }
     }
@@ -347,10 +343,12 @@ pub fn stream_to_mp4(
     // For AV1, packets are the raw OBU bitstream from the UBV file (sequence
     // header inline in keyframes); the MOV muxer extracts the sequence header
     // into the av1C box and writes packets as-is into av01 sample entries.
-    let mut ubv_file = File::open(ubv_path)
-        .map_err(|e| io::Error::new(e.kind(), format!(
-            "Opening UBV file '{}' for frame reading: {}", ubv_path, e
-        )))?;
+    let mut ubv_file = File::open(ubv_path).map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("Opening UBV file '{}' for frame reading: {}", ubv_path, e),
+        )
+    })?;
     {
         let max_frame = video_frames
             .iter()
@@ -372,9 +370,17 @@ pub fn stream_to_mp4(
                     &mut annexb_buf,
                     &mut read_buf,
                 )
-                .map_err(|e| io::Error::new(e.kind(), format!(
-                    "Reading video frame {}/{}: {}", i + 1, video_frames.len(), e
-                )))?;
+                .map_err(|e| {
+                    io::Error::new(
+                        e.kind(),
+                        format!(
+                            "Reading video frame {}/{}: {}",
+                            i + 1,
+                            video_frames.len(),
+                            e
+                        ),
+                    )
+                })?;
                 let mut packet = ffmpeg::Packet::copy(&annexb_buf);
                 packet.set_pts(Some(i as i64));
                 packet.set_dts(Some(i as i64));
@@ -385,10 +391,11 @@ pub fn stream_to_mp4(
                 if frame.keyframe {
                     packet.set_flags(codec::packet::Flags::KEY);
                 }
-                packet.write_interleaved(&mut octx)
-                    .map_err(ffmpeg_err_lazy(|| format!(
-                        "Writing video frame {}/{}", i + 1, video_frames.len()
-                    )))?;
+                packet
+                    .write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| {
+                        format!("Writing video frame {}/{}", i + 1, video_frames.len())
+                    }))?;
             }
         } else {
             log::info!(
@@ -414,9 +421,17 @@ pub fn stream_to_mp4(
                     &mut annexb_buf,
                     &mut read_buf,
                 )
-                .map_err(|e| io::Error::new(e.kind(), format!(
-                    "Reading video frame {}/{}: {}", i + 1, video_frames.len(), e
-                )))?;
+                .map_err(|e| {
+                    io::Error::new(
+                        e.kind(),
+                        format!(
+                            "Reading video frame {}/{}: {}",
+                            i + 1,
+                            video_frames.len(),
+                            e
+                        ),
+                    )
+                })?;
                 let (dts, duration) = compute_dts_duration(dts_values, i);
                 let mut packet = ffmpeg::Packet::copy(&annexb_buf);
                 packet.set_pts(Some(dts));
@@ -428,10 +443,11 @@ pub fn stream_to_mp4(
                 if frame.keyframe {
                     packet.set_flags(codec::packet::Flags::KEY);
                 }
-                packet.write_interleaved(&mut octx)
-                    .map_err(ffmpeg_err_lazy(|| format!(
-                        "Writing video frame {}/{}", i + 1, video_frames.len()
-                    )))?;
+                packet
+                    .write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| {
+                        format!("Writing video frame {}/{}", i + 1, video_frames.len())
+                    }))?;
             }
         }
     }
@@ -455,10 +471,19 @@ pub fn stream_to_mp4(
                 at.frame_count
             );
             for (i, frame) in audio_frames.iter().enumerate() {
-                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)
-                    .map_err(|e| io::Error::new(e.kind(), format!(
-                        "Reading audio frame {}/{}: {}", i + 1, audio_frames.len(), e
-                    )))?;
+                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf).map_err(
+                    |e| {
+                        io::Error::new(
+                            e.kind(),
+                            format!(
+                                "Reading audio frame {}/{}: {}",
+                                i + 1,
+                                audio_frames.len(),
+                                e
+                            ),
+                        )
+                    },
+                )?;
                 let pts = i as i64 * samples_per_frame as i64;
                 let mut packet = ffmpeg::Packet::copy(&audio_buf);
                 packet.set_pts(Some(pts));
@@ -467,10 +492,11 @@ pub fn stream_to_mp4(
                 packet.rescale_ts(input_tb, ost_time_base);
                 packet.set_position(-1);
                 packet.set_stream(audio_stream_idx);
-                packet.write_interleaved(&mut octx)
-                    .map_err(ffmpeg_err_lazy(|| format!(
-                        "Writing audio frame {}/{}", i + 1, audio_frames.len()
-                    )))?;
+                packet
+                    .write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| {
+                        format!("Writing audio frame {}/{}", i + 1, audio_frames.len())
+                    }))?;
             }
         } else {
             let input_tb = Rational(1, at.clock_rate as i32);
@@ -489,10 +515,19 @@ pub fn stream_to_mp4(
                     );
                     break;
                 }
-                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf)
-                    .map_err(|e| io::Error::new(e.kind(), format!(
-                        "Reading audio frame {}/{}: {}", i + 1, audio_frames.len(), e
-                    )))?;
+                crate::demux::read_audio_frame_raw(&mut ubv_file, frame, &mut audio_buf).map_err(
+                    |e| {
+                        io::Error::new(
+                            e.kind(),
+                            format!(
+                                "Reading audio frame {}/{}: {}",
+                                i + 1,
+                                audio_frames.len(),
+                                e
+                            ),
+                        )
+                    },
+                )?;
                 let (dts, duration) = compute_dts_duration(dts_values, i);
                 let mut packet = ffmpeg::Packet::copy(&audio_buf);
                 packet.set_pts(Some(dts));
@@ -501,15 +536,17 @@ pub fn stream_to_mp4(
                 packet.rescale_ts(input_tb, ost_time_base);
                 packet.set_position(-1);
                 packet.set_stream(audio_stream_idx);
-                packet.write_interleaved(&mut octx)
-                    .map_err(ffmpeg_err_lazy(|| format!(
-                        "Writing audio frame {}/{}", i + 1, audio_frames.len()
-                    )))?;
+                packet
+                    .write_interleaved(&mut octx)
+                    .map_err(ffmpeg_err_lazy(|| {
+                        format!("Writing audio frame {}/{}", i + 1, audio_frames.len())
+                    }))?;
             }
         }
     }
 
-    octx.write_trailer().map_err(ffmpeg_err("Writing MP4 trailer"))?;
+    octx.write_trailer()
+        .map_err(ffmpeg_err("Writing MP4 trailer"))?;
     Ok(())
 }
 
@@ -535,8 +572,12 @@ mod tests {
         let ts = safe_mov_video_timescale(max_dts, 90000).unwrap();
         // Reduced timescale must produce output DTS within limit
         let output_dts = max_dts as u128 * ts as u128 / 90000;
-        assert!(output_dts <= MOV_DTS_MAX as u128,
-            "output DTS {} exceeds limit {}", output_dts, MOV_DTS_MAX);
+        assert!(
+            output_dts <= MOV_DTS_MAX as u128,
+            "output DTS {} exceeds limit {}",
+            output_dts,
+            MOV_DTS_MAX
+        );
         assert!(ts > 0);
         assert!(ts < 90000);
     }

@@ -1,6 +1,6 @@
 use clap::Parser;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read as _, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -40,18 +40,13 @@ fn zero_region(file: &mut File, offset: u64, size: u32) -> io::Result<()> {
 
 /// Derive a default output path: anonymised-<stem>.ubv.gz in the current directory.
 fn default_output_path(input: &PathBuf) -> PathBuf {
-    let stem = input
-        .file_stem()
-        .unwrap_or_default()
-        .to_string_lossy();
+    let stem = input.file_stem().unwrap_or_default().to_string_lossy();
     PathBuf::from(format!("anonymised-{stem}.ubv.gz"))
 }
 
 /// Gzip compress `src` to `dst`, then remove `src`.
 fn gzip_and_cleanup(src: &PathBuf, dst: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let src_size = fs::metadata(src)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let src_size = fs::metadata(src).map(|m| m.len()).unwrap_or(0);
     log::info!(
         "Compressing {} ({:.1} MB) -> {}...",
         src.display(),
@@ -63,8 +58,7 @@ fn gzip_and_cleanup(src: &PathBuf, dst: &PathBuf) -> Result<(), Box<dyn std::err
         .map_err(|e| format!("Opening '{}' for gzip compression: {}", src.display(), e))?;
     let mut reader = BufReader::new(input);
 
-    let output = File::create(dst)
-        .map_err(|e| format!("Creating '{}': {}", dst.display(), e))?;
+    let output = File::create(dst).map_err(|e| format!("Creating '{}': {}", dst.display(), e))?;
     let mut encoder = GzEncoder::new(BufWriter::new(output), Compression::default());
 
     let mut buf = [0u8; 65536];
@@ -89,17 +83,14 @@ fn gzip_and_cleanup(src: &PathBuf, dst: &PathBuf) -> Result<(), Box<dyn std::err
     }
     encoder.finish()?;
 
-    let dst_size = fs::metadata(dst)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let dst_size = fs::metadata(dst).map(|m| m.len()).unwrap_or(0);
     log::info!(
         "Compressed {:.1} MB -> {:.1} MB",
         src_size as f64 / (1024.0 * 1024.0),
         dst_size as f64 / (1024.0 * 1024.0)
     );
 
-    fs::remove_file(src)
-        .map_err(|e| format!("Removing temp file '{}': {}", src.display(), e))?;
+    fs::remove_file(src).map_err(|e| format!("Removing temp file '{}': {}", src.display(), e))?;
 
     Ok(())
 }
@@ -114,7 +105,9 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let input = args.input.ok_or("INPUT is required unless --version is specified")?;
+    let input = args
+        .input
+        .ok_or("INPUT is required unless --version is specified")?;
 
     let gzip_output = args.output.is_none();
     let output = args.output.unwrap_or_else(|| default_output_path(&input));
@@ -133,17 +126,32 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         ).into());
     }
 
-    log::info!("Copying {} -> {}...", input.display(), working_file.display());
+    log::info!(
+        "Copying {} -> {}...",
+        input.display(),
+        working_file.display()
+    );
     fs::copy(&input, &working_file).map_err(|e| {
-        format!("Copying '{}' to '{}': {}", input.display(), working_file.display(), e)
+        format!(
+            "Copying '{}' to '{}': {}",
+            input.display(),
+            working_file.display(),
+            e
+        )
     })?;
 
-    let mut reader = open_ubv(&input).map_err(|e| {
-        format!("Opening input '{}': {}", input.display(), e)
-    })?;
-    let mut out = OpenOptions::new().write(true).open(&working_file).map_err(|e| {
-        format!("Opening output '{}' for writing: {}", working_file.display(), e)
-    })?;
+    let mut reader =
+        open_ubv(&input).map_err(|e| format!("Opening input '{}': {}", input.display(), e))?;
+    let mut out = OpenOptions::new()
+        .write(true)
+        .open(&working_file)
+        .map_err(|e| {
+            format!(
+                "Opening output '{}' for writing: {}",
+                working_file.display(),
+                e
+            )
+        })?;
 
     log::info!("Anonymising records...");
     let mut records_zeroed: u64 = 0;

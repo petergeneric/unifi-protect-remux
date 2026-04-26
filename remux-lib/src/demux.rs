@@ -3,7 +3,7 @@ use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 
 use crate::analysis::AnalysedPartition;
 use ubv::frame::RecordHeader;
-use ubv::track::{is_audio_track, track_info, TrackType};
+use ubv::track::{TrackType, is_audio_track, track_info};
 
 /// 4-byte Annex B NAL start code.
 const NAL_START_CODE: [u8; 4] = [0, 0, 0, 1];
@@ -35,16 +35,12 @@ pub fn demux_partition(
 
     // Open output files with buffered writers
     let mut video_writer = match video_path {
-        Some(path) if partition.video_track_count > 0 => {
-            Some(BufWriter::new(File::create(path)?))
-        }
+        Some(path) if partition.video_track_count > 0 => Some(BufWriter::new(File::create(path)?)),
         _ => None,
     };
 
     let mut audio_writer = match audio_path {
-        Some(path) if partition.audio_track_count > 0 => {
-            Some(BufWriter::new(File::create(path)?))
-        }
+        Some(path) if partition.audio_track_count > 0 => Some(BufWriter::new(File::create(path)?)),
         _ => None,
     };
 

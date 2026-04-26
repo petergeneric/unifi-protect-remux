@@ -135,7 +135,11 @@ mod tests {
         let result = ClockSync::from_record(0, 1000, 0x100, &payload);
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("0x100"), "expected offset in error, got: {}", msg);
+        assert!(
+            msg.contains("0x100"),
+            "expected offset in error, got: {}",
+            msg
+        );
     }
 
     #[test]

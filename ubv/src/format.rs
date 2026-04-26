@@ -249,8 +249,14 @@ mod tests {
     #[test]
     fn test_packet_position() {
         // 0xED: bits 7-6 = 11 = Single
-        assert_eq!(FormatCode::new(0xED, 0x0C).packet_position(), PacketPosition::Single);
+        assert_eq!(
+            FormatCode::new(0xED, 0x0C).packet_position(),
+            PacketPosition::Single
+        );
         // 0xCD: bits 7-6 = 11 = Single
-        assert_eq!(FormatCode::new(0xCD, 0x0C).packet_position(), PacketPosition::Single);
+        assert_eq!(
+            FormatCode::new(0xCD, 0x0C).packet_position(),
+            PacketPosition::Single
+        );
     }
 }
