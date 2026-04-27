@@ -1,7 +1,10 @@
 //! Read an MP4, emit:
-//!   * Video frames in UBV's native wire format: length-prefixed NAL units
-//!     with SPS/PPS (or VPS/SPS/PPS) injected inline on every keyframe so
-//!     downstream probing can discover them.
+//!   * Video frames in UBV's native wire format. For H.264/HEVC: length-prefixed
+//!     NAL units with SPS/PPS (or VPS/SPS/PPS) injected inline on every
+//!     keyframe. For AV1: Low Overhead Bitstream Format OBUs prefixed by a
+//!     Temporal Delimiter on every frame plus the Sequence Header OBU on
+//!     keyframes (extracted from the av1C extradata, since MP4 samples must
+//!     not carry it inline).
 //!   * AAC audio frames wrapped in ADTS headers (real UBV files store audio
 //!     this way, and the remux probe path uses the "aac" demuxer which
 //!     expects ADTS).
@@ -19,6 +22,7 @@ use ffmpeg::media::Type;
 pub enum Codec {
     H264,
     Hevc,
+    Av1,
 }
 
 /// One video frame ready to be wrapped in a UBV record.
@@ -26,9 +30,12 @@ pub enum Codec {
 pub struct VideoFrame {
     pub dts_90k: u64,
     pub keyframe: bool,
-    /// NAL units in UBV's wire format: each NAL preceded by a 4-byte big-endian
-    /// length prefix. Keyframes have SPS/PPS (or VPS/SPS/PPS) prepended.
-    pub length_prefixed_nals: Vec<u8>,
+    /// Frame payload in UBV's on-the-wire format for this codec. For H.264/HEVC,
+    /// length-prefixed NAL units with SPS/PPS (or VPS/SPS/PPS) prepended on
+    /// keyframes. For AV1, Low Overhead Bitstream Format OBUs with a Temporal
+    /// Delimiter prepended to every frame and a Sequence Header prepended on
+    /// keyframes.
+    pub wire_payload: Vec<u8>,
 }
 
 pub struct VideoStream {
@@ -109,17 +116,29 @@ struct VideoPlan {
     codec: Codec,
     tb_num: i64,
     tb_den: i64,
+    /// Bytes prepended to every keyframe payload before the demuxed packet.
     keyframe_prefix: Vec<u8>,
+    /// Bytes prepended to every non-keyframe payload before the demuxed packet.
+    non_keyframe_prefix: Vec<u8>,
 }
+
+/// AV1 Temporal Delimiter OBU with `obu_has_size_field=1` and zero-length
+/// payload. Inserted at the start of every AV1 frame so a single-frame
+/// extraction is a complete temporal unit.
+const AV1_TD_OBU: [u8; 2] = [0x12, 0x00];
 
 fn plan_video(stream: &ffmpeg::format::stream::Stream) -> io::Result<VideoPlan> {
     let codec = match stream.parameters().id() {
         CodecId::H264 => Codec::H264,
         CodecId::HEVC => Codec::Hevc,
+        CodecId::AV1 => Codec::Av1,
         other => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("unsupported video codec {:?}; need H.264 or HEVC", other),
+                format!(
+                    "unsupported video codec {:?}; need H.264, HEVC or AV1",
+                    other
+                ),
             ));
         }
     };
@@ -138,25 +157,39 @@ fn plan_video(stream: &ffmpeg::format::stream::Stream) -> io::Result<VideoPlan> 
 
     let params = stream.parameters();
     let extradata = codec_extradata(&params);
-    let keyframe_prefix = match codec {
-        Codec::H264 => extract_h264_param_sets(&extradata)?,
-        Codec::Hevc => extract_hevc_param_sets(&extradata)?,
+    let (keyframe_prefix, non_keyframe_prefix) = match codec {
+        Codec::H264 => (extract_h264_param_sets(&extradata)?, Vec::new()),
+        Codec::Hevc => (extract_hevc_param_sets(&extradata)?, Vec::new()),
+        Codec::Av1 => {
+            // Both prefixes start with a TD OBU; keyframes additionally inline
+            // the Sequence Header(s) from av1C so downstream probing can
+            // discover codec parameters without seeing the MP4's av1C box.
+            let seq_hdr = extract_av1_sequence_header(&extradata)?;
+            let mut kf = Vec::with_capacity(AV1_TD_OBU.len() + seq_hdr.len());
+            kf.extend_from_slice(&AV1_TD_OBU);
+            kf.extend_from_slice(&seq_hdr);
+            (kf, AV1_TD_OBU.to_vec())
+        }
     };
 
-    // MP4 stores length-prefixed NALs; only 4-byte prefixes match UBV's wire
-    // format directly so we reject anything else.
-    let length_size = match codec {
-        Codec::H264 => length_size_h264(&extradata),
-        Codec::Hevc => length_size_hevc(&extradata),
-    };
-    if length_size != 4 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "MP4 uses {}-byte NAL length prefix; only 4-byte supported",
-                length_size
-            ),
-        ));
+    // MP4 stores H.264/HEVC NALs with a length prefix; only 4-byte prefixes
+    // match UBV's wire format directly so we reject anything else. AV1 has no
+    // such prefix so the check is skipped.
+    if matches!(codec, Codec::H264 | Codec::Hevc) {
+        let length_size = match codec {
+            Codec::H264 => length_size_h264(&extradata),
+            Codec::Hevc => length_size_hevc(&extradata),
+            Codec::Av1 => unreachable!(),
+        };
+        if length_size != 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "MP4 uses {}-byte NAL length prefix; only 4-byte supported",
+                    length_size
+                ),
+            ));
+        }
     }
 
     Ok(VideoPlan {
@@ -164,6 +197,7 @@ fn plan_video(stream: &ffmpeg::format::stream::Stream) -> io::Result<VideoPlan> 
         tb_num,
         tb_den,
         keyframe_prefix,
+        non_keyframe_prefix,
     })
 }
 
@@ -181,19 +215,19 @@ fn build_video(plan: VideoPlan, raw: Vec<(i64, bool, Vec<u8>)>) -> io::Result<Vi
         let scaled = delta * 90_000i128 * plan.tb_num as i128 / plan.tb_den as i128;
         let dts_90k = if scaled < 0 { 0u64 } else { scaled as u64 };
 
-        let payload = if keyframe {
-            let mut out = Vec::with_capacity(plan.keyframe_prefix.len() + data.len());
-            out.extend_from_slice(&plan.keyframe_prefix);
-            out.extend_from_slice(&data);
-            out
+        let prefix = if keyframe {
+            &plan.keyframe_prefix
         } else {
-            data
+            &plan.non_keyframe_prefix
         };
+        let mut wire_payload = Vec::with_capacity(prefix.len() + data.len());
+        wire_payload.extend_from_slice(prefix);
+        wire_payload.extend_from_slice(&data);
 
         frames.push(VideoFrame {
             dts_90k,
             keyframe,
-            length_prefixed_nals: payload,
+            wire_payload,
         });
     }
 
@@ -428,6 +462,34 @@ fn extract_hevc_param_sets(extradata: &[u8]) -> io::Result<Vec<u8>> {
         }
     }
     Ok(out)
+}
+
+/// Extract the configOBUs (sequence header + any metadata OBUs) from an
+/// av1C extradata blob. The first 4 bytes of av1C are a fixed-shape header;
+/// everything after is OBUs already in `obu_has_size_field=1` form, ready
+/// to be inlined into a UBV keyframe.
+fn extract_av1_sequence_header(extradata: &[u8]) -> io::Result<Vec<u8>> {
+    if extradata.len() < 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "av1C extradata < 4 bytes; no AV1CodecConfigurationRecord",
+        ));
+    }
+    // First byte is marker(1)=1 + version(7)=1 = 0x81. Tolerate any version
+    // value but require the marker bit so we catch obviously-wrong blobs.
+    if extradata[0] & 0x80 == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "av1C extradata missing marker bit in first byte",
+        ));
+    }
+    if extradata.len() == 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "av1C extradata has no configOBUs (no Sequence Header to inline)",
+        ));
+    }
+    Ok(extradata[4..].to_vec())
 }
 
 fn length_size_h264(extradata: &[u8]) -> u8 {

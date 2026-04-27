@@ -111,6 +111,7 @@ pub fn synth_from_mp4(mp4_path: &Path, ubv_path: &Path, config: &SynthConfig) ->
     let video_track_id = match bundle.video.codec {
         reader::Codec::H264 => ubv::track::TRACK_VIDEO,
         reader::Codec::Hevc => ubv::track::TRACK_VIDEO_HEVC,
+        reader::Codec::Av1 => ubv::track::TRACK_VIDEO_AV1,
     };
 
     let mut vi = 0usize;
@@ -156,7 +157,7 @@ pub fn synth_from_mp4(mp4_path: &Path, ubv_path: &Path, config: &SynthConfig) ->
                 clock_rate_in_stream: None,
                 extra: None,
                 duration: None,
-                payload: &frame.length_prefixed_nals,
+                payload: &frame.wire_payload,
             };
             offset += rec.write_to(&mut out, offset)?;
             vi += 1;

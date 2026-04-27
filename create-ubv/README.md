@@ -6,8 +6,11 @@ shipping with real Unifi recordings.
 
 The produced `.ubv` is the minimum viable shape that `ubv::reader` and
 `remux_lib` accept: one partition header, one clock-sync record, and the
-video track as a sequence of length-prefixed NAL units with SPS/PPS (or
-VPS/SPS/PPS for HEVC) injected inline on every keyframe.
+video track. For H.264/HEVC the video is a sequence of length-prefixed
+NAL units with SPS/PPS (or VPS/SPS/PPS) injected inline on every
+keyframe; for AV1 it is Low Overhead Bitstream Format OBUs with a
+Temporal Delimiter prepended to every frame and the Sequence Header
+inlined on every keyframe.
 
 ## Usage
 
@@ -42,10 +45,12 @@ synth_from_mp4(
 
 ## Features
 
-- **H.264** and **HEVC** MP4 inputs.
-- `avcC` / `hvcC` extradata is parsed and SPS/PPS/VPS NAL units are
-  prepended to every keyframe so downstream probing (which feeds a raw
-  `h264` / `hevc` bitstream to FFmpeg) can discover codec parameters.
+- **H.264**, **HEVC** and **AV1** MP4 inputs.
+- `avcC` / `hvcC` / `av1C` extradata is parsed and codec parameter sets
+  are prepended to every keyframe — SPS/PPS for H.264, VPS/SPS/PPS for
+  HEVC, the Sequence Header OBU for AV1 — so downstream probing (which
+  feeds a raw `h264` / `hevc` / `obu` bitstream to FFmpeg) can discover
+  codec parameters.
 - DTS is rescaled from the source stream's timebase to the UBV video
   clock (90 kHz).
 - Output round-trips through `ubv::reader::parse_ubv` — the crate has
@@ -69,8 +74,8 @@ synth_from_mp4(
 - **Fixed wall-clock anchor.** One clock-sync record at the start of the
   partition, nothing periodic. Fine for short fixtures; not intended for
   simulating hours-long drift behaviour.
-- **No AV1, no Opus, no JPEG snapshots, no Smart-Event metadata.** The
-  real UBV format carries all of these; the synthesiser does not.
+- **No Opus, no JPEG snapshots, no Smart-Event metadata.** The real UBV
+  format carries all of these; the synthesiser does not.
 
 ## Feature flags
 
@@ -78,16 +83,29 @@ synth_from_mp4(
   source. Disable with `--no-default-features` for fast iteration against
   system FFmpeg via `pkg-config`.
 
-## Regenerating the reference fixture
+## Regenerating the reference fixtures
 
-The checked-in `testdata/essence/testsrc2.ubv` is the canonical output used by
-the workspace tests (`ubv::reference_testsrc2`, `remux-lib::reference_testsrc2`).
-It was produced by feeding an ffmpeg `testsrc2` MP4 through this crate (see
-`scripts/create-test-ubv-round-trip.sh` for the MP4-generation recipe).
+Two fixtures live in `testdata/essence/`, exercised by `ubv::reference_testsrc2*`
+and `remux-lib::reference_testsrc2*`:
 
-After regenerating the `.ubv`, refresh the paired JSON checksum:
+- `testsrc2.ubv` — H.264 + AAC, 640x480 @ 30 fps for 5 s (covers A/V interleave).
+- `testsrc2_av1.ubv` — AV1 video-only, 320x240 @ 30 fps for 2 s (covers the AV1
+  OBU plumbing).
+
+Both are produced by feeding an ffmpeg `testsrc2` MP4 through this crate; see
+`scripts/create-test-ubv-round-trip.sh` for the MP4-generation recipe (pass
+`--codec av1` to switch to the AV1 variant).
+
+After regenerating either `.ubv`, refresh the paired JSON snapshot:
 
 ```
 cargo run -p ubv-info -- --json testdata/essence/testsrc2.ubv \
     > testdata/essence/testsrc2.json
+cargo run -p ubv-info -- --json testdata/essence/testsrc2_av1.ubv \
+    > testdata/essence/testsrc2_av1.json
 ```
+
+The remux-lib reference test also asserts the md5 of the demuxed elementary
+stream — when the encoded bytes change (e.g. a new libsvtav1 / libx264
+version), update the `EXPECTED_*_MD5` constants in the corresponding
+`remux-lib/tests/reference_testsrc2*.rs`.
