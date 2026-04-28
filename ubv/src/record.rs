@@ -40,11 +40,12 @@ pub struct RawRecord {
 /// Map an IO error during record parsing to the appropriate UbvError.
 ///
 /// True unexpected-EOF errors (the most common failure) become `UnexpectedEof`
-/// with a file offset. All other IO errors are preserved with positional context.
+/// with a file offset and the same context string. All other IO errors are
+/// preserved with positional context via `IoAtOffset`.
 fn io_at_offset(offset: u64, context: &'static str) -> impl FnOnce(std::io::Error) -> UbvError {
     move |e: std::io::Error| {
         if e.kind() == std::io::ErrorKind::UnexpectedEof {
-            UbvError::UnexpectedEof { offset }
+            UbvError::UnexpectedEof { offset, context }
         } else {
             UbvError::IoAtOffset {
                 offset,
@@ -57,7 +58,10 @@ fn io_at_offset(offset: u64, context: &'static str) -> impl FnOnce(std::io::Erro
 
 /// Read the next record from the stream. Returns None at EOF.
 pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> {
-    let file_offset = reader.stream_position().map_err(UbvError::Io)?;
+    let file_offset = reader.stream_position().map_err(|e| UbvError::Io {
+        context: "querying stream position",
+        source: e,
+    })?;
 
     // Read bytes 0-7 (tag + format code + sequence)
     let mut header = [0u8; 8];
@@ -73,23 +77,25 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
         return Ok(None);
     }
     if header[0] != 0xA0 {
-        return Err(UbvError::BadMagic {
+        return Err(UbvError::BadRecordMagic {
             offset: file_offset,
             got: header[0],
         });
     }
+
+    let track_id = u16::from_be_bytes([header[1], header[2]]);
 
     // Verify XOR checksum: byte0 ^ byte1 ^ byte2 == byte3
     let expected_checksum = header[0] ^ header[1] ^ header[2];
     if expected_checksum != header[3] {
         return Err(UbvError::ChecksumMismatch {
             offset: file_offset,
+            track_id,
             expected: expected_checksum,
             got: header[3],
         });
     }
 
-    let track_id = u16::from_be_bytes([header[1], header[2]]);
     let format_code = FormatCode::new(header[4], header[5]);
     let sequence = u16::from_be_bytes([header[6], header[7]]);
 
@@ -104,45 +110,40 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
         .read_exact(ext_header)
         .map_err(io_at_offset(file_offset, "reading extended header"))?;
 
-    // Parse fields from extended header based on format code flags
+    // Parse fields from the extended header. `header_len` was computed from the
+    // same `format_code` flags, so `ext_header` is exactly sized for the reads
+    // below — slice indexing is infallible by construction.
     let mut pos = 0;
 
-    let truncated = || UbvError::UnexpectedEof {
-        offset: file_offset,
-    };
-
-    // Clock rate: from stream if sri==1, else from table
     let clock_rate = if format_code.sample_rate_index() == 1 {
-        let cr = read_u32_from_slice(ext_header, pos).ok_or_else(truncated)?;
+        let cr = read_u32(ext_header, pos);
         pos += 4;
         cr
     } else {
         format_code.table_clock_rate()
     };
 
-    // DTS
     let dts = if format_code.dts_64bit() {
-        let v = read_u64_from_slice(ext_header, pos).ok_or_else(truncated)?;
+        let v = read_u64(ext_header, pos);
         pos += 8;
         v
     } else {
-        let v = read_u32_from_slice(ext_header, pos).ok_or_else(truncated)? as u64;
+        let v = read_u32(ext_header, pos) as u64;
         pos += 4;
         v
     };
 
-    // Extra field (bit 1)
     let extra = if format_code.has_extra() {
-        let v = read_u32_from_slice(ext_header, pos).ok_or_else(truncated)?;
+        let v = read_u32(ext_header, pos);
         pos += 4;
         Some(v)
     } else {
         None
     };
 
-    // Duration field: when bit 6 is clear, there's a separate duration before SIZE
+    // bit 6 clear: duration field precedes SIZE. Otherwise duration doubles as SIZE.
     let duration = if format_code.byte4() & 0x40 == 0 {
-        Some(read_u32_from_slice(ext_header, pos).ok_or_else(truncated)?)
+        Some(read_u32(ext_header, pos))
     } else {
         None
     };
@@ -207,18 +208,20 @@ fn alignment_padding(file_offset: u64, header_len: usize, data_size: u32) -> u32
     ((4 - (unpadded % 4)) % 4) as u32
 }
 
-fn read_u32_from_slice(buf: &[u8], offset: usize) -> Option<u32> {
-    buf.get(offset..offset + 4)?
-        .try_into()
-        .ok()
-        .map(u32::from_be_bytes)
+fn read_u32(buf: &[u8], offset: usize) -> u32 {
+    u32::from_be_bytes(
+        buf[offset..offset + 4]
+            .try_into()
+            .expect("header_len mismatch — parser bug"),
+    )
 }
 
-fn read_u64_from_slice(buf: &[u8], offset: usize) -> Option<u64> {
-    buf.get(offset..offset + 8)?
-        .try_into()
-        .ok()
-        .map(u64::from_be_bytes)
+fn read_u64(buf: &[u8], offset: usize) -> u64 {
+    u64::from_be_bytes(
+        buf[offset..offset + 8]
+            .try_into()
+            .expect("header_len mismatch — parser bug"),
+    )
 }
 
 #[cfg(test)]
