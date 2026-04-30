@@ -18,10 +18,17 @@ jobs:
         include:
           - os: macos-latest
             name: macOS arm64
+            cargo_args: ""
           - os: ubuntu-latest
             name: Ubuntu x86_64
+            cargo_args: ""
+          # Windows links against vcpkg-provided FFmpeg dynamically rather
+          # than building it statically from source; --no-default-features
+          # turns off the `ffmpeg-static` cargo feature so ffmpeg-sys-next
+          # falls through to its vcpkg discovery path.
           - os: windows-latest
             name: Windows x86_64
+            cargo_args: "--no-default-features"
 
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -29,47 +36,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install FFmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install nasm ffmpeg pkg-config
-          echo "FFMPEG_DIR=$(brew --prefix ffmpeg)" >> "$GITHUB_ENV"
+      # Linux/macOS build FFmpeg from source via the `ffmpeg-static` default
+      # feature (see Cargo.toml) — ffmpeg-sys-next clones FFmpeg's official
+      # `release/N` branch in its build script. The compiled FFmpeg lives
+      # under target/ and is preserved by the cargo cache.
+      #
+      # Windows uses vcpkg instead: the FFmpeg+MSVC+MSYS2 from-source path
+      # is too fragile (awk backslash handling in FFmpeg's MSVC depcmd was
+      # the last straw). vcpkg's `ffmpeg` port is a maintained, MSVC-native
+      # build, and ffmpeg-sys-next's build.rs auto-discovers it via the
+      # vcpkg-rs crate when `--no-default-features` disables the static
+      # build path.
 
-      - name: Install pre-built FFmpeg (Ubuntu x86_64)
+      - name: Install FFmpeg build deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install nasm pkg-config
+
+      - name: Install FFmpeg build deps (Ubuntu)
         if: runner.os == 'Linux' && runner.arch == 'X64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang pkg-config libxv-dev libc++-dev nasm
-          # Pinned to a dated BtbN autobuild tag (immutable) rather than the
-          # rolling "latest" tag, which drops older FFmpeg branch assets when
-          # new versions ship (broke CI when 8.1 bumped 8.0 off the latest tag).
-          FFMPEG_TAG="autobuild-2026-04-15-13-19"
-          FFMPEG_NAME="ffmpeg-n8.1-8-g735c84b57f-linux64-lgpl-shared-8.1"
-          curl -L "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_TAG}/${FFMPEG_NAME}.tar.xz" -o ffmpeg.tar.xz
-          tar -xf ffmpeg.tar.xz
-          echo "FFMPEG_DIR=${PWD}/${FFMPEG_NAME}" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=${PWD}/${FFMPEG_NAME}/lib" >> "$GITHUB_ENV"
+          sudo apt-get install -y build-essential clang pkg-config libxv-dev libc++-dev nasm
 
-      - name: Install FFmpeg and LLVM (Windows)
+      - name: Install LLVM for bindgen (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # LLVM for bindgen
           choco install llvm --yes --no-progress
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
 
-          # Pre-built FFmpeg 8 shared libs.
-          # Pinned to a dated BtbN autobuild tag (immutable) rather than the
-          # rolling "latest" tag, which drops older FFmpeg branch assets when
-          # new versions ship (broke CI when 8.1 bumped 8.0 off the latest tag).
-          # Keep in sync with release-windows.yml.
-          $ffmpegTag = "autobuild-2026-04-15-13-19"
-          $ffmpegName = "ffmpeg-n8.1-8-g735c84b57f-win64-lgpl-shared-8.1"
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/$ffmpegTag/$ffmpegName.zip" -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath .
-          $ffmpegDir = (Resolve-Path $ffmpegName).Path
-          echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
-          echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
+      # Pin vcpkg to a specific commit so the FFmpeg port version is
+      # reproducible. To bump: pick a newer SHA from microsoft/vcpkg main
+      # and update VCPKG_COMMIT here AND in release-windows.yml.
+      - name: Setup vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VCPKG_COMMIT: 80f9bcfa455e875d9c1bf7a7c6692d7e1e481061
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg-pinned
+          git -C C:\vcpkg-pinned checkout $env:VCPKG_COMMIT
+          & C:\vcpkg-pinned\bootstrap-vcpkg.bat -disableMetrics
+          echo "VCPKG_ROOT=C:\vcpkg-pinned" >> $env:GITHUB_ENV
+          echo "C:\vcpkg-pinned" >> $env:GITHUB_PATH
+          # Add the installed bin dir so cargo test can load FFmpeg DLLs at
+          # runtime. The directory will exist after the install step runs;
+          # GITHUB_PATH is consumed at the end of each step, so order is fine.
+          echo "C:\vcpkg-pinned\installed\x64-windows\bin" >> $env:GITHUB_PATH
+
+      - name: Cache vcpkg installed packages (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg-pinned\installed
+          key: vcpkg-ci-x64-windows-80f9bcfa-ffmpeg
+
+      - name: Install FFmpeg via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: vcpkg install ffmpeg:x64-windows
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -82,6 +107,11 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
+      # cargo_args is part of the key so that switching FFmpeg source on
+      # Windows (BtbN -> vcpkg, which flipped --no-default-features on)
+      # produces a distinct cache, preventing stale ffmpeg-sys-next build-
+      # script output (with old `cargo:rustc-link-search=...` paths) from
+      # being restored on top of the new vcpkg-based build.
       - name: Cache cargo registry and build
         uses: actions/cache@v4
         with:
@@ -89,23 +119,19 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo${{ matrix.cargo_args }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-cargo-
-
-      - name: Clean cached FFmpeg build artifacts
-        shell: bash
-        run: cargo clean -p ffmpeg-sys-next 2>/dev/null || true
+            ${{ runner.os }}-${{ runner.arch }}-cargo${{ matrix.cargo_args }}-
 
       - name: Build
-        run: cargo build --no-default-features
+        run: cargo build ${{ matrix.cargo_args }}
 
       - name: Build C# GUI
         if: runner.os != 'Linux'
         run: dotnet build ui/RemuxGui/RemuxGui.csproj -c Debug
 
       - name: Test
-        run: cargo nextest run --no-default-features --profile ci
+        run: cargo nextest run --profile ci ${{ matrix.cargo_args }}
 
       - name: Publish test report
         if: always()

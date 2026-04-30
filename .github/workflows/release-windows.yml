@@ -23,26 +23,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install FFmpeg and LLVM
+      - name: Install LLVM
         shell: pwsh
         run: |
           # LLVM for bindgen
           choco install llvm --yes --no-progress
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
 
-          # Pre-built FFmpeg 8 shared libs.
-          # Pinned to a dated BtbN autobuild tag (immutable) rather than the
-          # rolling "latest" tag, which drops older FFmpeg branch assets when
-          # new versions ship (broke CI when 8.1 bumped 8.0 off the latest tag).
-          # To bump: pick a newer autobuild-YYYY-MM-DD-HH-MM tag and update the
-          # filename (it embeds the upstream git commit hash).
-          $ffmpegTag = "autobuild-2026-04-15-13-19"
-          $ffmpegName = "ffmpeg-n8.1-8-g735c84b57f-win64-lgpl-shared-8.1"
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/$ffmpegTag/$ffmpegName.zip" -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath .
-          $ffmpegDir = (Resolve-Path $ffmpegName).Path
-          echo "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
-          echo "$ffmpegDir\bin" >> $env:GITHUB_PATH
+      # FFmpeg comes from vcpkg. Switched away from BtbN autobuild tarballs
+      # because BtbN deletes "dated" tags after ~14 days despite their naming
+      # suggesting otherwise (broke release builds). vcpkg's ffmpeg port is
+      # an LGPL build with shared libs, matching the previous BtbN bundle's
+      # licensing/linking model. Pin via a specific microsoft/vcpkg commit so
+      # the FFmpeg port version is reproducible. To bump: pick a newer SHA
+      # from microsoft/vcpkg main and update VCPKG_COMMIT here AND in ci.yml.
+      - name: Setup vcpkg
+        shell: pwsh
+        env:
+          VCPKG_COMMIT: 80f9bcfa455e875d9c1bf7a7c6692d7e1e481061
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg-pinned
+          git -C C:\vcpkg-pinned checkout $env:VCPKG_COMMIT
+          & C:\vcpkg-pinned\bootstrap-vcpkg.bat -disableMetrics
+          echo "VCPKG_ROOT=C:\vcpkg-pinned" >> $env:GITHUB_ENV
+          echo "C:\vcpkg-pinned" >> $env:GITHUB_PATH
+          # Add the installed bin dir so cargo test can load FFmpeg DLLs at
+          # runtime. The directory will exist after the install step runs;
+          # GITHUB_PATH is consumed at the end of each step, so order is fine.
+          echo "C:\vcpkg-pinned\installed\x64-windows\bin" >> $env:GITHUB_PATH
+
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg-pinned\installed
+          key: vcpkg-release-x64-windows-80f9bcfa-ffmpeg
+
+      - name: Install FFmpeg via vcpkg
+        shell: pwsh
+        run: vcpkg install ffmpeg:x64-windows
 
       - name: Download VC++ redistributable
         shell: pwsh
@@ -102,6 +120,8 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
+      # `vcpkg` salt: bust prior caches whose ffmpeg-sys-next build-script
+      # output still encodes the old BtbN FFMPEG_DIR link search path.
       - name: Cache cargo registry and build
         uses: actions/cache@v4
         with:
@@ -109,9 +129,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: release-x86_64-pc-windows-msvc-${{ hashFiles('**/Cargo.lock') }}
+          key: release-x86_64-pc-windows-msvc-vcpkg-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            release-x86_64-pc-windows-msvc-
+            release-x86_64-pc-windows-msvc-vcpkg-
 
       - name: Build release binaries
         run: cargo build --release --no-default-features --target x86_64-pc-windows-msvc
@@ -122,7 +142,7 @@ jobs:
           $NativeDir = "ui/RemuxGui/native/win-x64"
           New-Item -ItemType Directory -Force $NativeDir
           Copy-Item "target/x86_64-pc-windows-msvc/release/remux_ffi.dll" $NativeDir
-          Copy-Item "$env:FFMPEG_DIR\bin\*.dll" $NativeDir
+          Copy-Item "$env:VCPKG_ROOT\installed\x64-windows\bin\*.dll" $NativeDir
           dotnet publish ui/RemuxGui/RemuxGui.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
 
       - name: Test
@@ -144,7 +164,7 @@ jobs:
           Copy-Item target/x86_64-pc-windows-msvc/release/ubv-info.exe staging/
           Copy-Item target/x86_64-pc-windows-msvc/release/ubv-anonymise.exe staging/
           # Bundle FFmpeg DLLs so users don't need a separate FFmpeg install
-          Copy-Item "$env:FFMPEG_DIR\bin\*.dll" staging/
+          Copy-Item "$env:VCPKG_ROOT\installed\x64-windows\bin\*.dll" staging/
           # Bundle VC++ 2015-2022 Redistributable bootstrapper
           Copy-Item "$env:VC_REDIST" staging/
           # README with first-time setup instructions
