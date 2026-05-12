@@ -26,7 +26,7 @@ jobs:
           # than building it statically from source; --no-default-features
           # turns off the `ffmpeg-static` cargo feature so ffmpeg-sys-next
           # falls through to its vcpkg discovery path.
-          - os: windows-latest
+          - os: windows-2025-vs2026
             name: Windows x86_64
             cargo_args: "--no-default-features"
 
