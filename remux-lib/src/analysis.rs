@@ -1,7 +1,7 @@
 use std::io;
 
 use chrono::{DateTime, TimeZone, Utc};
-use ubv::clock::wc_ticks_to_millis;
+use ubv::clock::{self, wc_ticks_to_millis};
 use ubv::frame::RecordHeader;
 use ubv::partition::{Partition, PartitionEntry};
 use ubv::track::{is_audio_track, is_video_track};
@@ -43,32 +43,11 @@ fn wc_to_datetime(wc: u64, clock_rate: u32) -> io::Result<DateTime<Utc>> {
     })
 }
 
-/// Compute a nominal framerate from DTS deltas using the median for outlier robustness.
+/// Compute a nominal framerate. Implausibly high results (> 120 fps) are clamped to 30
+/// fps with a warning; degenerate inputs (too few samples, equal DTS, zero clock rate)
+/// fall back to 1 fps so existing callers keep a usable timebase.
 pub fn compute_nominal_fps(dts_values: &[u64], clock_rate: u32) -> u32 {
-    if dts_values.len() < 2 || clock_rate == 0 {
-        return 1;
-    }
-
-    let mut deltas: Vec<u64> = dts_values
-        .windows(2)
-        .map(|w| w[1].saturating_sub(w[0]))
-        .filter(|&d| d > 0)
-        .collect();
-
-    if deltas.is_empty() {
-        return 1;
-    }
-
-    deltas.sort_unstable();
-    let median = deltas[deltas.len() / 2];
-
-    if median == 0 {
-        return 1;
-    }
-
-    let fps = (clock_rate as u64 + median / 2) / median; // rounded division
-    let fps = (fps as u32).max(1);
-
+    let fps = clock::compute_nominal_fps(dts_values, clock_rate).unwrap_or(1);
     if fps > 120 {
         log::warn!(
             "WARNING: FRAMERATE DETECTION PRODUCED A DUBIOUS VALUE ({} fps). \
@@ -78,7 +57,6 @@ pub fn compute_nominal_fps(dts_values: &[u64], clock_rate: u32) -> u32 {
         );
         return 30;
     }
-
     fps
 }
 
@@ -319,33 +297,6 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_nominal_fps_30fps() {
-        // 90000 Hz clock, 30fps => delta = 3000 ticks
-        let dts: Vec<u64> = (0..100).map(|i| i * 3000).collect();
-        assert_eq!(compute_nominal_fps(&dts, 90000), 30);
-    }
-
-    #[test]
-    fn test_compute_nominal_fps_15fps_jittery() {
-        // 90000 Hz clock, 15fps => nominal delta = 6000 ticks, add jitter
-        let mut dts: Vec<u64> = Vec::new();
-        let mut t = 0u64;
-        for i in 0..100 {
-            dts.push(t);
-            // Alternate between 5998, 6000, 6002
-            t += 6000 + (i % 3) as u64 - 1;
-        }
-        assert_eq!(compute_nominal_fps(&dts, 90000), 15);
-    }
-
-    #[test]
-    fn test_compute_nominal_fps_all_identical_raw_dts() {
-        // All-identical raw DTS → all deltas are 0 → all filtered out → returns 1
-        let dts: Vec<u64> = vec![5000; 100];
-        assert_eq!(compute_nominal_fps(&dts, 90000), 1);
-    }
-
-    #[test]
     fn test_compute_nominal_fps_caps_dubious_value() {
         // Deltas of exactly 1 tick at 90kHz → 90000 fps, capped to 30
         let dts: Vec<u64> = (0..100).collect();
@@ -357,18 +308,6 @@ mod tests {
         // 90000 Hz clock, 120fps => delta = 750 ticks
         let dts: Vec<u64> = (0..100).map(|i| i * 750).collect();
         assert_eq!(compute_nominal_fps(&dts, 90000), 120);
-    }
-
-    #[test]
-    fn test_compute_nominal_fps_single_frame() {
-        let dts: Vec<u64> = vec![0];
-        assert_eq!(compute_nominal_fps(&dts, 90000), 1);
-    }
-
-    #[test]
-    fn test_compute_nominal_fps_empty() {
-        let dts: Vec<u64> = vec![];
-        assert_eq!(compute_nominal_fps(&dts, 90000), 1);
     }
 
     /// Helper: parse a .ubv.gz testdata file and run analysis on the first partition.

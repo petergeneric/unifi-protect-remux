@@ -24,6 +24,38 @@ pub fn wc_ticks_to_millis(wc: u64, clock_rate: u32) -> u64 {
     ((wc as u128 * 1000 + clock_rate as u128 / 2) / clock_rate as u128) as u64
 }
 
+/// Compute a nominal framerate from DTS deltas using the median for outlier robustness.
+///
+/// Returns `None` when the input is degenerate (fewer than 2 samples, zero clock rate,
+/// or all DTS values equal), so callers can distinguish "unknown" from a genuine 1 fps.
+/// Does not apply any upper-bound sanity clamp — callers that want to detect implausibly
+/// high values should do so themselves.
+pub fn compute_nominal_fps(dts_values: &[u64], clock_rate: u32) -> Option<u32> {
+    if dts_values.len() < 2 || clock_rate == 0 {
+        return None;
+    }
+
+    let mut deltas: Vec<u64> = dts_values
+        .windows(2)
+        .map(|w| w[1].saturating_sub(w[0]))
+        .filter(|&d| d > 0)
+        .collect();
+
+    if deltas.is_empty() {
+        return None;
+    }
+
+    deltas.sort_unstable();
+    let median = deltas[deltas.len() / 2];
+
+    if median == 0 {
+        return None;
+    }
+
+    let fps = (clock_rate as u64 + median / 2) / median; // rounded division
+    Some((fps as u32).max(1))
+}
+
 impl ClockSync {
     /// Parse a clock sync from the record's DTS, clock rate, file offset, and 8-byte payload.
     pub fn from_record(
@@ -192,5 +224,37 @@ mod tests {
         assert_eq!(wc_ticks_to_millis(45, 90000), 1);
         // 44 ticks at 90000 Hz → 0.4889 ms, should truncate to 0
         assert_eq!(wc_ticks_to_millis(44, 90000), 0);
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_30fps() {
+        let dts: Vec<u64> = (0..100).map(|i| i * 3000).collect();
+        assert_eq!(compute_nominal_fps(&dts, 90000), Some(30));
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_jittery_15fps() {
+        let mut dts: Vec<u64> = Vec::new();
+        let mut t = 0u64;
+        for i in 0..100 {
+            dts.push(t);
+            t += 6000 + (i % 3) as u64 - 1;
+        }
+        assert_eq!(compute_nominal_fps(&dts, 90000), Some(15));
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_returns_raw_high_value() {
+        // 1-tick deltas at 90kHz → 90000 fps. ubv version does NOT clamp.
+        let dts: Vec<u64> = (0..100).collect();
+        assert_eq!(compute_nominal_fps(&dts, 90000), Some(90000));
+    }
+
+    #[test]
+    fn test_compute_nominal_fps_degenerate() {
+        assert_eq!(compute_nominal_fps(&[], 90000), None);
+        assert_eq!(compute_nominal_fps(&[42], 90000), None);
+        assert_eq!(compute_nominal_fps(&[5000; 100], 90000), None);
+        assert_eq!(compute_nominal_fps(&[0, 3000, 6000], 0), None);
     }
 }

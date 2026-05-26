@@ -1109,6 +1109,7 @@ dependencies = [
 name = "ubv-info"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "clap",
  "flate2",
  "libc",
