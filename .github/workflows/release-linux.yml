@@ -1,6 +1,12 @@
 name: Release (Linux)
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/release-linux.yml
+      - scripts/package-deb.sh
+      - scripts/test-deb.sh
+      - packaging/debian/**
   release:
     types: [published]
   workflow_dispatch:
@@ -19,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             artifact: cli-linux-x86_64
           - os: ubuntu-24.04-arm
@@ -29,23 +35,24 @@ jobs:
     name: ${{ matrix.artifact }}
     runs-on: ${{ matrix.os }}
 
+    # glibc baseline shared by Ubuntu 22.04+ and Debian 12+.
+    container: ubuntu:22.04
+
     steps:
+      - name: Install build deps
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential nasm pkg-config libclang-dev curl git ca-certificates dpkg-dev xz-utils
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Install build deps
-        run: sudo apt-get update && sudo apt-get install -y build-essential nasm pkg-config
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -57,18 +64,21 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          key: release-jammy-deb-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            release-${{ matrix.target }}-
+            release-jammy-deb-${{ matrix.target }}-
 
       - name: Build release binaries
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Test
-        run: cargo nextest run --release --target ${{ matrix.target }} --profile ci
+        run: cargo nextest run --locked --release --target ${{ matrix.target }} --profile ci
 
       - name: Publish test report
-        if: always()
+        # Fork PR tokens cannot create check runs.
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: dorny/test-reporter@v1
         with:
           name: Tests (${{ matrix.artifact }})
@@ -88,16 +98,64 @@ jobs:
           name: ${{ matrix.artifact }}
           path: staging/
 
-      - name: Determine release tag
-        id: tag
-        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+      - name: Build Debian package and release archive
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          version=${RELEASE_TAG:-0.0.0-dev.${GITHUB_RUN_NUMBER}}
+          mkdir -p dist
+          bash scripts/package-deb.sh staging dist "$version"
+          tar czf "dist/$ARTIFACT.tar.gz" -C staging .
 
-      - name: Create release archive
-        if: steps.tag.outputs.tag != ''
-        run: tar czf ${{ matrix.artifact }}.tar.gz -C staging .
+      - name: Upload packages for validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.artifact }}
+          path: dist/
+          if-no-files-found: error
 
-      - name: Upload release asset
-        if: steps.tag.outputs.tag != ''
+  test-deb:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ['ubuntu:22.04', 'ubuntu:24.04', 'ubuntu:26.04', 'debian:12', 'debian:13']
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - os: ubuntu-24.04
+            artifact: cli-linux-x86_64
+          - os: ubuntu-24.04-arm
+            artifact: cli-linux-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-${{ matrix.artifact }}
+          path: dist
+      - name: Install, remux, and remove
+        env:
+          DISTRO: ${{ matrix.distro }}
+        run: |
+          docker run --rm -v "$PWD:/work:ro" "$DISTRO" \
+            bash -c 'bash /work/scripts/test-deb.sh /work/dist/*.deb /work/testdata/essence/testsrc2.ubv'
+
+  publish:
+    needs: [build, test-deb]
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+      - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.artifact }}.tar.gz
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/*

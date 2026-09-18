@@ -14,6 +14,10 @@ Use the following instructions to get the unifi-protect-remux tool working:
 4. If using command-line tools, run: ```./remux *.ubv```. If using the GUI, drag the .ubc files in
 5. By default, both audio and video will be extracted. If you do not want audio, consult Settings (or --help text) for more information.
 
+For Ubuntu 22.04+ and Debian 12+, `.deb` packages are also available. Download the
+package for your architecture and install with `sudo apt install ./unifi-protect-remux_*_*.deb`.
+The CLI tools will then be on your PATH, so you can run `remux` directly.
+
 ## Paid assistance available
 
 I've been in the video software field for over 20 years, and have assisted with footage recovery and analysis (including production of custom review and reporting interfaces) for a case that became a **high-profile UK Public Inquiry**, and involved **hundreds of thousands of hours of highly sensitive footage**, so I understand the complex environment my users often work within.

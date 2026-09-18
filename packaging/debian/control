@@ -1,0 +1,11 @@
+Source: unifi-protect-remux
+Section: video
+Priority: optional
+Maintainer: Peter Wright <code@peter.works>
+Homepage: https://github.com/petergeneric/unifi-protect-remux
+
+Package: unifi-protect-remux
+Architecture: amd64 arm64
+Depends: ${shlibs:Depends}
+Description: Convert and inspect UniFi Protect recordings
+ Converts UBV recordings to MP4 without transcoding.
