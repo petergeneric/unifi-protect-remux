@@ -38,8 +38,8 @@ Debian/Ubuntu:
 apt-get install build-essential nasm pkg-config libclang-dev
 ```
 
-## CI
-Faster builds by relying on OS shared FFmpeg 8.0 install:
+## Shared Libraries
+Faster builds by relying on OS shared FFmpeg install:
 
 ```
 cargo build --no-default-features

@@ -6,8 +6,8 @@
 //!   hashes are platform-independent and stable across FFmpeg versions.
 //! - `mp4_mux_testsrc2_produces_expected_stream` runs the default MP4-mux path
 //!   (mp4=true) and opens the result with ffmpeg-next to verify codec,
-//!   resolution, and frame count. This is the only place FFmpeg ABI/behaviour
-//!   drift on the mux path would be caught.
+//!   resolution, video frame count, and AAC packets. It also extracts and
+//!   decodes a scaled JPEG thumbnail to exercise the decoder/scaler/encoder.
 //!
 //! `testdata/essence/testsrc2.ubv` is a synthetic fixture produced by
 //! `create-ubv` from an `ffmpeg testsrc2` source (see `create-ubv/README.md`).
@@ -131,6 +131,25 @@ fn mp4_mux_testsrc2_produces_expected_stream() {
     );
 
     verify_mp4_output(Path::new(&outputs[0]));
+
+    // Test thumbnail creation
+    let thumbnail = tmpdir.join("thumbnail.jpeg");
+    remux_lib::thumbnail::extract_thumbnail(&outputs[0], thumbnail.to_str().unwrap(), 320)
+        .expect("thumbnail extraction failed");
+
+    let mut jpeg = ffmpeg::format::input(&thumbnail).expect("open generated JPEG");
+    let stream = jpeg.streams().best(Type::Video).expect("JPEG video stream");
+    assert_eq!(stream.parameters().id(), CodecId::MJPEG);
+    let mut decoder = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
+        .expect("JPEG decoder context")
+        .decoder()
+        .video()
+        .expect("JPEG decoder");
+    let (_, packet) = jpeg.packets().next().expect("JPEG packet");
+    decoder.send_packet(&packet).expect("send JPEG packet");
+    let mut frame = ffmpeg::frame::Video::empty();
+    decoder.receive_frame(&mut frame).expect("decode JPEG");
+    assert_eq!((frame.width(), frame.height()), (320, 240));
 }
 
 /// Open the produced MP4 with ffmpeg-next and verify codec/resolution/frames.
@@ -159,11 +178,24 @@ fn verify_mp4_output(path: &Path) {
     assert_eq!(w, EXPECTED_WIDTH, "width mismatch");
     assert_eq!(h, EXPECTED_HEIGHT, "height mismatch");
 
+    let audio = ictx
+        .streams()
+        .best(Type::Audio)
+        .expect("output MP4 has no audio");
+    assert_eq!(audio.parameters().id(), CodecId::AAC);
+    let audio_index = audio.index();
+
     // Packet count == frame count for non-fragmented H.264 in MP4.
-    let packet_count = ictx
-        .packets()
-        .filter(|(s, _)| s.index() == stream_index)
-        .count();
+    let mut packet_count = 0;
+    let mut audio_packet_count = 0;
+    for (stream, _) in ictx.packets() {
+        if stream.index() == stream_index {
+            packet_count += 1;
+        } else if stream.index() == audio_index {
+            audio_packet_count += 1;
+        }
+    }
+    assert!(audio_packet_count > 0, "output AAC stream has no packets");
     assert_eq!(
         packet_count, EXPECTED_VIDEO_FRAMES,
         "video frame count mismatch: expected {EXPECTED_VIDEO_FRAMES}, got {packet_count}"

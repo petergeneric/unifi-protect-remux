@@ -11,8 +11,8 @@ ubv = { path = "../ubv" }
 chrono = "0.4"
 libc = "0.2"
 log = "0.4"
-ffmpeg-next = "8"
-ffmpeg-sys-next = "8"
+ffmpeg-next = "9"
+ffmpeg-sys-next = "9"
 
 [dev-dependencies]
 # Bitstream md5 verification in tests/reference_testsrc2.rs.
