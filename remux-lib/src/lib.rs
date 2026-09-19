@@ -151,15 +151,32 @@ pub fn process_file<F>(
 where
     F: FnMut(ProgressEvent),
 {
+    progress(ProgressEvent::FileStarted {
+        path: ubv_path.to_string(),
+    });
+    let result = process_file_inner(ubv_path, config, progress)?;
+    progress(ProgressEvent::FileCompleted {
+        path: ubv_path.to_string(),
+        outputs: result.output_files.clone(),
+        errors: result.errors.clone(),
+    });
+    Ok(result)
+}
+
+fn process_file_inner<F>(
+    ubv_path: &str,
+    config: &RemuxConfig,
+    progress: &mut F,
+) -> Result<FileResult, Box<dyn std::error::Error>>
+where
+    F: FnMut(ProgressEvent),
+{
     let mut result = FileResult {
         input_path: ubv_path.to_string(),
         output_files: Vec::new(),
         errors: Vec::new(),
     };
 
-    progress(ProgressEvent::FileStarted {
-        path: ubv_path.to_string(),
-    });
     progress(ProgressEvent::Log(
         LogLevel::Info,
         format!("Analysing {}", ubv_path),
@@ -292,11 +309,6 @@ where
             LogLevel::Info,
             "No partitions found, nothing to extract".to_string(),
         ));
-        progress(ProgressEvent::FileCompleted {
-            path: ubv_path.to_string(),
-            outputs: result.output_files.clone(),
-            errors: result.errors.clone(),
-        });
         return Ok(result);
     } else if partitions.len() == 1 {
         progress(ProgressEvent::Log(
@@ -460,12 +472,6 @@ where
             }
         }
     }
-
-    progress(ProgressEvent::FileCompleted {
-        path: ubv_path.to_string(),
-        outputs: result.output_files.clone(),
-        errors: result.errors.clone(),
-    });
 
     Ok(result)
 }
