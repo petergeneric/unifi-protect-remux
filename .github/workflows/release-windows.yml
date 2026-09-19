@@ -40,7 +40,7 @@ jobs:
       - name: Setup vcpkg
         shell: pwsh
         env:
-          VCPKG_COMMIT: 80f9bcfa455e875d9c1bf7a7c6692d7e1e481061
+          VCPKG_COMMIT: e6f9e70a29a3e80a1fc510d8503304315447112f
         run: |
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg-pinned
           git -C C:\vcpkg-pinned checkout $env:VCPKG_COMMIT
@@ -56,11 +56,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\vcpkg-pinned\installed
-          key: vcpkg-release-x64-windows-80f9bcfa-ffmpeg
+          key: vcpkg-release-x64-windows-e6f9e70a-ffmpeg
 
       - name: Install FFmpeg via vcpkg
         shell: pwsh
-        run: vcpkg install ffmpeg:x64-windows
+        run: |
+          vcpkg install ffmpeg:x64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # FFmpeg 9 uses libavcodec ABI 63. Fail rather than test old DLLs.
+          $codecDll = "$env:VCPKG_ROOT\installed\x64-windows\bin\avcodec-63.dll"
+          if (-not (Test-Path $codecDll)) {
+            throw "FFmpeg 9 runtime missing: $codecDll"
+          }
+          vcpkg list ffmpeg
 
       - name: Download VC++ redistributable
         shell: pwsh
@@ -129,12 +137,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: release-x86_64-pc-windows-msvc-vcpkg-${{ hashFiles('**/Cargo.lock') }}
+          key: release-x86_64-pc-windows-msvc-vcpkg-e6f9e70a-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            release-x86_64-pc-windows-msvc-vcpkg-
+            release-x86_64-pc-windows-msvc-vcpkg-e6f9e70a-
 
       - name: Build release binaries
-        run: cargo build --release --no-default-features --target x86_64-pc-windows-msvc
+        run: cargo build --locked --release --no-default-features --target x86_64-pc-windows-msvc
 
       - name: Build C# GUI
         shell: pwsh
@@ -146,7 +154,7 @@ jobs:
           dotnet publish ui/RemuxGui/RemuxGui.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
 
       - name: Test
-        run: cargo nextest run --release --no-default-features --target x86_64-pc-windows-msvc --profile ci
+        run: cargo nextest run --locked --release --no-default-features --target x86_64-pc-windows-msvc --profile ci
 
       - name: Publish test report
         if: always()
