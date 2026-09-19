@@ -142,7 +142,7 @@ jobs:
             release-x86_64-pc-windows-msvc-vcpkg-e6f9e70a-
 
       - name: Build release binaries
-        run: cargo build --release --no-default-features --target x86_64-pc-windows-msvc
+        run: cargo build --locked --release --no-default-features --target x86_64-pc-windows-msvc
 
       - name: Build C# GUI
         shell: pwsh
@@ -154,7 +154,7 @@ jobs:
           dotnet publish ui/RemuxGui/RemuxGui.csproj -c Release -r win-x64 --self-contained -o publish/win-x64
 
       - name: Test
-        run: cargo nextest run --release --no-default-features --target x86_64-pc-windows-msvc --profile ci
+        run: cargo nextest run --locked --release --no-default-features --target x86_64-pc-windows-msvc --profile ci
 
       - name: Publish test report
         if: always()
