@@ -410,6 +410,8 @@ fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
                 PartitionEntry::Jpeg(m) => jpegs.push(metadata_to_entry("J", m)),
                 PartitionEntry::Skip(m) => skips.push(metadata_to_entry("Skip", m)),
                 PartitionEntry::Talkback(m) => talkback.push(metadata_to_entry("TB", m)),
+                // Untimed records (no DTS) carry no timeline information to show.
+                PartitionEntry::Untimed(_) => {}
                 _ => {
                     eprintln!("ubv_info: unknown partition entry variant, skipping");
                 }

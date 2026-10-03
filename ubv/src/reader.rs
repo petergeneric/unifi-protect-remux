@@ -7,7 +7,7 @@ use flate2::read::GzDecoder;
 use crate::clock::ClockSync;
 use crate::error::{Result, UbvError};
 use crate::frame::{Frame, RecordHeader};
-use crate::partition::{MetadataRecord, Partition, PartitionEntry, PartitionHeader};
+use crate::partition::{MetadataRecord, Partition, PartitionEntry, PartitionHeader, UntimedRecord};
 use crate::record;
 use crate::track;
 
@@ -126,6 +126,22 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
         // record, count it against the current partition (if any).
         if let Some(ps) = partition_state.as_mut() {
             ps.record_count += 1;
+        }
+
+        // Untimed records (no DTS) are kept as their own entries, whatever the
+        // track: they are neither frames nor timed metadata.
+        if !rec.has_dts {
+            if let Some(p) = current_partition.as_mut() {
+                p.entries.push(PartitionEntry::Untimed(UntimedRecord {
+                    track_id: rec.track_id,
+                    format_code: rec.format_code,
+                    sequence: rec.sequence,
+                    file_offset: rec.file_offset,
+                    data_offset: rec.data_offset,
+                    data_size: rec.data_size,
+                }));
+            }
+            continue;
         }
 
         let info = match track::track_info(rec.track_id) {
@@ -362,5 +378,90 @@ mod tests {
             state.contains("previous record"),
             "state missing previous-record summary: {state}"
         );
+    }
+
+    use crate::partition::PartitionEntry;
+    use crate::test_util::{UbvBuilder, index_payload};
+
+    /// Two partitions, each closed by an untimed index record on track 10 whose
+    /// payload starts with zero bytes, then an untimed Skip that runs to the end
+    /// of the file. All partitions must be read.
+    fn two_partition_file() -> (UbvBuilder, Vec<u64>) {
+        let mut b = UbvBuilder::default();
+        let mut untimed_offsets = Vec::new();
+        for (p, base_secs) in [(0u64, 1_700_000_000u32), (1, 1_700_000_100)] {
+            b.partition_header(p);
+            b.clock_sync(p * 1_000_000, base_secs);
+            for i in 0..3u16 {
+                b.video(
+                    i,
+                    p * 90_000_000 + i as u64 * 3_000,
+                    i == 0,
+                    10 + i as usize,
+                );
+            }
+            untimed_offsets.push(b.untimed(10, 0, &index_payload(&[(base_secs as u64 * 1000, 0)])));
+        }
+        untimed_offsets.push(b.untimed(6, 0, &[0u8; 1500]));
+        (b, untimed_offsets)
+    }
+
+    #[test]
+    fn untimed_records_do_not_stop_parsing() {
+        let (b, untimed_offsets) = two_partition_file();
+        let mut cursor = Cursor::new(b.bytes);
+        let ubv = parse_ubv(&mut cursor).unwrap();
+
+        assert_eq!(ubv.partitions.len(), 2);
+        for (n, p) in ubv.partitions.iter().enumerate() {
+            let frames: Vec<_> = p
+                .entries
+                .iter()
+                .filter_map(|e| match e {
+                    PartitionEntry::Frame(f) => Some(f),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(frames.len(), 3, "partition {n}");
+            // Wall clock follows the partition's own clock sync.
+            assert_eq!(frames[0].wc / 90, 1_700_000_000_000 + n as u64 * 100_000);
+
+            let untimed: Vec<_> = p
+                .entries
+                .iter()
+                .filter_map(|e| match e {
+                    PartitionEntry::Untimed(u) => Some(u),
+                    _ => None,
+                })
+                .collect();
+            // No untimed record is misreported as a smart event or skip.
+            assert!(
+                !p.entries
+                    .iter()
+                    .any(|e| matches!(e, PartitionEntry::SmartEvent(_) | PartitionEntry::Skip(_)))
+            );
+            let expected: Vec<u16> = if n == 0 { vec![10] } else { vec![10, 6] };
+            assert_eq!(
+                untimed.iter().map(|u| u.track_id).collect::<Vec<_>>(),
+                expected
+            );
+            assert_eq!(untimed[0].file_offset, untimed_offsets[n]);
+            assert_eq!(untimed[0].data_offset, untimed_offsets[n] + 12);
+            assert_eq!(untimed[0].data_size, 8 + 16);
+        }
+        let skip = match ubv.partitions[1].entries.last() {
+            Some(PartitionEntry::Untimed(u)) => u,
+            other => panic!("expected trailing untimed skip, got {other:?}"),
+        };
+        assert_eq!(skip.file_offset, untimed_offsets[2]);
+        assert_eq!(skip.data_size, 1500);
+    }
+
+    #[test]
+    fn trailing_zero_padding_after_untimed_records_is_eof() {
+        let (mut b, _) = two_partition_file();
+        b.bytes.extend_from_slice(&[0u8; 4096]);
+        let mut cursor = Cursor::new(b.bytes);
+        assert_eq!(parse_ubv(&mut cursor).unwrap().partitions.len(), 2);
     }
 }

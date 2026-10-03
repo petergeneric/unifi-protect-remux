@@ -35,6 +35,10 @@ pub struct RawRecord {
     pub total_size: u64,
     /// Raw payload bytes for small records (data_size <= 1024). None for large payloads.
     pub payload: Option<Vec<u8>>,
+    /// False for "untimed" records: clock index 0 (e.g. format `F1 00`), no DTS
+    /// field, SIZE at bytes 8-11 and data from byte 12. `dts` and `clock_rate`
+    /// are 0 for them.
+    pub has_dts: bool,
 }
 
 /// Map an IO error during record parsing to the appropriate UbvError.
@@ -98,6 +102,28 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
 
     let format_code = FormatCode::new(header[4], header[5]);
     let sequence = u16::from_be_bytes([header[6], header[7]]);
+
+    // Clock index 0: try the untimed layout (no DTS, SIZE at bytes 8-11). It is
+    // only accepted when the trailing back-size matches; otherwise fall back to
+    // the generic layout below, exactly as before.
+    if format_code.sample_rate_index() == 0
+        && let Some(rec) = try_read_untimed(reader, file_offset, track_id, format_code, sequence)?
+    {
+        // The size check alone does not tell the layouts apart when the
+        // generic one fits too (DTS == SIZE + 4, roughly): refuse to guess.
+        let end = rec.file_offset + rec.total_size;
+        let generic_fits = generic_layout_fits(reader, file_offset, format_code)?;
+        reader
+            .seek(SeekFrom::Start(end))
+            .map_err(io_at_offset(file_offset, "seeking past untimed record"))?;
+        if generic_fits {
+            return Err(UbvError::AmbiguousRecordLayout {
+                offset: file_offset,
+                track_id,
+            });
+        }
+        return Ok(Some(rec));
+    }
 
     let header_len = format_code.header_len();
 
@@ -198,6 +224,130 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
         data_offset,
         total_size,
         payload,
+        has_dts: true,
+    }))
+}
+
+/// Whether the record at `file_offset` also has a matching back-size when read
+/// with the generic (timed) layout. Leaves the stream position undefined.
+fn generic_layout_fits<R: Read + Seek>(
+    reader: &mut R,
+    file_offset: u64,
+    format_code: FormatCode,
+) -> Result<bool> {
+    let header_len = format_code.header_len();
+    let read_u32_at = |reader: &mut R, at: u64| -> Result<Option<u32>> {
+        reader
+            .seek(SeekFrom::Start(at))
+            .map_err(io_at_offset(file_offset, "probing generic layout"))?;
+        let mut b = [0u8; 4];
+        match reader.read_exact(&mut b) {
+            Ok(()) => Ok(Some(u32::from_be_bytes(b))),
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
+            Err(e) => Err(io_at_offset(file_offset, "probing generic layout")(e)),
+        }
+    };
+    let Some(size) = read_u32_at(reader, file_offset + header_len as u64)? else {
+        return Ok(false);
+    };
+    let back = header_len as u64
+        + 4
+        + size as u64
+        + alignment_padding(file_offset, header_len, size) as u64;
+    Ok(read_u32_at(reader, file_offset + back)?.is_some_and(|v| v as u64 == back))
+}
+
+/// Length of the fixed part of an untimed record before its data: bytes 0-7
+/// (tag, format code, sequence) plus the SIZE field at bytes 8-11.
+const UNTIMED_PREFIX_LEN: u64 = 12;
+
+/// Try to read an untimed record (clock index 0, no DTS) whose first 8 bytes
+/// have already been consumed. Layout: SIZE (u32 BE) at bytes 8-11, DATA,
+/// alignment padding, BACK_SIZE = 12 + SIZE + pad.
+///
+/// Returns `None` -- with the stream positioned again right after the first 8
+/// bytes -- when the back-size does not match or lies beyond the end of the
+/// stream, so the caller can parse the record the generic way.
+fn try_read_untimed<R: Read + Seek>(
+    reader: &mut R,
+    file_offset: u64,
+    track_id: u16,
+    format_code: FormatCode,
+    sequence: u16,
+) -> Result<Option<RawRecord>> {
+    let after_tag = file_offset + 8;
+    let rewind = |reader: &mut R| -> Result<Option<RawRecord>> {
+        reader
+            .seek(SeekFrom::Start(after_tag))
+            .map_err(io_at_offset(
+                file_offset,
+                "rewinding after untimed-record probe",
+            ))?;
+        Ok(None)
+    };
+
+    let mut size_buf = [0u8; 4];
+    match reader.read_exact(&mut size_buf) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return rewind(reader),
+        Err(e) => return Err(io_at_offset(file_offset, "reading untimed SIZE field")(e)),
+    }
+    let data_size = u32::from_be_bytes(size_buf);
+    // SIZE sits where the generic layout would put the DTS, i.e. header_len = 8.
+    let pad = alignment_padding(file_offset, 8, data_size);
+    let back_size_value = UNTIMED_PREFIX_LEN + data_size as u64 + pad as u64;
+
+    // A back-size that does not fit in u32 cannot match the on-disk field.
+    let Ok(expected_back) = u32::try_from(back_size_value) else {
+        return rewind(reader);
+    };
+
+    let data_offset = file_offset + UNTIMED_PREFIX_LEN;
+    reader
+        .seek(SeekFrom::Start(file_offset + back_size_value))
+        .map_err(io_at_offset(file_offset, "seeking to untimed back-size"))?;
+    let mut back_buf = [0u8; 4];
+    match reader.read_exact(&mut back_buf) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return rewind(reader),
+        Err(e) => return Err(io_at_offset(file_offset, "reading untimed back-size")(e)),
+    }
+    let end = file_offset + back_size_value + 4;
+    if u32::from_be_bytes(back_buf) != expected_back {
+        return rewind(reader);
+    }
+
+    let payload = if data_size <= MAX_INLINE_PAYLOAD {
+        let mut payload_buf = vec![0u8; data_size as usize];
+        reader
+            .seek(SeekFrom::Start(data_offset))
+            .map_err(io_at_offset(file_offset, "seeking to untimed payload"))?;
+        reader
+            .read_exact(&mut payload_buf)
+            .map_err(io_at_offset(file_offset, "reading untimed payload"))?;
+        reader
+            .seek(SeekFrom::Start(end))
+            .map_err(io_at_offset(file_offset, "seeking past untimed record"))?;
+        Some(payload_buf)
+    } else {
+        // Already positioned right after BACK_SIZE.
+        None
+    };
+
+    Ok(Some(RawRecord {
+        file_offset,
+        track_id,
+        format_code,
+        sequence,
+        dts: 0,
+        clock_rate: 0,
+        extra: None,
+        duration: None,
+        data_size,
+        data_offset,
+        total_size: end - file_offset,
+        payload,
+        has_dts: false,
     }))
 }
 
@@ -277,5 +427,104 @@ mod tests {
         let nanos = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
         assert_eq!(seconds, 0x645DC612); // 1683867154
         assert_eq!(nanos, 0x34EDCE00); // 888000000
+    }
+
+    use crate::test_util::{UbvBuilder, index_payload};
+
+    #[test]
+    fn untimed_record_small_payload() {
+        let mut b = UbvBuilder::default();
+        let payload = index_payload(&[(1_000, 0x40), (2_000, 0x80)]);
+        b.untimed(10, 3, &payload);
+        let after = b.video(1, 9_000, true, 5);
+        let mut cursor = Cursor::new(b.bytes);
+
+        let rec = read_record(&mut cursor).unwrap().unwrap();
+        assert!(!rec.has_dts);
+        assert_eq!(rec.track_id, 10);
+        assert_eq!(rec.format_code.0, 0xF100);
+        assert_eq!(rec.sequence, 3);
+        assert_eq!(rec.dts, 0);
+        assert_eq!(rec.clock_rate, 0);
+        assert_eq!(rec.data_size as usize, payload.len());
+        assert_eq!(rec.data_offset, 12);
+        assert_eq!(rec.total_size, after);
+        assert_eq!(rec.payload.as_deref(), Some(&payload[..]));
+
+        // The stream is left at the next record.
+        assert_eq!(cursor.position(), after);
+        let next = read_record(&mut cursor).unwrap().unwrap();
+        assert!(next.has_dts);
+        assert_eq!(next.track_id, 7);
+        assert_eq!(next.dts, 9_000);
+        assert!(read_record(&mut cursor).unwrap().is_none());
+    }
+
+    #[test]
+    fn untimed_record_large_payload_with_padding() {
+        let mut b = UbvBuilder::default();
+        // 2001 bytes: above the inline limit and needs 3 bytes of padding.
+        let payload = vec![0u8; 2001];
+        b.untimed(6, 0, &payload);
+        let len = b.offset();
+        let mut cursor = Cursor::new(b.bytes);
+
+        let rec = read_record(&mut cursor).unwrap().unwrap();
+        assert!(!rec.has_dts);
+        assert_eq!(rec.track_id, 6);
+        assert_eq!(rec.data_size, 2001);
+        assert!(rec.payload.is_none());
+        assert_eq!(rec.total_size, 12 + 2001 + 3 + 4);
+        assert_eq!(rec.total_size, len);
+        assert_eq!(cursor.position(), len);
+        assert!(read_record(&mut cursor).unwrap().is_none());
+    }
+
+    /// An `F1 00` record whose back-size does not fit the untimed layout keeps
+    /// the generic interpretation (32-bit DTS at bytes 8-11, SIZE at 12-15).
+    #[test]
+    fn clock_index_zero_without_matching_back_size_keeps_generic_layout() {
+        for dts in [0x0000_0010_u32, 0x7FFF_0000] {
+            let mut data: Vec<u8> = vec![0xA0, 0x00, 0x0A, 0xAA, 0xF1, 0x00, 0x00, 0x07];
+            data.extend_from_slice(&dts.to_be_bytes());
+            data.extend_from_slice(&8u32.to_be_bytes());
+            data.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+            data.extend_from_slice(&(12u32 + 4 + 8).to_be_bytes());
+            let len = data.len() as u64;
+            let mut cursor = Cursor::new(data);
+
+            let rec = read_record(&mut cursor).unwrap().unwrap();
+            assert!(rec.has_dts);
+            assert_eq!(rec.dts, dts as u64);
+            assert_eq!(rec.data_size, 8);
+            assert_eq!(rec.data_offset, 16);
+            assert_eq!(rec.payload.as_deref(), Some(&[1, 2, 3, 4, 5, 6, 7, 8][..]));
+            assert_eq!(rec.total_size, len);
+            assert_eq!(cursor.position(), len);
+        }
+    }
+
+    /// A clock-index-0 record that fits both layouts is refused, not guessed.
+    #[test]
+    fn record_fitting_both_layouts_is_an_error() {
+        // Timed reading: DTS = 12, SIZE = 8, back-size 24. Untimed reading:
+        // SIZE = 12, back-size 24 too.
+        let mut data: Vec<u8> = vec![0xA0, 0x00, 0x0A, 0xAA, 0xF1, 0x00, 0x00, 0x00];
+        data.extend_from_slice(&12u32.to_be_bytes());
+        data.extend_from_slice(&8u32.to_be_bytes());
+        data.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        data.extend_from_slice(&24u32.to_be_bytes());
+        let mut cursor = Cursor::new(data);
+        let err = read_record(&mut cursor).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                UbvError::AmbiguousRecordLayout {
+                    offset: 0,
+                    track_id: 10
+                }
+            ),
+            "{err:?}"
+        );
     }
 }

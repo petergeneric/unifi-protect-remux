@@ -334,6 +334,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Record without DTS (see [`UntimedRecord`]); never a media frame.",
+          "type": "object",
+          "required": [
+            "Untimed"
+          ],
+          "properties": {
+            "Untimed": {
+              "$ref": "#/definitions/UntimedRecord"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -382,6 +395,58 @@
             "format": "uint8",
             "minimum": 0.0
           }
+        }
+      }
+    },
+    "UntimedRecord": {
+      "description": "A record without a DTS field (clock index 0, e.g. format code `F1 00`).\n\nSeen on track 10 at the end of every partition (firmware from around May 2026), where the payload looks like an index of (wall-clock ms, file offset) pairs, and on track 6 (Skip) at the end of the file. The payload is not decoded here; read it from `data_offset` / `data_size`.",
+      "type": "object",
+      "required": [
+        "data_offset",
+        "data_size",
+        "file_offset",
+        "format_code",
+        "sequence",
+        "track_id"
+      ],
+      "properties": {
+        "data_offset": {
+          "description": "Absolute byte offset of the payload data in the file.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "data_size": {
+          "description": "Size of the payload data in bytes.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "file_offset": {
+          "description": "Absolute byte offset of this record in the file.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "format_code": {
+          "description": "Format code (bytes 4-5 of the record).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/FormatCode"
+            }
+          ]
+        },
+        "sequence": {
+          "description": "Sequence counter from the record header.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "track_id": {
+          "description": "Track ID.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
         }
       }
     }

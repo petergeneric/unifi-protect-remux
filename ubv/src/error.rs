@@ -35,6 +35,13 @@ pub enum UbvError {
         got: u8,
     },
 
+    /// A clock-index-0 record whose back-size matches both the untimed layout
+    /// (no DTS) and the timed one: which one it is cannot be told.
+    #[error(
+        "record at offset 0x{offset:X} (track 0x{track_id:04X}) fits both the untimed and the timed layout"
+    )]
+    AmbiguousRecordLayout { offset: u64, track_id: u16 },
+
     #[error("unexpected EOF at offset 0x{offset:X} ({context})")]
     UnexpectedEof { offset: u64, context: &'static str },
 

@@ -29,6 +29,29 @@ pub struct MetadataRecord {
     pub file_offset: u64,
 }
 
+/// A record without a DTS field (clock index 0, e.g. format code `F1 00`).
+///
+/// Seen on track 10 at the end of every partition (firmware from around May
+/// 2026), where the payload looks like an index of (wall-clock ms, file offset)
+/// pairs, and on track 6 (Skip) at the end of the file. The payload is not
+/// decoded here; read it from `data_offset` / `data_size`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+pub struct UntimedRecord {
+    /// Track ID.
+    pub track_id: u16,
+    /// Format code (bytes 4-5 of the record).
+    pub format_code: FormatCode,
+    /// Sequence counter from the record header.
+    pub sequence: u16,
+    /// Absolute byte offset of this record in the file.
+    pub file_offset: u64,
+    /// Absolute byte offset of the payload data in the file.
+    pub data_offset: u64,
+    /// Size of the payload data in bytes.
+    pub data_size: u32,
+}
+
 /// An event in the partition's stream.
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
@@ -41,6 +64,8 @@ pub enum PartitionEntry {
     Jpeg(MetadataRecord),
     Skip(MetadataRecord),
     Talkback(MetadataRecord),
+    /// Record without DTS (see [`UntimedRecord`]); never a media frame.
+    Untimed(UntimedRecord),
 }
 
 /// A partition (recording segment) within a UBV file.

@@ -206,6 +206,13 @@ fn print_legacy(ubv: &ubv::reader::UbvFile) {
                         "",
                     );
                 }
+                PartitionEntry::Untimed(u) => {
+                    // No DTS / clock rate: those columns stay empty.
+                    println!(
+                        "{:>4} {:>5} {:>3} {:>16} {:>8} {:>15} {:>5} {:>17} {:>6} {:>7}",
+                        "U", u.track_id, "", u.data_offset, u.data_size, "", "", "", "", "",
+                    );
+                }
                 _ => {}
             }
         }

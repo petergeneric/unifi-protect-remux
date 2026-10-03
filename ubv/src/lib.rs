@@ -8,3 +8,6 @@ pub mod reader;
 pub mod record;
 pub mod track;
 pub mod version;
+
+#[cfg(test)]
+pub(crate) mod test_util;
