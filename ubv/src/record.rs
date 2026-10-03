@@ -100,6 +100,14 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     // Verify XOR checksum: byte0 ^ byte1 ^ byte2 == byte3
     let expected_checksum = header[0] ^ header[1] ^ header[2];
     if expected_checksum != header[3] {
+        // A header cut by the zeros of a preallocated file (first byte written,
+        // the rest still zero, and only zeros after it): clean end, not an error.
+        if let Some(z) = header.iter().position(|&b| b == 0)
+            && header[z..].iter().all(|&b| b == 0)
+            && zero_tail(reader, file_offset + 8)?.is_none()
+        {
+            return Ok(None);
+        }
         return Err(UbvError::ChecksumMismatch {
             offset: file_offset,
             track_id,
@@ -222,6 +230,14 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
         .read_exact(&mut back_buf)
         .map_err(io_at_offset(file_offset, "reading back-size"))?;
     let back_size = u32::from_be_bytes(back_buf);
+    if back_size == 0 && back_size_value != 0 {
+        // The record was being written when the file was copied: its back-size is
+        // still the zero of a preallocated file. If only zeros follow, the data
+        // ends here (before this record): clean end.
+        if zero_tail(reader, file_offset + back_size_value + 4)?.is_none() {
+            return Ok(None);
+        }
+    }
     if back_size as u64 != back_size_value {
         return Err(UbvError::BackSizeMismatch {
             offset: file_offset,
@@ -381,6 +397,15 @@ fn try_read_untimed<R: Read + Seek>(
         payload,
         has_dts: false,
     }))
+}
+
+/// Offset of the first non-zero byte from `from` to the end of the stream, or
+/// None if it is all zeros.
+fn zero_tail<R: Read + Seek>(reader: &mut R, from: u64) -> Result<Option<u64>> {
+    reader
+        .seek(SeekFrom::Start(from))
+        .map_err(io_at_offset(from, "checking trailing zero padding"))?;
+    first_nonzero(reader, from)
 }
 
 /// Called after reading a record tag whose magic byte is 0x00. Returns `None`

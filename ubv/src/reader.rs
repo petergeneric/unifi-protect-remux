@@ -495,6 +495,13 @@ mod tests {
         );
     }
 
+    fn frame_count(p: &Partition) -> usize {
+        p.entries
+            .iter()
+            .filter(|e| matches!(e, PartitionEntry::Frame(_)))
+            .count()
+    }
+
     fn source_of(err: UbvError) -> UbvError {
         match err {
             UbvError::ParseContext { source, .. } => *source,
@@ -531,6 +538,68 @@ mod tests {
         assert!(
             state.contains(&format!("next expected at 0x{gap:X}")),
             "{state}"
+        );
+    }
+
+    /// A trailing untimed Skip cut short no longer fits the untimed layout, and
+    /// its timed reading has a wrong trailer. If what is left is all zeros (as
+    /// here: a zero-filled Skip), parsing ends cleanly before the Skip; with
+    /// non-zero data it is an error (it cannot be told from corruption mid-file).
+    #[test]
+    fn cut_trailing_untimed_skip() {
+        let (mut b, _) = two_partition_file();
+        b.bytes.truncate(b.bytes.len() - 10);
+        let ubv = parse_ubv(&mut Cursor::new(b.bytes.clone())).unwrap();
+        assert_eq!(ubv.partitions.len(), 2);
+        assert!(matches!(
+            ubv.partitions[1].entries.last(),
+            Some(PartitionEntry::Untimed(u)) if u.track_id == 10
+        ));
+
+        let last = b.bytes.len() - 1;
+        b.bytes[last] = 0x07; // non-zero data in the Skip: an error
+        let err = parse_ubv(&mut Cursor::new(b.bytes)).unwrap_err();
+        assert!(
+            matches!(source_of(err), UbvError::BackSizeMismatch { .. }),
+            "unexpected error"
+        );
+    }
+
+    /// A preallocated file copied while being written: records, then one whose
+    /// back-size is still zero, then only zeros. Clean end before that record,
+    /// keeping everything read.
+    #[test]
+    fn record_cut_by_preallocated_zeros_is_a_clean_end() {
+        let mut b = UbvBuilder::default();
+        b.partition_header(0);
+        b.clock_sync(0, 1_700_000_000);
+        b.video(0, 0, true, 40);
+        b.video(1, 3_000, false, 40);
+        b.video(2, 6_000, false, 40);
+        let n = b.bytes.len();
+        b.bytes[n - 4..].fill(0); // its back-size: not written yet
+        b.bytes.extend_from_slice(&[0u8; 8192]);
+        let ubv = parse_ubv(&mut Cursor::new(b.bytes.clone())).unwrap();
+        assert_eq!(frame_count(&ubv.partitions[0]), 2);
+
+        // Only the first byte of the next header written, then zeros.
+        let mut c = UbvBuilder::default();
+        c.partition_header(0);
+        c.clock_sync(0, 1_700_000_000);
+        c.video(0, 0, true, 40);
+        c.bytes.push(0xA0);
+        c.bytes.extend_from_slice(&[0u8; 4095]);
+        let ubv = parse_ubv(&mut Cursor::new(c.bytes)).unwrap();
+        assert_eq!(frame_count(&ubv.partitions[0]), 1);
+
+        // Zeros and then data again: not padding, still an error.
+        let mut d = b.bytes.clone();
+        let last = d.len() - 1;
+        d[last] = 0x01;
+        let err = parse_ubv(&mut Cursor::new(d)).unwrap_err();
+        assert!(
+            matches!(source_of(err), UbvError::BackSizeMismatch { got: 0, .. }),
+            "unexpected error"
         );
     }
 
