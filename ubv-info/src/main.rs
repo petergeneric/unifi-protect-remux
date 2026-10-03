@@ -33,7 +33,7 @@ struct Args {
     #[arg(short = 't', long = "track", requires = "json")]
     track_filter: Option<u16>,
 
-    /// Output as JSON
+    /// Output as JSON (with --version: build identity as one JSON line)
     #[arg(long, conflicts_with = "inspect")]
     json: bool,
 
@@ -69,6 +69,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
+    if args.version && args.json {
+        println!(
+            "{}",
+            ubv::version::cli_version_json(
+                "ubv-info",
+                env!("GIT_VERSION"),
+                env!("GIT_COMMIT"),
+                env!("GIT_DIRTY"),
+                Some(ubv::version::JSON_FORMAT_VERSION),
+            )
+        );
+        return Ok(());
+    }
     if args.version {
         ubv::version::print_cli_version_banner(
             "UBV Info Tool",

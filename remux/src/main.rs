@@ -44,6 +44,10 @@ struct Args {
     #[arg(long = "version")]
     version: bool,
 
+    /// With --version: print the build identity as one JSON line
+    #[arg(long = "json", requires = "version")]
+    json: bool,
+
     /// Input .ubv files
     files: Vec<String>,
 }
@@ -61,6 +65,7 @@ fn normalise_args(args: Vec<String>) -> Vec<String> {
         "-video-track",
         "-fail-fast",
         "-version",
+        "-json",
     ];
 
     args.into_iter()
@@ -95,6 +100,19 @@ fn main() {
 }
 
 fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+    if args.version && args.json {
+        println!(
+            "{}",
+            ubv::version::cli_version_json(
+                "remux",
+                env!("GIT_VERSION"),
+                env!("GIT_COMMIT"),
+                env!("GIT_DIRTY"),
+                None,
+            )
+        );
+        return Ok(());
+    }
     if args.version {
         ubv::version::print_cli_version_banner(
             "UBV Remux Tool",
@@ -298,6 +316,7 @@ mod tests {
             video_track: 0,
             fail_fast: false,
             version: false,
+            json: false,
             files: vec!["dummy.ubv".to_string()],
         }
     }
