@@ -314,7 +314,20 @@ fn try_read_untimed<R: Read + Seek>(
     }
     let end = file_offset + back_size_value + 4;
     if u32::from_be_bytes(back_buf) != expected_back {
-        return rewind(reader);
+        // A Skip that reaches exactly the end of the file is the reserved tail
+        // of a file still being written: its trailing back-size may not be
+        // final yet. Nothing follows it, so nothing can be misaligned: accept it.
+        let at_eof = track_id == crate::track::TRACK_SKIP
+            && reader
+                .seek(SeekFrom::End(0))
+                .map_err(io_at_offset(file_offset, "measuring stream length"))?
+                == end;
+        if !at_eof {
+            return rewind(reader);
+        }
+        reader
+            .seek(SeekFrom::Start(end))
+            .map_err(io_at_offset(file_offset, "seeking past untimed record"))?;
     }
 
     let payload = if data_size <= MAX_INLINE_PAYLOAD {

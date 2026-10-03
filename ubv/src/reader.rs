@@ -464,4 +464,36 @@ mod tests {
         let mut cursor = Cursor::new(b.bytes);
         assert_eq!(parse_ubv(&mut cursor).unwrap().partitions.len(), 2);
     }
+
+    /// A file still being written ends with a Skip reserved up to the end of the
+    /// file whose trailing back-size is not final yet: it is the last record
+    /// (nothing follows it) and is read as such.
+    #[test]
+    fn end_of_file_skip_with_unfinished_back_size() {
+        let mut b = UbvBuilder::default();
+        b.partition_header(0);
+        b.clock_sync(0, 1_700_000_000);
+        b.video(0, 0, true, 40);
+        let skip = b.untimed(6, 0, &[0u8; 4000]);
+        let n = b.bytes.len();
+        b.bytes[n - 4..].copy_from_slice(&123_456u32.to_be_bytes()); // stale back-size
+        let ubv = parse_ubv(&mut Cursor::new(b.bytes.clone())).unwrap();
+        match ubv.partitions[0].entries.last() {
+            Some(PartitionEntry::Untimed(u)) => {
+                assert_eq!((u.track_id, u.file_offset, u.data_size), (6, skip, 4000))
+            }
+            other => panic!("{other:?}"),
+        }
+
+        // The same Skip with something after it is not the end of the file: the
+        // stale back-size is not trusted and the untimed layout is not used.
+        b.bytes.extend_from_slice(&[0u8; 64]);
+        let ubv = parse_ubv(&mut Cursor::new(b.bytes)).unwrap();
+        assert!(
+            !ubv.partitions[0]
+                .entries
+                .iter()
+                .any(|e| matches!(e, PartitionEntry::Untimed(_)))
+        );
+    }
 }
