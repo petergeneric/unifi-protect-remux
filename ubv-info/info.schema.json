@@ -4,7 +4,8 @@
   "description": "Parsed UBV file contents.",
   "type": "object",
   "required": [
-    "partitions"
+    "partitions",
+    "read_status"
   ],
   "properties": {
     "partitions": {
@@ -12,6 +13,14 @@
       "items": {
         "$ref": "#/definitions/Partition"
       }
+    },
+    "read_status": {
+      "description": "Where and why reading stopped, and the stream length.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ReadStatus"
+        }
+      ]
     }
   },
   "definitions": {
@@ -57,6 +66,39 @@
           "minimum": 0.0
         }
       }
+    },
+    "EndReason": {
+      "description": "Why reading stopped without an error.",
+      "oneOf": [
+        {
+          "description": "The previous record ended exactly at the end of the stream.",
+          "type": "string",
+          "enum": [
+            "eof"
+          ]
+        },
+        {
+          "description": "Only zero bytes from here to the end of the stream (e.g. preallocated space, possibly after a record that was still being written).",
+          "type": "string",
+          "enum": [
+            "zero_padding"
+          ]
+        },
+        {
+          "description": "Fewer than 8 bytes left, not all zero: an incomplete record header.",
+          "type": "string",
+          "enum": [
+            "short_header"
+          ]
+        },
+        {
+          "description": "The stream ends inside a record (truncated file). The record is not returned.",
+          "type": "string",
+          "enum": [
+            "truncated_record"
+          ]
+        }
+      ]
     },
     "FormatCode": {
       "description": "Decoded format code from bytes 4-5 of a record header.",
@@ -395,6 +437,37 @@
             "format": "uint8",
             "minimum": 0.0
           }
+        }
+      }
+    },
+    "ReadStatus": {
+      "description": "How far parsing got. A complete file has `end_offset == file_size` and `end_reason == Eof`; `ZeroPadding` before the end is normal for a preallocated file or one still being written; anything else means the tail was not read.",
+      "type": "object",
+      "required": [
+        "end_offset",
+        "end_reason",
+        "file_size"
+      ],
+      "properties": {
+        "end_offset": {
+          "description": "Offset at which reading stopped (end of the last record read, or start of the zero padding / incomplete record).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "end_reason": {
+          "description": "Why reading stopped.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EndReason"
+            }
+          ]
+        },
+        "file_size": {
+          "description": "Length of the stream in bytes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         }
       }
     },

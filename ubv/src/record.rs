@@ -60,8 +60,71 @@ fn io_at_offset(offset: u64, context: &'static str) -> impl FnOnce(std::io::Erro
     }
 }
 
-/// Read the next record from the stream. Returns None at EOF.
+/// Why reading stopped without an error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum EndReason {
+    /// The previous record ended exactly at the end of the stream.
+    Eof,
+    /// Only zero bytes from here to the end of the stream (e.g. preallocated
+    /// space, possibly after a record that was still being written).
+    ZeroPadding,
+    /// Fewer than 8 bytes left, not all zero: an incomplete record header.
+    ShortHeader,
+    /// The stream ends inside a record (truncated file). The record is not
+    /// returned.
+    TruncatedRecord,
+}
+
+/// Result of reading at a record boundary: a record, or the reason there is none.
+#[derive(Debug, Clone)]
+pub enum ReadOutcome {
+    Record(RawRecord),
+    /// No more records: why, and the offset where the next record would have started.
+    End(EndReason, u64),
+}
+
+/// Read the next record from the stream. Returns None when there are no more
+/// records (see [`read_record_outcome`] for the reason).
 pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> {
+    Ok(match read_record_outcome(reader)? {
+        ReadOutcome::Record(r) => Some(r),
+        ReadOutcome::End(..) => None,
+    })
+}
+
+/// Fill `buf` as far as the stream allows; returns the number of bytes read
+/// (less than `buf.len()` only at end of stream).
+fn read_up_to<R: Read>(reader: &mut R, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut n = 0;
+    while n < buf.len() {
+        match reader.read(&mut buf[n..]) {
+            Ok(0) => break,
+            Ok(k) => n += k,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(n)
+}
+
+/// End of stream inside a record -> `End(TruncatedRecord)`; any other I/O error
+/// is returned with its offset.
+fn truncated_or_err(
+    e: std::io::Error,
+    file_offset: u64,
+    context: &'static str,
+) -> Result<ReadOutcome> {
+    if e.kind() == std::io::ErrorKind::UnexpectedEof {
+        Ok(ReadOutcome::End(EndReason::TruncatedRecord, file_offset))
+    } else {
+        Err(io_at_offset(file_offset, context)(e))
+    }
+}
+
+/// Read the next record from the stream, or say why there is none.
+pub fn read_record_outcome<R: Read + Seek>(reader: &mut R) -> Result<ReadOutcome> {
     let file_offset = reader.stream_position().map_err(|e| UbvError::Io {
         context: "querying stream position",
         source: e,
@@ -69,10 +132,18 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
 
     // Read bytes 0-7 (tag + format code + sequence)
     let mut header = [0u8; 8];
-    match reader.read_exact(&mut header) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(e) => return Err(io_at_offset(file_offset, "reading record header")(e)),
+    let got = read_up_to(reader, &mut header)
+        .map_err(io_at_offset(file_offset, "reading record header"))?;
+    if got == 0 {
+        return Ok(ReadOutcome::End(EndReason::Eof, file_offset));
+    }
+    if got < header.len() {
+        let reason = if header[..got].iter().all(|&b| b == 0) {
+            EndReason::ZeroPadding
+        } else {
+            EndReason::ShortHeader
+        };
+        return Ok(ReadOutcome::End(reason, file_offset));
     }
 
     // Validate magic byte. A zero byte is the end only when it starts zero
@@ -81,7 +152,7 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     // record).
     if header[0] == 0x00 {
         return match first_nonzero_from(reader, file_offset, &header)? {
-            None => Ok(None),
+            None => Ok(ReadOutcome::End(EndReason::ZeroPadding, file_offset)),
             Some(nonzero_offset) => Err(UbvError::ZeroByteNotPadding {
                 offset: file_offset,
                 nonzero_offset,
@@ -106,7 +177,7 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
             && header[z..].iter().all(|&b| b == 0)
             && zero_tail(reader, file_offset + 8)?.is_none()
         {
-            return Ok(None);
+            return Ok(ReadOutcome::End(EndReason::ZeroPadding, file_offset));
         }
         return Err(UbvError::ChecksumMismatch {
             offset: file_offset,
@@ -138,7 +209,7 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
                 track_id,
             });
         }
-        return Ok(Some(rec));
+        return Ok(ReadOutcome::Record(rec));
     }
 
     let header_len = format_code.header_len();
@@ -148,9 +219,9 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     let extra_header_bytes = header_len - 8;
     let mut ext_header_buf = [0u8; 24];
     let ext_header = &mut ext_header_buf[..extra_header_bytes];
-    reader
-        .read_exact(ext_header)
-        .map_err(io_at_offset(file_offset, "reading extended header"))?;
+    if let Err(e) = reader.read_exact(ext_header) {
+        return truncated_or_err(e, file_offset, "reading extended header");
+    }
 
     // Parse fields from the extended header. `header_len` was computed from the
     // same `format_code` flags, so `ext_header` is exactly sized for the reads
@@ -192,9 +263,9 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
 
     // Read the SIZE field (4 bytes right after header)
     let mut size_buf = [0u8; 4];
-    reader
-        .read_exact(&mut size_buf)
-        .map_err(io_at_offset(file_offset, "reading SIZE field"))?;
+    if let Err(e) = reader.read_exact(&mut size_buf) {
+        return truncated_or_err(e, file_offset, "reading SIZE field");
+    }
     let data_size = u32::from_be_bytes(size_buf);
 
     let data_offset = file_offset + header_len as u64 + 4;
@@ -209,9 +280,9 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     // struct but is NOT written to disk. Only alignment padding appears on disk.
     let payload = if data_size <= MAX_INLINE_PAYLOAD {
         let mut payload_buf = vec![0u8; data_size as usize];
-        reader
-            .read_exact(&mut payload_buf)
-            .map_err(io_at_offset(file_offset, "reading record payload"))?;
+        if let Err(e) = reader.read_exact(&mut payload_buf) {
+            return truncated_or_err(e, file_offset, "reading record payload");
+        }
         reader
             .seek(SeekFrom::Current(pad as i64))
             .map_err(io_at_offset(file_offset, "seeking past padding"))?;
@@ -226,16 +297,17 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     // Every record ends with its own size: check it, so a mis-sized record is
     // reported here instead of desynchronising everything after it.
     let mut back_buf = [0u8; 4];
-    reader
-        .read_exact(&mut back_buf)
-        .map_err(io_at_offset(file_offset, "reading back-size"))?;
+    if let Err(e) = reader.read_exact(&mut back_buf) {
+        // Stream ends inside this record: report where, without the record.
+        return truncated_or_err(e, file_offset, "reading back-size");
+    }
     let back_size = u32::from_be_bytes(back_buf);
     if back_size == 0 && back_size_value != 0 {
         // The record was being written when the file was copied: its back-size is
         // still the zero of a preallocated file. If only zeros follow, the data
         // ends here (before this record): clean end.
         if zero_tail(reader, file_offset + back_size_value + 4)?.is_none() {
-            return Ok(None);
+            return Ok(ReadOutcome::End(EndReason::ZeroPadding, file_offset));
         }
     }
     if back_size as u64 != back_size_value {
@@ -246,7 +318,7 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
         });
     }
 
-    Ok(Some(RawRecord {
+    Ok(ReadOutcome::Record(RawRecord {
         file_offset,
         track_id,
         format_code,
@@ -685,7 +757,8 @@ mod tests {
         );
     }
 
-    /// A corrupt SIZE near u32::MAX must give an error, not an overflow panic.
+    /// A corrupt SIZE near u32::MAX must not overflow: the record simply runs
+    /// past the end of the stream.
     #[test]
     fn huge_size_does_not_overflow() {
         let mut data: Vec<u8> = vec![0xA0, 0x00, 0x07, 0xA7, 0xED, 0x0C, 0x00, 0x00];
@@ -693,42 +766,56 @@ mod tests {
         data.extend_from_slice(&u32::MAX.to_be_bytes());
         data.extend_from_slice(&[0u8; 64]);
         let mut cursor = Cursor::new(data);
-        assert!(matches!(
-            read_record(&mut cursor),
-            Err(UbvError::UnexpectedEof { offset: 0, .. })
-        ));
+        match read_record_outcome(&mut cursor) {
+            Ok(ReadOutcome::End(EndReason::TruncatedRecord, 0)) => {}
+            other => panic!("expected truncated record, got {other:?}"),
+        }
+    }
+
+    fn end_of(data: Vec<u8>) -> (EndReason, u64) {
+        let mut cursor = Cursor::new(data);
+        match read_record_outcome(&mut cursor).unwrap() {
+            ReadOutcome::End(reason, offset) => (reason, offset),
+            ReadOutcome::Record(r) => panic!("expected end, got record {r:?}"),
+        }
+    }
+
+    #[test]
+    fn end_reasons() {
+        assert_eq!(end_of(vec![]), (EndReason::Eof, 0));
+        assert_eq!(end_of(vec![0, 0, 0]), (EndReason::ZeroPadding, 0));
+        assert_eq!(end_of(vec![0u8; 100]), (EndReason::ZeroPadding, 0));
+        assert_eq!(end_of(vec![0xA0, 0x00, 0x07]), (EndReason::ShortHeader, 0));
     }
 
     /// End of stream inside a record (header, small payload or large payload)
-    /// is reported as unexpected EOF at the record's offset.
+    /// is a truncated record at that record's offset, not an error.
     #[test]
-    fn record_cut_short_is_unexpected_eof() {
+    fn record_cut_short_is_truncated() {
         let mut b = UbvBuilder::default();
         b.video(0, 0, true, 10);
         let start = b.video(1, 3_000, false, 100);
-        b.video(2, 6_000, false, 5_000);
+        let big = b.video(2, 6_000, false, 5_000);
         let len = b.bytes.len();
-        for cut in [
-            start as usize + 10,
-            start as usize + 18,
-            start as usize + 60,
-            len - 100,
+        for (cut, at) in [
+            (start as usize + 10, start),
+            (start as usize + 18, start),
+            (start as usize + 60, start),
+            (len - 100, big),
         ] {
             let mut data = b.bytes.clone();
             data.truncate(cut);
             let mut cursor = Cursor::new(data);
-            let mut last = None;
-            let err = loop {
-                match read_record(&mut cursor) {
-                    Ok(Some(r)) => last = Some(r.file_offset),
-                    Ok(None) => panic!("cut {cut}: expected an error, got end of stream"),
-                    Err(e) => break e,
+            let outcome = loop {
+                match read_record_outcome(&mut cursor).unwrap() {
+                    ReadOutcome::Record(_) => {}
+                    end => break end,
                 }
             };
-            assert!(
-                matches!(err, UbvError::UnexpectedEof { .. }),
-                "cut {cut}: {err:?} after {last:?}"
-            );
+            match outcome {
+                ReadOutcome::End(EndReason::TruncatedRecord, off) => assert_eq!(off, at),
+                other => panic!("cut {cut}: expected truncated record, got {other:?}"),
+            }
         }
     }
 

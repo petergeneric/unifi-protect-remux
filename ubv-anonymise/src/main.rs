@@ -159,15 +159,28 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut record_count: u64 = 0;
 
     loop {
-        let rec = match record::read_record(&mut reader) {
-            Ok(Some(r)) => r,
-            Ok(None) => break,
-            Err(e) => {
-                eprintln!(
-                    "Warning: record parse error after {} records: {e}",
-                    record_count
-                );
-                break;
+        // Anything short of a clean end leaves records that were never zeroed:
+        // remove the copy rather than publish a partly anonymised file.
+        let failure = match record::read_record_outcome(&mut reader) {
+            Ok(record::ReadOutcome::Record(r)) => Ok(r),
+            Ok(record::ReadOutcome::End(
+                record::EndReason::Eof | record::EndReason::ZeroPadding,
+                _,
+            )) => break,
+            Ok(record::ReadOutcome::End(reason, offset)) => Err(format!(
+                "reading stopped at offset 0x{offset:X} ({reason:?})"
+            )),
+            Err(e) => Err(format!("record parse error: {e}")),
+        };
+        let rec = match failure {
+            Ok(r) => r,
+            Err(msg) => {
+                drop(out);
+                let _ = fs::remove_file(&working_file);
+                return Err(format!(
+                    "{msg} after {record_count} records; output removed, not anonymised"
+                )
+                .into());
             }
         };
         record_count += 1;

@@ -8,8 +8,9 @@ use ubv::reader::open_ubv;
 /// The checksums changed when untimed records (format `F1 00`, no DTS) started to
 /// be parsed: each sample ends with one such Skip record, formerly misread as a
 /// `Skip` entry with `dts` = its size and a bogus `data_size`, now an `Untimed`
-/// entry. `test_old_files_unchanged_apart_from_untimed_records` checks that
-/// everything else is unchanged.
+/// entry. They also include the `read_status` block.
+/// `test_old_files_unchanged_apart_from_untimed_records` checks that everything
+/// else is unchanged.
 fn check_json_checksum(ubv_gz_path: &str, expected_sha256: &str) {
     let ubv_file = Path::new(ubv_gz_path);
 
@@ -39,7 +40,7 @@ fn check_json_checksum(ubv_gz_path: &str, expected_sha256: &str) {
 fn test_json_checksum_old_h264() {
     check_json_checksum(
         "../testdata/anonymised/sample1_0_rotating_1770769558568.ubv.gz",
-        "8f252c3ca348042238fb5cc564f81aa162885993b31740cec1e49509d757427d",
+        "d24f3f10a794bd52706b07bf5c739aefdbe5a487099449c6df80afbdba73bf26",
     );
 }
 
@@ -47,7 +48,7 @@ fn test_json_checksum_old_h264() {
 fn test_json_checksum_new_h264() {
     check_json_checksum(
         "../testdata/anonymised/sample2_0_rotating_1683867159535.ubv.gz",
-        "c624970e2a6b5839c394bf43194eb77d794e7fd1d5b069c667d838c9fc6d81e3",
+        "f28e85f4790a831963f5090105982762e1c5cb0481d391cd5b936981b10e3624",
     );
 }
 
@@ -55,7 +56,7 @@ fn test_json_checksum_new_h264() {
 fn test_json_checksum_hevc() {
     check_json_checksum(
         "../testdata/anonymised/sample3_0_rotating_1770695988380.ubv.gz",
-        "fc435bcb2cea02f485446ccc83a65f46f1cda6c9d721622a75dc5d6a5745e79c",
+        "305c4b6635383f08733e0be3ca9d366bf86e52c4492e383bb1c8eeb70ed90280",
     );
 }
 
@@ -74,6 +75,8 @@ fn json_sha256_without_untimed(ubv_gz_path: &str) -> Option<String> {
     let mut reader = open_ubv(ubv_file).expect("failed to open UBV file");
     let ubv = ubv::reader::parse_ubv(&mut reader).expect("failed to parse UBV file");
     let mut value = serde_json::to_value(&ubv).expect("failed to serialise UbvFile");
+    // Added after the fix; not part of the old output.
+    value.as_object_mut().unwrap().remove("read_status");
     for p in value["partitions"].as_array_mut().unwrap() {
         p["entries"].as_array_mut().unwrap().retain(|e| {
             if e.get("Untimed").is_some() {
@@ -128,6 +131,7 @@ fn test_old_files_unchanged_apart_from_untimed_records() {
 #[test]
 fn sample_trailing_skip_is_read_as_untimed_record() {
     use ubv::partition::PartitionEntry;
+    use ubv::record::EndReason;
 
     let cases = [
         (
@@ -164,5 +168,13 @@ fn sample_trailing_skip_is_read_as_untimed_record() {
         // 12-byte prefix + data + padding + 4-byte back-size == end of file.
         let pad = (4 - (u.data_offset + size as u64) % 4) % 4;
         assert_eq!(u.data_offset + size as u64 + pad + 4, 1 << 30, "{path}");
+
+        // ...and the file was read to its last byte.
+        let st = ubv.read_status;
+        assert_eq!(
+            (st.file_size, st.end_offset, st.end_reason),
+            (1 << 30, 1 << 30, EndReason::Eof),
+            "{path}"
+        );
     }
 }

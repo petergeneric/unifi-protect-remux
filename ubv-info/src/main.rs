@@ -90,6 +90,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ubv = ubv::reader::parse_ubv(&mut reader)
         .map_err(|e| format!("{}: error parsing UBV: {}", file, e))?;
 
+    // Stdout keeps its format; an incomplete read is flagged on stderr (and in
+    // `read_status` of the JSON).
+    let st = &ubv.read_status;
+    if st.end_offset != st.file_size || st.end_reason != ubv::record::EndReason::Eof {
+        eprintln!(
+            "{}: warning: reading stopped at offset {} of {} ({:?})",
+            file, st.end_offset, st.file_size, st.end_reason
+        );
+    }
+
     if args.json {
         println!("{}", serde_json::to_string(&ubv)?);
         return Ok(());

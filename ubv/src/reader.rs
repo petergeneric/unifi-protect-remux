@@ -8,7 +8,7 @@ use crate::clock::ClockSync;
 use crate::error::{Result, UbvError};
 use crate::frame::{Frame, RecordHeader};
 use crate::partition::{MetadataRecord, Partition, PartitionEntry, PartitionHeader, UntimedRecord};
-use crate::record;
+use crate::record::{self, EndReason, ReadOutcome};
 use crate::track;
 
 /// A reader that transparently handles both plain `.ubv` and gzip-compressed `.ubv.gz` files.
@@ -64,6 +64,24 @@ pub fn open_ubv(path: &Path) -> std::io::Result<UbvReader> {
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 pub struct UbvFile {
     pub partitions: Vec<Partition>,
+    /// Where and why reading stopped, and the stream length.
+    pub read_status: ReadStatus,
+}
+
+/// How far parsing got. A complete file has `end_offset == file_size` and
+/// `end_reason == Eof`; `ZeroPadding` before the end is normal for a
+/// preallocated file or one still being written; anything else means the tail
+/// was not read.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+pub struct ReadStatus {
+    /// Length of the stream in bytes.
+    pub file_size: u64,
+    /// Offset at which reading stopped (end of the last record read, or start
+    /// of the zero padding / incomplete record).
+    pub end_offset: u64,
+    /// Why reading stopped.
+    pub end_reason: EndReason,
 }
 
 /// Snapshot of the most recently parsed record. Used to enrich errors raised
@@ -109,10 +127,16 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
         }
     };
 
+    let file_size = stream_len(reader)?;
+    let (end_reason, end_offset);
+
     loop {
-        let rec = match record::read_record(reader) {
-            Ok(Some(r)) => r,
-            Ok(None) => break,
+        let rec = match record::read_record_outcome(reader) {
+            Ok(ReadOutcome::Record(r)) => r,
+            Ok(ReadOutcome::End(reason, offset)) => {
+                (end_reason, end_offset) = (reason, offset);
+                break;
+            }
             Err(e) => return Err(wrap(e, prev_record, partition_state, total_records)),
         };
 
@@ -261,7 +285,26 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
         partitions.push(p);
     }
 
-    Ok(UbvFile { partitions })
+    Ok(UbvFile {
+        partitions,
+        read_status: ReadStatus {
+            file_size,
+            end_offset,
+            end_reason,
+        },
+    })
+}
+
+/// Length of the stream, leaving the position where it was.
+fn stream_len<R: Seek>(reader: &mut R) -> Result<u64> {
+    let io = |e| UbvError::Io {
+        context: "measuring stream length",
+        source: e,
+    };
+    let pos = reader.stream_position().map_err(io)?;
+    let len = reader.seek(SeekFrom::End(0)).map_err(io)?;
+    reader.seek(SeekFrom::Start(pos)).map_err(io)?;
+    Ok(len)
 }
 
 /// Render the parser's state at the moment a parse step failed, for
@@ -617,6 +660,72 @@ mod tests {
         assert!(
             matches!(source_of(err), UbvError::BackSizeMismatch { .. }),
             "unexpected error"
+        );
+    }
+
+    #[test]
+    fn read_status_complete_file() {
+        let (b, _) = two_partition_file();
+        let len = b.offset();
+        let mut cursor = Cursor::new(b.bytes);
+        let st = parse_ubv(&mut cursor).unwrap().read_status;
+        assert_eq!(
+            (st.file_size, st.end_offset, st.end_reason),
+            (len, len, EndReason::Eof)
+        );
+    }
+
+    #[test]
+    fn read_status_zero_padding_and_truncation() {
+        let (mut b, _) = two_partition_file();
+        let len = b.offset();
+        b.bytes.extend_from_slice(&[0u8; 4096]);
+        let mut cursor = Cursor::new(b.bytes);
+        let st = parse_ubv(&mut cursor).unwrap().read_status;
+        assert_eq!(
+            (st.file_size, st.end_offset, st.end_reason),
+            (len + 4096, len, EndReason::ZeroPadding)
+        );
+
+        // Cut inside a large video frame after the last index record.
+        let (mut b, _) = two_partition_file();
+        let frame = b.video(9, 999_999, false, 5_000);
+        b.bytes.truncate(b.bytes.len() - 10);
+        let len = b.offset();
+        let mut cursor = Cursor::new(b.bytes);
+        let ubv = parse_ubv(&mut cursor).unwrap();
+        assert_eq!(ubv.partitions.len(), 2);
+        let st = ubv.read_status;
+        assert_eq!(st.file_size, len);
+        assert_eq!(st.end_offset, frame);
+        assert_eq!(st.end_reason, EndReason::TruncatedRecord);
+    }
+
+    /// The clean ends for a file copied while being written (trailing Skip cut
+    /// short, record cut by preallocated zeros) are reported as `ZeroPadding`
+    /// at the offset of the record that was not read.
+    #[test]
+    fn read_status_for_preallocated_tails() {
+        let (mut b, untimed) = two_partition_file();
+        b.bytes.truncate(b.bytes.len() - 10);
+        let st = parse_ubv(&mut Cursor::new(b.bytes)).unwrap().read_status;
+        assert_eq!(
+            (st.end_reason, st.end_offset),
+            (EndReason::ZeroPadding, untimed[2])
+        );
+
+        let mut c = UbvBuilder::default();
+        c.partition_header(0);
+        c.clock_sync(0, 1_700_000_000);
+        c.video(0, 0, true, 40);
+        let cut = c.video(1, 3_000, false, 40);
+        let n = c.bytes.len();
+        c.bytes[n - 4..].fill(0);
+        c.bytes.extend_from_slice(&[0u8; 8192]);
+        let st = parse_ubv(&mut Cursor::new(c.bytes)).unwrap().read_status;
+        assert_eq!(
+            (st.end_reason, st.end_offset),
+            (EndReason::ZeroPadding, cut)
         );
     }
 }
