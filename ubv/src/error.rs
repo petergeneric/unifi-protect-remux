@@ -35,6 +35,13 @@ pub enum UbvError {
         got: u8,
     },
 
+    /// A 0x00 byte where a record should start, but the rest of the file is not
+    /// all zero padding, so this is not the end of the file.
+    #[error(
+        "zero byte at record offset 0x{offset:X} is not trailing padding: non-zero data at offset 0x{nonzero_offset:X}"
+    )]
+    ZeroByteNotPadding { offset: u64, nonzero_offset: u64 },
+
     /// A clock-index-0 record whose back-size matches both the untimed layout
     /// (no DTS) and the timed one: which one it is cannot be told.
     #[error(
@@ -45,10 +52,13 @@ pub enum UbvError {
     #[error("unexpected EOF at offset 0x{offset:X} ({context})")]
     UnexpectedEof { offset: u64, context: &'static str },
 
-    #[error("back-size mismatch at offset 0x{offset:X}: expected {expected}, got {got}")]
+    /// The BACK_SIZE field at the end of the record at `offset` does not match
+    /// the size computed from its header (`expected` is u64 so that a corrupt
+    /// SIZE near u32::MAX cannot overflow).
+    #[error("back-size mismatch at record offset 0x{offset:X}: expected {expected}, got {got}")]
     BackSizeMismatch {
         offset: u64,
-        expected: u32,
+        expected: u64,
         got: u32,
     },
 

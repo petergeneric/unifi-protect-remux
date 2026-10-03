@@ -263,8 +263,11 @@ mod tests {
         assert_eq!(total, 27);
         assert_eq!(buf.len(), 1 + 27);
 
-        // Seek past the prefix byte and parse.
-        let mut cur = Cursor::new(&buf[1..]);
+        // Parse at the same absolute offset (padding depends on it). Parsing a
+        // slice that starts at the record would put it at offset 0 and, now that
+        // the parser checks BACK_SIZE, read it from the wrong place.
+        let mut cur = Cursor::new(&buf[..]);
+        cur.set_position(1);
         let parsed = read_record(&mut cur).unwrap().unwrap();
         assert_eq!(parsed.payload.as_deref(), Some(&[0xAB][..]));
     }

@@ -75,10 +75,18 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
         Err(e) => return Err(io_at_offset(file_offset, "reading record header")(e)),
     }
 
-    // Validate magic byte. A zero byte means we've hit zero-padded trailing
-    // space at the end of the file — treat as EOF.
+    // Validate magic byte. A zero byte is the end only when it starts zero
+    // padding that runs to the end of the file; a zero followed by non-zero data
+    // means we are not where a record should start (usually a mis-sized previous
+    // record).
     if header[0] == 0x00 {
-        return Ok(None);
+        return match first_nonzero_from(reader, file_offset, &header)? {
+            None => Ok(None),
+            Some(nonzero_offset) => Err(UbvError::ZeroByteNotPadding {
+                offset: file_offset,
+                nonzero_offset,
+            }),
+        };
     }
     if header[0] != 0xA0 {
         return Err(UbvError::BadRecordMagic {
@@ -184,32 +192,43 @@ pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> 
     let data_offset = file_offset + header_len as u64 + 4;
 
     let pad = alignment_padding(file_offset, header_len, data_size);
+    // u64: a corrupt SIZE near u32::MAX must not overflow.
+    let back_size_value = header_len as u64 + 4 + data_size as u64 + pad as u64;
+    let total_size = back_size_value + 4; // +4 for the BACK_SIZE field itself
 
     // Capture payload for small records (enables partition header, clock sync, etc.)
+    // Note: the "extra padding" from bit 0 is stored internally in the packet
+    // struct but is NOT written to disk. Only alignment padding appears on disk.
     let payload = if data_size <= MAX_INLINE_PAYLOAD {
         let mut payload_buf = vec![0u8; data_size as usize];
         reader
             .read_exact(&mut payload_buf)
             .map_err(io_at_offset(file_offset, "reading record payload"))?;
-        // Still need to seek past padding and back_size
-        // Note: the "extra padding" from bit 0 is stored internally in the packet
-        // struct but is NOT written to disk. Only alignment padding appears on disk.
-        // Seek past pad + back_size
         reader
-            .seek(SeekFrom::Current(pad as i64 + 4))
-            .map_err(io_at_offset(file_offset, "seeking past padding/back-size"))?;
+            .seek(SeekFrom::Current(pad as i64))
+            .map_err(io_at_offset(file_offset, "seeking past padding"))?;
         Some(payload_buf)
     } else {
-        // Seek past DATA + PAD + BACK_SIZE
-        let skip = data_size as i64 + pad as i64 + 4; // +4 for BACK_SIZE
         reader
-            .seek(SeekFrom::Current(skip))
+            .seek(SeekFrom::Start(file_offset + back_size_value))
             .map_err(io_at_offset(file_offset, "seeking past large payload"))?;
         None
     };
 
-    let back_size_value = header_len as u32 + 4 + data_size + pad;
-    let total_size = back_size_value as u64 + 4; // +4 for the BACK_SIZE field itself
+    // Every record ends with its own size: check it, so a mis-sized record is
+    // reported here instead of desynchronising everything after it.
+    let mut back_buf = [0u8; 4];
+    reader
+        .read_exact(&mut back_buf)
+        .map_err(io_at_offset(file_offset, "reading back-size"))?;
+    let back_size = u32::from_be_bytes(back_buf);
+    if back_size as u64 != back_size_value {
+        return Err(UbvError::BackSizeMismatch {
+            offset: file_offset,
+            expected: back_size_value,
+            got: back_size,
+        });
+    }
 
     Ok(Some(RawRecord {
         file_offset,
@@ -362,6 +381,39 @@ fn try_read_untimed<R: Read + Seek>(
         payload,
         has_dts: false,
     }))
+}
+
+/// Called after reading a record tag whose magic byte is 0x00. Returns `None`
+/// when `header` and everything after it up to the end of the stream are zero
+/// bytes (trailing padding), or the absolute offset of the first non-zero byte.
+fn first_nonzero_from<R: Read>(
+    reader: &mut R,
+    file_offset: u64,
+    header: &[u8; 8],
+) -> Result<Option<u64>> {
+    if let Some(i) = header.iter().position(|&b| b != 0) {
+        return Ok(Some(file_offset + i as u64));
+    }
+    first_nonzero(reader, file_offset + header.len() as u64)
+}
+
+/// Scan from the current position (absolute offset `pos`) to the end of the
+/// stream for a non-zero byte.
+fn first_nonzero<R: Read>(reader: &mut R, mut pos: u64) -> Result<Option<u64>> {
+    let start = pos;
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => return Ok(None),
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(io_at_offset(start, "checking trailing zero padding")(e)),
+        };
+        if let Some(i) = buf[..n].iter().position(|&b| b != 0) {
+            return Ok(Some(pos + i as u64));
+        }
+        pos += n as u64;
+    }
 }
 
 /// Compute alignment padding to the next 4-byte boundary.
@@ -535,6 +587,146 @@ mod tests {
                 UbvError::AmbiguousRecordLayout {
                     offset: 0,
                     track_id: 10
+                }
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn trailing_zero_padding_is_eof() {
+        let mut cursor = Cursor::new(vec![0u8; 100]);
+        assert!(read_record(&mut cursor).unwrap().is_none());
+    }
+
+    #[test]
+    fn zero_byte_followed_by_data_is_an_error() {
+        // Non-zero byte inside the 8-byte tag.
+        let mut cursor = Cursor::new(vec![0, 0, 0, 0, 0, 7, 0, 0, 0, 0]);
+        let err = read_record(&mut cursor).unwrap_err();
+        assert!(matches!(
+            err,
+            UbvError::ZeroByteNotPadding {
+                offset: 0,
+                nonzero_offset: 5
+            }
+        ));
+
+        // Non-zero byte well after the tag, past a long run of zeros.
+        let mut data = vec![0u8; 200_000];
+        data.push(0xA0);
+        let mut cursor = Cursor::new(data);
+        let err = read_record(&mut cursor).unwrap_err();
+        assert!(matches!(
+            err,
+            UbvError::ZeroByteNotPadding {
+                offset: 0,
+                nonzero_offset: 200_000
+            }
+        ));
+    }
+
+    #[test]
+    fn back_size_mismatch_is_an_error() {
+        let mut b = UbvBuilder::default();
+        b.video(0, 0, true, 10); // small (inline) payload
+        let second = b.video(1, 3_000, false, 2_000); // large payload
+        let mut small = b.bytes.clone();
+        let last = second as usize - 1;
+        small[last] ^= 0x01;
+        let mut cursor = Cursor::new(small);
+        let err = read_record(&mut cursor).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                UbvError::BackSizeMismatch {
+                    offset: 0,
+                    expected: 32,
+                    got: 33
+                }
+            ),
+            "{err:?}"
+        );
+
+        let mut large = b.bytes;
+        let last = large.len() - 1;
+        large[last] ^= 0x01;
+        let mut cursor = Cursor::new(large);
+        assert!(read_record(&mut cursor).unwrap().is_some());
+        let err = read_record(&mut cursor).unwrap_err();
+        assert!(
+            matches!(err, UbvError::BackSizeMismatch { offset, .. } if offset == second),
+            "{err:?}"
+        );
+    }
+
+    /// A corrupt SIZE near u32::MAX must give an error, not an overflow panic.
+    #[test]
+    fn huge_size_does_not_overflow() {
+        let mut data: Vec<u8> = vec![0xA0, 0x00, 0x07, 0xA7, 0xED, 0x0C, 0x00, 0x00];
+        data.extend_from_slice(&0u64.to_be_bytes());
+        data.extend_from_slice(&u32::MAX.to_be_bytes());
+        data.extend_from_slice(&[0u8; 64]);
+        let mut cursor = Cursor::new(data);
+        assert!(matches!(
+            read_record(&mut cursor),
+            Err(UbvError::UnexpectedEof { offset: 0, .. })
+        ));
+    }
+
+    /// End of stream inside a record (header, small payload or large payload)
+    /// is reported as unexpected EOF at the record's offset.
+    #[test]
+    fn record_cut_short_is_unexpected_eof() {
+        let mut b = UbvBuilder::default();
+        b.video(0, 0, true, 10);
+        let start = b.video(1, 3_000, false, 100);
+        b.video(2, 6_000, false, 5_000);
+        let len = b.bytes.len();
+        for cut in [
+            start as usize + 10,
+            start as usize + 18,
+            start as usize + 60,
+            len - 100,
+        ] {
+            let mut data = b.bytes.clone();
+            data.truncate(cut);
+            let mut cursor = Cursor::new(data);
+            let mut last = None;
+            let err = loop {
+                match read_record(&mut cursor) {
+                    Ok(Some(r)) => last = Some(r.file_offset),
+                    Ok(None) => panic!("cut {cut}: expected an error, got end of stream"),
+                    Err(e) => break e,
+                }
+            };
+            assert!(
+                matches!(err, UbvError::UnexpectedEof { .. }),
+                "cut {cut}: {err:?} after {last:?}"
+            );
+        }
+    }
+
+    /// A clock-index-0 record whose untimed reading runs past the end, but whose
+    /// timed trailer is present and wrong, is corruption (records follow).
+    #[test]
+    fn untimed_beyond_end_with_wrong_timed_trailer_is_an_error() {
+        let mut data: Vec<u8> = vec![0xA0, 0x00, 0x0A, 0xAA, 0xF1, 0x00, 0x00, 0x00];
+        data.extend_from_slice(&100_000u32.to_be_bytes()); // DTS / untimed SIZE
+        data.extend_from_slice(&8u32.to_be_bytes());
+        data.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        data.extend_from_slice(&99u32.to_be_bytes()); // wrong back-size (24)
+        let mut b = UbvBuilder { bytes: data };
+        b.video(0, 0, true, 10);
+        let mut cursor = Cursor::new(b.bytes);
+        let err = read_record(&mut cursor).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                UbvError::BackSizeMismatch {
+                    offset: 0,
+                    expected: 24,
+                    got: 99
                 }
             ),
             "{err:?}"

@@ -486,14 +486,68 @@ mod tests {
         }
 
         // The same Skip with something after it is not the end of the file: the
-        // stale back-size is not trusted and the untimed layout is not used.
+        // stale back-size is not trusted, and the record is a back-size error.
         b.bytes.extend_from_slice(&[0u8; 64]);
-        let ubv = parse_ubv(&mut Cursor::new(b.bytes)).unwrap();
+        let err = parse_ubv(&mut Cursor::new(b.bytes)).unwrap_err();
         assert!(
-            !ubv.partitions[0]
-                .entries
-                .iter()
-                .any(|e| matches!(e, PartitionEntry::Untimed(_)))
+            matches!(source_of(err), UbvError::BackSizeMismatch { .. }),
+            "unexpected error"
+        );
+    }
+
+    fn source_of(err: UbvError) -> UbvError {
+        match err {
+            UbvError::ParseContext { source, .. } => *source,
+            other => panic!("expected ParseContext, got {other:?}"),
+        }
+    }
+
+    /// A zero byte where a record should start, followed by more data, is an
+    /// error with its offset instead of a silent end of file.
+    #[test]
+    fn zero_byte_mid_file_is_an_error_with_offset() {
+        let mut b = UbvBuilder::default();
+        b.partition_header(0);
+        b.clock_sync(0, 1_700_000_000);
+        b.video(0, 0, true, 10);
+        let gap = b.offset();
+        b.bytes.extend_from_slice(&[0u8; 4]);
+        b.video(1, 3_000, false, 10);
+        let mut cursor = Cursor::new(b.bytes);
+
+        let err = parse_ubv(&mut cursor).expect_err("should fail on zero byte mid-file");
+        let UbvError::ParseContext { state, source } = err else {
+            panic!("expected ParseContext, got {err:?}");
+        };
+        let UbvError::ZeroByteNotPadding {
+            offset,
+            nonzero_offset,
+        } = *source
+        else {
+            panic!("expected ZeroByteNotPadding, got {source:?}");
+        };
+        assert_eq!(offset, gap);
+        assert_eq!(nonzero_offset, gap + 4);
+        assert!(
+            state.contains(&format!("next expected at 0x{gap:X}")),
+            "{state}"
+        );
+    }
+
+    /// A corrupt, non-zero back-size is still an error.
+    #[test]
+    fn corrupt_nonzero_back_size_is_still_an_error() {
+        let mut b = UbvBuilder::default();
+        b.partition_header(0);
+        b.clock_sync(0, 1_700_000_000);
+        b.video(0, 0, true, 40);
+        let n = b.bytes.len();
+        b.bytes[n - 1] ^= 0x10;
+        b.bytes.extend_from_slice(&[0u8; 4096]);
+        let err = parse_ubv(&mut Cursor::new(b.bytes)).unwrap_err();
+        assert!(
+            matches!(source_of(err), UbvError::BackSizeMismatch { .. }),
+            "unexpected error"
         );
     }
 }
