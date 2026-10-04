@@ -4,7 +4,8 @@
   "description": "Parsed UBV file contents.",
   "type": "object",
   "required": [
-    "partitions"
+    "partitions",
+    "read_status"
   ],
   "properties": {
     "partitions": {
@@ -12,6 +13,9 @@
       "items": {
         "$ref": "#/definitions/Partition"
       }
+    },
+    "read_status": {
+      "$ref": "#/definitions/ReadStatus"
     }
   },
   "definitions": {
@@ -57,6 +61,15 @@
           "minimum": 0.0
         }
       }
+    },
+    "EndReason": {
+      "description": "Complete means that all input bytes are validated envelopes or verified trailing padding. An error status always describes only an inspected prefix.",
+      "type": "string",
+      "enum": [
+        "eof",
+        "zero_padding",
+        "error"
+      ]
     },
     "FormatCode": {
       "description": "Decoded format code from bytes 4-5 of a record header.",
@@ -157,6 +170,7 @@
         "data_size",
         "dts",
         "file_offset",
+        "keyframe",
         "sequence",
         "track_id"
       ],
@@ -191,6 +205,10 @@
           "format": "uint64",
           "minimum": 0.0
         },
+        "keyframe": {
+          "description": "Whether this is a keyframe.",
+          "type": "boolean"
+        },
         "sequence": {
           "description": "Sequence counter from the record header.",
           "type": "integer",
@@ -213,6 +231,25 @@
         "Middle",
         "Last"
       ]
+    },
+    "PaddingExtent": {
+      "type": "object",
+      "required": [
+        "length",
+        "start"
+      ],
+      "properties": {
+        "length": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "start": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
     },
     "Partition": {
       "description": "A partition (recording segment) within a UBV file.",
@@ -251,6 +288,18 @@
     "PartitionEntry": {
       "description": "An event in the partition's stream.",
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Untimed"
+          ],
+          "properties": {
+            "Untimed": {
+              "$ref": "#/definitions/UntimedRecord"
+            }
+          },
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "required": [
@@ -382,6 +431,143 @@
             "format": "uint8",
             "minimum": 0.0
           }
+        }
+      }
+    },
+    "ReadFailure": {
+      "type": "object",
+      "required": [
+        "message",
+        "offset"
+      ],
+      "properties": {
+        "expected_back_size": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "format_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "message": {
+          "type": "string"
+        },
+        "observed_back_size": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "offset": {
+          "description": "Record start for record errors, offending byte for padding errors, or the accepted-prefix boundary when no more precise position is available.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "track_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ReadStatus": {
+      "type": "object",
+      "required": [
+        "end_reason",
+        "file_size",
+        "validated_end_offset"
+      ],
+      "properties": {
+        "end_reason": {
+          "$ref": "#/definitions/EndReason"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReadFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "file_size": {
+          "description": "Length of the input stream (decompressed for gzip inputs).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "padding": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PaddingExtent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validated_end_offset": {
+          "description": "End of the last accepted record, never the cursor after a failed seek.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "UntimedRecord": {
+      "description": "An opaque record with a validated envelope and no timestamp. Format flags used by timed frames do not apply to this record.",
+      "type": "object",
+      "required": [
+        "data_offset",
+        "data_size",
+        "file_offset",
+        "format_code",
+        "sequence",
+        "track_id"
+      ],
+      "properties": {
+        "data_offset": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "data_size": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "file_offset": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "format_code": {
+          "$ref": "#/definitions/FormatCode"
+        },
+        "sequence": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "track_id": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
         }
       }
     }

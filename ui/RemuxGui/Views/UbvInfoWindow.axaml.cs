@@ -42,6 +42,9 @@ public partial class UbvInfoWindow : Window
         window._ubvPath = ubvPath;
         window._json = json;
 
+        var inspectionError = UbvInfoParser.InspectionError(json);
+        window.InspectionError.Text = inspectionError;
+        window.InspectionError.IsVisible = inspectionError != null;
         var roots = UbvInfoParser.Parse(json);
         window.InfoTree.ItemsSource = roots;
 

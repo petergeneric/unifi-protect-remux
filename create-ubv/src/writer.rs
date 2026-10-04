@@ -170,8 +170,8 @@ mod tests {
         let mut cur = Cursor::new(buf);
         let parsed = read_record(&mut cur).unwrap().unwrap();
         assert_eq!(parsed.track_id, 7);
-        assert_eq!(parsed.dts, 12345);
-        assert_eq!(parsed.clock_rate, 90_000);
+        assert_eq!(parsed.dts, Some(12345));
+        assert_eq!(parsed.clock_rate, Some(90_000));
         assert_eq!(parsed.data_size, payload.len() as u32);
         assert_eq!(parsed.payload.as_deref(), Some(&payload[..]));
     }
@@ -204,8 +204,8 @@ mod tests {
         let mut cur = Cursor::new(buf);
         let parsed = read_record(&mut cur).unwrap().unwrap();
         assert_eq!(parsed.track_id, 0xDA7E);
-        assert_eq!(parsed.dts, 0x43E5BD6E);
-        assert_eq!(parsed.clock_rate, 1000);
+        assert_eq!(parsed.dts, Some(0x43E5BD6E));
+        assert_eq!(parsed.clock_rate, Some(1000));
         assert_eq!(parsed.data_size, 8);
     }
 
@@ -233,7 +233,7 @@ mod tests {
 
         let mut cur = Cursor::new(buf);
         let parsed = read_record(&mut cur).unwrap().unwrap();
-        assert_eq!(parsed.dts, 99999);
+        assert_eq!(parsed.dts, Some(99999));
         assert!(!parsed.format_code.keyframe());
         assert_eq!(parsed.duration, Some(3000));
         assert_eq!(parsed.data_size, payload.len() as u32);
@@ -264,7 +264,9 @@ mod tests {
         assert_eq!(buf.len(), 1 + 27);
 
         // Seek past the prefix byte and parse.
-        let mut cur = Cursor::new(&buf[1..]);
+        // Retain absolute offsets: slicing off the prefix changes alignment.
+        let mut cur = Cursor::new(&buf);
+        cur.set_position(1);
         let parsed = read_record(&mut cur).unwrap().unwrap();
         assert_eq!(parsed.payload.as_deref(), Some(&[0xAB][..]));
     }

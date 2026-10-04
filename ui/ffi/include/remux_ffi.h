@@ -95,7 +95,10 @@ char *remux_process_file(const char *ubv_path,
  *
  * A JSON string `{"output_path":"..."}` on success. The caller **must**
  * free the returned string with `remux_free_string`.
- * Returns `NULL` on error (check `*error_out`).
+ * Successful writing does not imply complete parsing: the diagnostics JSON
+ * may contain a validated prefix with `read_status.end_reason = "error"`.
+ * Check the saved `read_status` for parsing completeness and failure details.
+ * Returns `NULL` on setup or output errors (check `*error_out`).
  *
  * # Safety
  *
@@ -118,7 +121,10 @@ char *remux_produce_diagnostics(const char *ubv_path, char **error_out);
  *
  * A JSON string containing the parsed UBV file structure. The caller
  * **must** free the returned string with `remux_free_string`.
- * Returns `NULL` on error (check `*error_out`).
+ * Parse failures return partial JSON with `inspection_complete = false` and
+ * failure details in `read_status`; `*error_out` remains `NULL`. Callers must
+ * check `inspection_complete` before treating inspection as complete.
+ * Returns `NULL` on setup or response errors (check `*error_out`).
  *
  * # Safety
  *

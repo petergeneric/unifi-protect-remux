@@ -87,12 +87,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = args.file.or(args.input).expect("file argument required");
     let mut reader = ubv::reader::open_ubv(Path::new(&file))
         .map_err(|e| format!("{}: error opening file: {}", file, e))?;
-    let ubv = ubv::reader::parse_ubv(&mut reader)
+    let (ubv, parse_error) = ubv::reader::parse_ubv_partial(&mut reader)
         .map_err(|e| format!("{}: error parsing UBV: {}", file, e))?;
 
     if args.json {
         println!("{}", serde_json::to_string(&ubv)?);
-        return Ok(());
+        return inspection_result(&file, &ubv.read_status, parse_error);
     }
 
     if args.inspect {
@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .finish()
             .map_err(|e| format!("{}: error finishing gzip: {}", output_path, e))?;
         eprintln!("Wrote {}", output_path);
-        return Ok(());
+        return inspection_result(&file, &ubv.read_status, parse_error);
     }
 
     match args.text {
@@ -119,7 +119,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    Ok(())
+    inspection_result(&file, &ubv.read_status, parse_error)
+}
+
+fn inspection_result(
+    file: &str,
+    status: &ubv::reader::ReadStatus,
+    error: Option<ubv::error::UbvError>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if status.is_complete() {
+        return Ok(());
+    }
+    Err(format!(
+        "{file}: incomplete inspection (validated {} of {} bytes): {}",
+        status.validated_end_offset,
+        status.file_size,
+        error
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "input was not completely validated".into())
+    )
+    .into())
 }
 
 fn parse_positive_seconds(s: &str) -> Result<f64, String> {
@@ -146,6 +165,12 @@ fn print_legacy(ubv: &ubv::reader::UbvFile) {
 
         for entry in &partition.entries {
             match entry {
+                PartitionEntry::Untimed(r) => {
+                    println!(
+                        "{:>4} {:>5} {:>3} {:>16} {:>8} {:>15} {:>5} {:>17} {:>6} {:>7}",
+                        "U", r.track_id, "", r.data_offset, r.data_size, "", "", "", "", ""
+                    );
+                }
                 PartitionEntry::ClockSync(cs) => {
                     println!(
                         "SC: {} ticks @{}Hz -> WC: {}ms",

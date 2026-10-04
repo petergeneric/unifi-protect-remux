@@ -37,9 +37,11 @@
         </Style>
     </Window.Styles>
 
-    <Grid ColumnDefinitions="260,Auto,*">
+    <Grid ColumnDefinitions="260,Auto,*" RowDefinitions="Auto,*">
+        <TextBlock x:Name="InspectionError" Grid.Row="0" Grid.ColumnSpan="3" IsVisible="False"
+                   TextWrapping="Wrap" Foreground="Red" Margin="12,8" />
         <!-- Left pane: tree view -->
-        <Border Grid.Column="0" Padding="8"
+        <Border Grid.Row="1" Grid.Column="0" Padding="8"
                 BorderThickness="0,0,1,0"
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}">
             <DockPanel>
@@ -64,11 +66,11 @@
         </Border>
 
         <!-- Grid splitter -->
-        <GridSplitter Grid.Column="1" Width="4" ResizeDirection="Columns"
+        <GridSplitter Grid.Row="1" Grid.Column="1" Width="4" ResizeDirection="Columns"
                       Background="Transparent" />
 
         <!-- Right pane -->
-        <Panel Grid.Column="2">
+        <Panel Grid.Row="1" Grid.Column="2">
             <!-- Table view (entry groups) -->
             <DockPanel x:Name="TablePanel">
                 <!-- Fixed header row -->

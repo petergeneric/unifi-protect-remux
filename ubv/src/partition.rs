@@ -29,11 +29,25 @@ pub struct MetadataRecord {
     pub file_offset: u64,
 }
 
+/// An opaque record with a validated envelope and no timestamp. Format flags
+/// used by timed frames do not apply to this record.
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
+pub struct UntimedRecord {
+    pub file_offset: u64,
+    pub track_id: u16,
+    pub format_code: FormatCode,
+    pub sequence: u16,
+    pub data_offset: u64,
+    pub data_size: u32,
+}
+
 /// An event in the partition's stream.
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[non_exhaustive]
 pub enum PartitionEntry {
+    Untimed(UntimedRecord),
     ClockSync(ClockSync),
     Frame(Frame),
     Motion(MetadataRecord),

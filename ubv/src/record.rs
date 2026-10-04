@@ -1,7 +1,7 @@
 use std::io::{Read, Seek, SeekFrom};
 
 use crate::error::{Result, UbvError};
-use crate::format::FormatCode;
+use crate::format::{FormatCode, RecordLayout};
 
 /// Maximum payload size (in bytes) that is read inline during record parsing.
 /// Records with payloads up to this size have their data captured in memory;
@@ -19,10 +19,10 @@ pub struct RawRecord {
     pub format_code: FormatCode,
     /// Sequence counter from bytes 6-7.
     pub sequence: u16,
-    /// Decoding timestamp (DTS), 32 or 64 bit depending on format.
-    pub dts: u64,
-    /// Clock rate in Hz (from table lookup or stream).
-    pub clock_rate: u32,
+    /// Decoding timestamp, absent for untimed layouts.
+    pub dts: Option<u64>,
+    /// Clock rate in Hz (table or stream), absent for untimed layouts.
+    pub clock_rate: Option<u32>,
     /// Extra field value when format_code.has_extra() (bit 1).
     pub extra: Option<u32>,
     /// Duration field when bit 6 is clear (separate from payload size).
@@ -38,192 +38,315 @@ pub struct RawRecord {
 }
 
 /// Map an IO error during record parsing to the appropriate UbvError.
-///
-/// True unexpected-EOF errors (the most common failure) become `UnexpectedEof`
-/// with a file offset and the same context string. All other IO errors are
-/// preserved with positional context via `IoAtOffset`.
 fn io_at_offset(offset: u64, context: &'static str) -> impl FnOnce(std::io::Error) -> UbvError {
-    move |e: std::io::Error| {
-        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+    move |source| {
+        if source.kind() == std::io::ErrorKind::UnexpectedEof {
             UbvError::UnexpectedEof { offset, context }
         } else {
             UbvError::IoAtOffset {
                 offset,
                 context,
-                source: e,
+                source,
             }
         }
     }
 }
 
-/// Read the next record from the stream. Returns None at EOF.
-pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> {
-    let file_offset = reader.stream_position().map_err(|e| UbvError::Io {
-        context: "querying stream position",
-        source: e,
-    })?;
-
-    // Read bytes 0-7 (tag + format code + sequence)
-    let mut header = [0u8; 8];
-    match reader.read_exact(&mut header) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(e) => return Err(io_at_offset(file_offset, "reading record header")(e)),
-    }
-
-    // Validate magic byte. A zero byte means we've hit zero-padded trailing
-    // space at the end of the file — treat as EOF.
-    if header[0] == 0x00 {
-        return Ok(None);
-    }
-    if header[0] != 0xA0 {
-        return Err(UbvError::BadRecordMagic {
-            offset: file_offset,
-            got: header[0],
-        });
-    }
-
-    let track_id = u16::from_be_bytes([header[1], header[2]]);
-
-    // Verify XOR checksum: byte0 ^ byte1 ^ byte2 == byte3
-    let expected_checksum = header[0] ^ header[1] ^ header[2];
-    if expected_checksum != header[3] {
-        return Err(UbvError::ChecksumMismatch {
-            offset: file_offset,
-            track_id,
-            expected: expected_checksum,
-            got: header[3],
-        });
-    }
-
-    let format_code = FormatCode::new(header[4], header[5]);
-    let sequence = u16::from_be_bytes([header[6], header[7]]);
-
-    let header_len = format_code.header_len();
-
-    // Read remaining header bytes (beyond the initial 8) into a stack buffer.
-    // Max extra bytes: 4 (clock_rate) + 8 (DTS 64-bit) + 4 (extra) + 4 (duration) = 20.
-    let extra_header_bytes = header_len - 8;
-    let mut ext_header_buf = [0u8; 24];
-    let ext_header = &mut ext_header_buf[..extra_header_bytes];
-    reader
-        .read_exact(ext_header)
-        .map_err(io_at_offset(file_offset, "reading extended header"))?;
-
-    // Parse fields from the extended header. `header_len` was computed from the
-    // same `format_code` flags, so `ext_header` is exactly sized for the reads
-    // below — slice indexing is infallible by construction.
-    let mut pos = 0;
-
-    let clock_rate = if format_code.sample_rate_index() == 1 {
-        let cr = read_u32(ext_header, pos);
-        pos += 4;
-        cr
-    } else {
-        format_code.table_clock_rate()
-    };
-
-    let dts = if format_code.dts_64bit() {
-        let v = read_u64(ext_header, pos);
-        pos += 8;
-        v
-    } else {
-        let v = read_u32(ext_header, pos) as u64;
-        pos += 4;
-        v
-    };
-
-    let extra = if format_code.has_extra() {
-        let v = read_u32(ext_header, pos);
-        pos += 4;
-        Some(v)
-    } else {
-        None
-    };
-
-    // bit 6 clear: duration field precedes SIZE. Otherwise duration doubles as SIZE.
-    let duration = if format_code.byte4() & 0x40 == 0 {
-        Some(read_u32(ext_header, pos))
-    } else {
-        None
-    };
-
-    // Read the SIZE field (4 bytes right after header)
-    let mut size_buf = [0u8; 4];
-    reader
-        .read_exact(&mut size_buf)
-        .map_err(io_at_offset(file_offset, "reading SIZE field"))?;
-    let data_size = u32::from_be_bytes(size_buf);
-
-    let data_offset = file_offset + header_len as u64 + 4;
-
-    let pad = alignment_padding(file_offset, header_len, data_size);
-
-    // Capture payload for small records (enables partition header, clock sync, etc.)
-    let payload = if data_size <= MAX_INLINE_PAYLOAD {
-        let mut payload_buf = vec![0u8; data_size as usize];
-        reader
-            .read_exact(&mut payload_buf)
-            .map_err(io_at_offset(file_offset, "reading record payload"))?;
-        // Still need to seek past padding and back_size
-        // Note: the "extra padding" from bit 0 is stored internally in the packet
-        // struct but is NOT written to disk. Only alignment padding appears on disk.
-        // Seek past pad + back_size
-        reader
-            .seek(SeekFrom::Current(pad as i64 + 4))
-            .map_err(io_at_offset(file_offset, "seeking past padding/back-size"))?;
-        Some(payload_buf)
-    } else {
-        // Seek past DATA + PAD + BACK_SIZE
-        let skip = data_size as i64 + pad as i64 + 4; // +4 for BACK_SIZE
-        reader
-            .seek(SeekFrom::Current(skip))
-            .map_err(io_at_offset(file_offset, "seeking past large payload"))?;
-        None
-    };
-
-    let back_size_value = header_len as u32 + 4 + data_size + pad;
-    let total_size = back_size_value as u64 + 4; // +4 for the BACK_SIZE field itself
-
-    Ok(Some(RawRecord {
-        file_offset,
-        track_id,
-        format_code,
-        sequence,
-        dts,
-        clock_rate,
-        extra,
-        duration,
-        data_size,
-        data_offset,
-        total_size,
-        payload,
-    }))
+/// Termination is verified separately from the record envelope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordEnd {
+    Eof,
+    ZeroPadding { start: u64, length: u64 },
 }
 
-/// Compute alignment padding to the next 4-byte boundary.
-/// `record_prefix_len` is `file_offset + header_len + 4 + data_size`.
-fn alignment_padding(file_offset: u64, header_len: usize, data_size: u32) -> u32 {
-    let unpadded = file_offset + header_len as u64 + 4 + data_size as u64;
-    ((4 - (unpadded % 4)) % 4) as u32
+#[derive(Debug)]
+pub enum ReadOutcome {
+    Record(RawRecord),
+    End(RecordEnd),
+}
+
+/// Validates envelopes against a captured stream length without loading large
+/// payloads. Callers must provide a stable snapshot: length checks detect some,
+/// but not all, concurrent writes. Gzip readers use the decompressed length.
+pub struct RecordReader<'a, R> {
+    reader: &'a mut R,
+    file_size: u64,
+}
+
+impl<'a, R: Read + Seek> RecordReader<'a, R> {
+    pub fn new(reader: &'a mut R) -> Result<Self> {
+        let position = reader.stream_position().map_err(|source| UbvError::Io {
+            context: "querying stream position",
+            source,
+        })?;
+        let file_size = reader
+            .seek(SeekFrom::End(0))
+            .map_err(io_at_offset(position, "measuring input"))?;
+        reader
+            .seek(SeekFrom::Start(position))
+            .map_err(io_at_offset(position, "restoring stream position"))?;
+        Ok(Self { reader, file_size })
+    }
+
+    pub fn file_size(&self) -> u64 {
+        self.file_size
+    }
+
+    /// Check the captured length before reporting successful termination.
+    fn finish(&mut self, end: RecordEnd) -> Result<ReadOutcome> {
+        let got = self
+            .reader
+            .seek(SeekFrom::End(0))
+            .map_err(io_at_offset(self.file_size, "checking input length"))?;
+        if got != self.file_size {
+            return Err(UbvError::InputChanged {
+                expected: self.file_size,
+                got,
+            });
+        }
+        Ok(ReadOutcome::End(end))
+    }
+
+    pub fn read_next(&mut self) -> Result<ReadOutcome> {
+        let offset = self
+            .reader
+            .stream_position()
+            .map_err(|source| UbvError::Io {
+                context: "querying stream position",
+                source,
+            })?;
+        if offset == self.file_size {
+            return self.finish(RecordEnd::Eof);
+        }
+        if offset > self.file_size {
+            return Err(UbvError::UnexpectedEof {
+                offset,
+                context: "record starts beyond input",
+            });
+        }
+        let mut header = [0u8; 8];
+        let available = (self.file_size - offset).min(8) as usize;
+        self.reader
+            .read_exact(&mut header[..available])
+            .map_err(io_at_offset(offset, "reading record header"))?;
+        if header[0] == 0 {
+            // Scan from the boundary itself, including all bytes already read.
+            if let Some(pos) = header[..available].iter().position(|&b| b != 0) {
+                return Err(UbvError::NonzeroPadding {
+                    offset: offset + pos as u64,
+                    padding_start: offset,
+                });
+            }
+            let mut position = offset + available as u64;
+            let mut buf = [0u8; 65536];
+            while position < self.file_size {
+                let n = (self.file_size - position).min(buf.len() as u64) as usize;
+                self.reader
+                    .read_exact(&mut buf[..n])
+                    .map_err(io_at_offset(position, "checking trailing padding"))?;
+                if let Some(pos) = buf[..n].iter().position(|&b| b != 0) {
+                    return Err(UbvError::NonzeroPadding {
+                        offset: position + pos as u64,
+                        padding_start: offset,
+                    });
+                }
+                position += n as u64;
+            }
+            return self.finish(RecordEnd::ZeroPadding {
+                start: offset,
+                length: self.file_size - offset,
+            });
+        }
+        if available < 8 {
+            return Err(UbvError::UnexpectedEof {
+                offset,
+                context: "reading record header",
+            });
+        }
+        if header[0] != 0xA0 {
+            return Err(UbvError::BadRecordMagic {
+                offset,
+                got: header[0],
+            });
+        }
+        let track_id = u16::from_be_bytes([header[1], header[2]]);
+        let expected = header[0] ^ header[1] ^ header[2];
+        if expected != header[3] {
+            return Err(UbvError::ChecksumMismatch {
+                offset,
+                track_id,
+                expected,
+                got: header[3],
+            });
+        }
+        let format_code = FormatCode::new(header[4], header[5]);
+        self.read_envelope(
+            offset,
+            track_id,
+            format_code,
+            u16::from_be_bytes([header[6], header[7]]),
+        )
+        .map(ReadOutcome::Record)
+        .map_err(|source| UbvError::RecordContext {
+            offset,
+            track_id,
+            format: format_code.0,
+            source: Box::new(source),
+        })
+    }
+
+    fn read_envelope(
+        &mut self,
+        file_offset: u64,
+        track_id: u16,
+        format_code: FormatCode,
+        sequence: u16,
+    ) -> Result<RawRecord> {
+        let layout = format_code.layout().ok_or(UbvError::UnsupportedLayout {
+            offset: file_offset,
+            format: format_code.0,
+        })?;
+        let header_len = format_code.header_len();
+        let mut ext = [0u8; 24];
+        let ext = &mut ext[..header_len - 8];
+        self.reader
+            .read_exact(ext)
+            .map_err(io_at_offset(file_offset, "reading extended header"))?;
+        let (dts, clock_rate, extra, duration) = match layout {
+            RecordLayout::Untimed => (None, None, None, None),
+            RecordLayout::Timed => {
+                let mut pos = 0;
+                let rate = if format_code.sample_rate_index() == 1 {
+                    let rate = read_u32(ext, pos);
+                    pos += 4;
+                    rate
+                } else {
+                    format_code.table_clock_rate()
+                };
+                if rate == 0 {
+                    return Err(UbvError::InvalidClockRate {
+                        offset: file_offset,
+                        got: rate,
+                    });
+                }
+                let dts = if format_code.dts_64bit() {
+                    let dts = read_u64(ext, pos);
+                    pos += 8;
+                    dts
+                } else {
+                    let dts = read_u32(ext, pos) as u64;
+                    pos += 4;
+                    dts
+                };
+                let extra = if format_code.has_extra() {
+                    let value = read_u32(ext, pos);
+                    pos += 4;
+                    Some(value)
+                } else {
+                    None
+                };
+                let duration = if format_code.byte4() & 0x40 == 0 {
+                    Some(read_u32(ext, pos))
+                } else {
+                    None
+                };
+                (Some(dts), Some(rate), extra, duration)
+            }
+        };
+        let mut size = [0u8; 4];
+        self.reader
+            .read_exact(&mut size)
+            .map_err(io_at_offset(file_offset, "reading payload size"))?;
+        let data_size = u32::from_be_bytes(size);
+        let overflow = || UbvError::ExtentOverflow {
+            offset: file_offset,
+        };
+        let data_offset = file_offset
+            .checked_add(header_len as u64 + 4)
+            .ok_or_else(overflow)?;
+        let payload_end = data_offset
+            .checked_add(data_size as u64)
+            .ok_or_else(overflow)?;
+        let pad = (4 - payload_end % 4) % 4;
+        let trailer_offset = payload_end.checked_add(pad).ok_or_else(overflow)?;
+        let next = trailer_offset.checked_add(4).ok_or_else(overflow)?;
+        let back_size = trailer_offset - file_offset;
+        if next > self.file_size {
+            return Err(UbvError::UnexpectedEof {
+                offset: file_offset,
+                context: "record extent exceeds input",
+            });
+        }
+        // Small payloads can be read sequentially without discarding buffered
+        // input. Large payloads need only a seek and a four-byte trailer read.
+        let payload = if data_size <= MAX_INLINE_PAYLOAD {
+            let mut buf = vec![0; data_size as usize];
+            self.reader
+                .read_exact(&mut buf)
+                .map_err(io_at_offset(file_offset, "reading payload"))?;
+            let mut alignment = [0u8; 3];
+            self.reader
+                .read_exact(&mut alignment[..pad as usize])
+                .map_err(io_at_offset(file_offset, "reading alignment padding"))?;
+            Some(buf)
+        } else {
+            self.reader
+                .seek(SeekFrom::Start(trailer_offset))
+                .map_err(io_at_offset(file_offset, "seeking to back-size"))?;
+            None
+        };
+        let mut trailer = [0u8; 4];
+        self.reader
+            .read_exact(&mut trailer)
+            .map_err(io_at_offset(file_offset, "reading back-size"))?;
+        let got = u32::from_be_bytes(trailer);
+        if u64::from(got) != back_size {
+            return Err(UbvError::BackSizeMismatch {
+                offset: file_offset,
+                expected: back_size,
+                got,
+            });
+        }
+        Ok(RawRecord {
+            file_offset,
+            track_id,
+            format_code,
+            sequence,
+            dts,
+            clock_rate,
+            extra,
+            duration,
+            data_size,
+            data_offset,
+            total_size: next - file_offset,
+            payload,
+        })
+    }
+}
+
+/// Compatibility API: only verified EOF or trailing padding becomes `None`.
+/// Repeated callers should use `RecordReader` to capture the length once.
+pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> {
+    match RecordReader::new(reader)?.read_next()? {
+        ReadOutcome::Record(record) => Ok(Some(record)),
+        ReadOutcome::End(_) => Ok(None),
+    }
 }
 
 fn read_u32(buf: &[u8], offset: usize) -> u32 {
     u32::from_be_bytes(
         buf[offset..offset + 4]
             .try_into()
-            .expect("header_len mismatch — parser bug"),
+            .expect("header layout mismatch"),
     )
 }
-
 fn read_u64(buf: &[u8], offset: usize) -> u64 {
     u64::from_be_bytes(
         buf[offset..offset + 8]
             .try_into()
-            .expect("header_len mismatch — parser bug"),
+            .expect("header layout mismatch"),
     )
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,8 +389,8 @@ mod tests {
         let mut cursor = Cursor::new(data);
         let rec = read_record(&mut cursor).unwrap().unwrap();
         assert_eq!(rec.track_id, 0xDA7E);
-        assert_eq!(rec.dts, 0x43E5BD6E);
-        assert_eq!(rec.clock_rate, 1000);
+        assert_eq!(rec.dts, Some(0x43E5BD6E));
+        assert_eq!(rec.clock_rate, Some(1000));
         assert_eq!(rec.data_size, 8);
         assert!(rec.payload.is_some());
         let payload = rec.payload.unwrap();

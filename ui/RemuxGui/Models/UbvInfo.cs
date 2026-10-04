@@ -51,6 +51,24 @@ public class UbvInfoEntry
 /// </summary>
 public static class UbvInfoParser
 {
+    public static string? InspectionError(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (root.TryGetProperty("inspection_complete", out var complete) && complete.GetBoolean())
+            return null;
+        if (root.TryGetProperty("read_status", out var status))
+        {
+            var validated = status.GetProperty("validated_end_offset").GetUInt64();
+            var size = status.GetProperty("file_size").GetUInt64();
+            var message = status.TryGetProperty("failure", out var failure) && failure.ValueKind == JsonValueKind.Object
+                ? failure.GetProperty("message").GetString()
+                : "Input was not completely validated";
+            return $"Incomplete inspection (validated {validated} of {size} bytes): {message}";
+        }
+        return "Inspection completeness is unavailable";
+    }
+
     public static List<UbvInfoTreeNode> Parse(string json)
     {
         var roots = new List<UbvInfoTreeNode>();

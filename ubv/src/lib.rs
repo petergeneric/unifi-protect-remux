@@ -6,5 +6,6 @@ pub mod frame;
 pub mod partition;
 pub mod reader;
 pub mod record;
+pub mod status;
 pub mod track;
 pub mod version;

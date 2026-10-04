@@ -479,8 +479,14 @@ public partial class MainViewModel : ViewModelBase
 
         if (json != null)
         {
+            var inspectionError = UbvInfoParser.InspectionError(json);
             if (fileIndex < Files.Count)
-                Files[fileIndex].Status = FileStatus.Completed;
+            {
+                Files[fileIndex].Status = inspectionError == null ? FileStatus.Completed : FileStatus.Failed;
+                Files[fileIndex].Error = inspectionError;
+            }
+            if (inspectionError != null)
+                LogLines.Add(new LogEntry("error", inspectionError, fileIndex));
 
             OpenUbvInfoRequested?.Invoke(path, fileName, json);
         }

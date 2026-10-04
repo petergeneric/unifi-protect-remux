@@ -23,7 +23,26 @@ pub const CLOCK_RATES: [u32; 16] = [
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 pub struct FormatCode(pub u16);
 
+/// Known envelope shapes. Timed fields follow the existing bit/clock-table rules.
+/// Reserved clock indices cannot establish a timed envelope; F1 00 is the
+/// independently observed exception with no timed fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RecordLayout {
+    Untimed,
+    Timed,
+}
+
 impl FormatCode {
+    pub(crate) fn layout(self) -> Option<RecordLayout> {
+        if self.0 == 0xF100 {
+            Some(RecordLayout::Untimed)
+        } else if matches!(self.sample_rate_index(), 1..=14) {
+            Some(RecordLayout::Timed)
+        } else {
+            None
+        }
+    }
+
     pub fn new(b4: u8, b5: u8) -> Self {
         Self(((b4 as u16) << 8) | b5 as u16)
     }
@@ -92,8 +111,15 @@ impl FormatCode {
     }
 
     /// Compute the offset from record start to the SIZE field.
-    /// This determines the header length.
+    /// This calculation does not validate support for the format.
     pub fn header_len(self) -> usize {
+        match self.layout() {
+            Some(RecordLayout::Untimed) => 8,
+            Some(RecordLayout::Timed) | None => self.timed_header_len(),
+        }
+    }
+
+    fn timed_header_len(self) -> usize {
         let mut off: usize = 8; // bytes 0-7 are always present
 
         // If sample_rate_index == 1, read clock rate from stream (4 bytes)
@@ -113,19 +139,11 @@ impl FormatCode {
             off += 4;
         }
 
-        // Duration field is always present (when extended header is set)
-        // But if bit 6 is clear, there's a separate payload_size after duration
-        // The SIZE field sits at the end
-        // Actually: duration is always present, then if bit6 is clear, payload_size follows
-        // The "header_len" is the offset to the SIZE (payload_size) field.
-        // When bit6 is set, duration IS the payload_size, so SIZE offset = off (at duration)
-        // When bit6 is clear, duration is separate, then SIZE follows = off + 4
-
+        // With bit 6 clear, a separate duration precedes SIZE; otherwise that
+        // field supplies the payload size itself.
         if self.byte4() & 0x40 == 0 {
-            // bit 6 clear: duration field + separate payload_size
-            off += 4; // skip duration, SIZE is after it
+            off += 4;
         }
-        // else: bit 6 set, duration doubles as payload_size, SIZE is at current off
 
         off
     }

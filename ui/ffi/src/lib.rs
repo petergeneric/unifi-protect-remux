@@ -173,6 +173,8 @@ struct UbvInfoPartition {
 #[derive(serde::Serialize)]
 struct UbvInfoTree {
     partitions: Vec<UbvInfoPartition>,
+    read_status: ubv::reader::ReadStatus,
+    inspection_complete: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +360,7 @@ fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
 
     let ubv_path = std::path::Path::new(path);
     let mut reader = ubv::reader::open_ubv(ubv_path)?;
-    let ubv_file = ubv::reader::parse_ubv(&mut reader)?;
+    let (ubv_file, _) = ubv::reader::parse_ubv_partial(&mut reader)?;
 
     let mut partitions = Vec::new();
 
@@ -370,6 +372,7 @@ fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
         let mut jpegs = Vec::new();
         let mut skips = Vec::new();
         let mut talkback = Vec::new();
+        let mut untimed = Vec::new();
 
         for entry in &partition.entries {
             match entry {
@@ -390,6 +393,19 @@ fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
                     };
                     frame_groups.entry(h.track_id).or_default().push(row);
                 }
+                PartitionEntry::Untimed(r) => untimed.push(UbvInfoEntry {
+                    entry_type: "Untimed".into(),
+                    track_id: Some(r.track_id),
+                    keyframe: None,
+                    offset: Some(r.data_offset),
+                    size: Some(r.data_size),
+                    dts: None,
+                    cts: None,
+                    wc: None,
+                    clock_rate: None,
+                    sequence: Some(r.sequence),
+                    packet_position: None,
+                }),
                 PartitionEntry::ClockSync(cs) => {
                     clock_syncs.push(UbvInfoEntry {
                         entry_type: "CS".to_string(),
@@ -445,6 +461,7 @@ fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
         push_group(&mut groups, "JPEG", jpegs);
         push_group(&mut groups, "Skip", skips);
         push_group(&mut groups, "Talkback", talkback);
+        push_group(&mut groups, "Untimed", untimed);
 
         // Build header info
         let total_entries: usize = groups.iter().map(|g| g.count).sum();
@@ -480,7 +497,11 @@ fn ubv_info(path: &str) -> Result<String, Box<dyn std::error::Error>> {
         });
     }
 
-    let tree = UbvInfoTree { partitions };
+    let tree = UbvInfoTree {
+        partitions,
+        inspection_complete: ubv_file.read_status.is_complete(),
+        read_status: ubv_file.read_status,
+    };
     let json = serde_json::to_string(&tree)?;
     Ok(json)
 }
@@ -508,7 +529,7 @@ fn metadata_to_entry(display_type: &str, m: &ubv::partition::MetadataRecord) -> 
 fn produce_diagnostics(path: &str) -> Result<String, Box<dyn std::error::Error>> {
     let ubv_path = std::path::Path::new(path);
     let mut reader = ubv::reader::open_ubv(ubv_path)?;
-    let ubv_file = ubv::reader::parse_ubv(&mut reader)?;
+    let (ubv_file, _) = ubv::reader::parse_ubv_partial(&mut reader)?;
 
     let json = serde_json::to_string(&ubv_file)?;
 
@@ -782,7 +803,10 @@ pub unsafe extern "C" fn remux_process_file(
 ///
 /// A JSON string `{"output_path":"..."}` on success. The caller **must**
 /// free the returned string with `remux_free_string`.
-/// Returns `NULL` on error (check `*error_out`).
+/// Successful writing does not imply complete parsing: the diagnostics JSON
+/// may contain a validated prefix with `read_status.end_reason = "error"`.
+/// Check the saved `read_status` for parsing completeness and failure details.
+/// Returns `NULL` on setup or output errors (check `*error_out`).
 ///
 /// # Safety
 ///
@@ -851,7 +875,10 @@ pub unsafe extern "C" fn remux_produce_diagnostics(
 ///
 /// A JSON string containing the parsed UBV file structure. The caller
 /// **must** free the returned string with `remux_free_string`.
-/// Returns `NULL` on error (check `*error_out`).
+/// Parse failures return partial JSON with `inspection_complete = false` and
+/// failure details in `read_status`; `*error_out` remains `NULL`. Callers must
+/// check `inspection_complete` before treating inspection as complete.
+/// Returns `NULL` on setup or response errors (check `*error_out`).
 ///
 /// # Safety
 ///
@@ -1511,5 +1538,35 @@ mod tests {
         assert!(!is_low_res_filename(
             "AABBCCDDEEFF_0_rotating_1700000000000.ubv"
         ));
+    }
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../../../testdata/support/records.rs"]
+mod hardening_fixtures;
+
+#[cfg(test)]
+mod inspection_tests {
+    use super::*;
+    #[test]
+    fn partial_inspection_keeps_status_and_null_timestamps_for_untimed_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partial.ubv");
+        let mut bytes = Vec::new();
+        hardening_fixtures::partition(&mut bytes);
+        hardening_fixtures::append_record(&mut bytes, 10, true, &[0; 28]);
+        let bad = hardening_fixtures::video(&mut bytes);
+        bytes.truncate(bytes.len() - 2);
+        std::fs::write(&path, bytes).unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&ubv_info(path.to_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(json["inspection_complete"], false);
+        assert_eq!(json["read_status"]["end_reason"], "error");
+        assert_eq!(json["read_status"]["validated_end_offset"], bad);
+        let entry = &json["partitions"][0]["groups"][0]["entries"][0];
+        assert_eq!(entry["type"], "Untimed");
+        assert!(entry.get("dts").is_none());
+        assert!(entry.get("keyframe").is_none());
     }
 }

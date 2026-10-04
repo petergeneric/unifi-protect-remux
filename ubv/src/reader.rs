@@ -7,8 +7,10 @@ use flate2::read::GzDecoder;
 use crate::clock::ClockSync;
 use crate::error::{Result, UbvError};
 use crate::frame::{Frame, RecordHeader};
-use crate::partition::{MetadataRecord, Partition, PartitionEntry, PartitionHeader};
+use crate::partition::{MetadataRecord, Partition, PartitionEntry, PartitionHeader, UntimedRecord};
 use crate::record;
+use crate::status::failure_details;
+pub use crate::status::{EndReason, PaddingExtent, ReadFailure, ReadStatus};
 use crate::track;
 
 /// A reader that transparently handles both plain `.ubv` and gzip-compressed `.ubv.gz` files.
@@ -64,10 +66,10 @@ pub fn open_ubv(path: &Path) -> std::io::Result<UbvReader> {
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 pub struct UbvFile {
     pub partitions: Vec<Partition>,
+    pub read_status: ReadStatus,
 }
 
-/// Snapshot of the most recently parsed record. Used to enrich errors raised
-/// by the *next* `read_record` call.
+/// Last validated envelope, used to contextualise a failed parser step.
 #[derive(Debug, Clone, Copy)]
 struct PrevRecord {
     offset: u64,
@@ -84,61 +86,64 @@ struct PartitionState {
     record_count: usize,
 }
 
-/// Parse a UBV file from a reader, returning all partitions and frames.
-pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
-    let mut partitions = Vec::new();
-    let mut current_partition: Option<Partition> = None;
-    let mut current_clock_sync: Option<ClockSync> = None;
+#[derive(Default)]
+struct PartitionAssembler {
+    partitions: Vec<Partition>,
+    current_partition: Option<Partition>,
+    current_clock_sync: Option<ClockSync>,
+    prev_record: Option<PrevRecord>,
+    partition_state: Option<PartitionState>,
+    total_records: u64,
+}
 
-    // State captured for error decoration. `prev_record` is the last record
-    // we parsed cleanly; comparing `prev.offset + prev.total_size` to the
-    // failure offset reveals mis-sized prior records — the typical root
-    // cause of bad-magic / checksum failures downstream.
-    let mut prev_record: Option<PrevRecord> = None;
-    let mut partition_state: Option<PartitionState> = None;
-    let mut total_records: u64 = 0;
-
-    let wrap = |e: UbvError,
-                prev: Option<PrevRecord>,
-                ps: Option<PartitionState>,
-                total: u64|
-     -> UbvError {
+impl PartitionAssembler {
+    fn context(&self, source: UbvError) -> UbvError {
         UbvError::ParseContext {
-            state: format_parser_state(prev, ps, total),
-            source: Box::new(e),
+            state: format_parser_state(self.prev_record, self.partition_state, self.total_records),
+            source: Box::new(source),
         }
-    };
+    }
 
-    loop {
-        let rec = match record::read_record(reader) {
-            Ok(Some(r)) => r,
-            Ok(None) => break,
-            Err(e) => return Err(wrap(e, prev_record, partition_state, total_records)),
-        };
-
-        prev_record = Some(PrevRecord {
+    fn accept(&mut self, rec: record::RawRecord) -> Result<()> {
+        self.prev_record = Some(PrevRecord {
             offset: rec.file_offset,
             track_id: rec.track_id,
             total_size: rec.total_size,
         });
-        total_records += 1;
+        self.total_records += 1;
         // PartitionHeader records reset this counter below; for every other
         // record, count it against the current partition (if any).
-        if let Some(ps) = partition_state.as_mut() {
+        if let Some(ps) = self.partition_state.as_mut() {
             ps.record_count += 1;
         }
 
+        if rec.dts.is_none() {
+            if let Some(p) = self.current_partition.as_mut() {
+                p.entries.push(PartitionEntry::Untimed(UntimedRecord {
+                    file_offset: rec.file_offset,
+                    track_id: rec.track_id,
+                    format_code: rec.format_code,
+                    sequence: rec.sequence,
+                    data_offset: rec.data_offset,
+                    data_size: rec.data_size,
+                }));
+            }
+            return Ok(());
+        }
+        // The selected timed layout guarantees these fields are present.
+        let dts = rec.dts.expect("timed DTS");
+        let clock_rate = rec.clock_rate.expect("timed clock rate");
         let info = match track::track_info(rec.track_id) {
             Some(i) => i,
-            None => continue, // Unknown track, skip
+            None => return Ok(()), // Unknown track with a validated envelope
         };
 
         let header = RecordHeader {
             track_id: rec.track_id,
             data_offset: rec.data_offset,
             data_size: rec.data_size,
-            dts: rec.dts,
-            clock_rate: rec.clock_rate,
+            dts,
+            clock_rate,
             sequence: rec.sequence,
             keyframe: rec.format_code.keyframe(),
         };
@@ -146,24 +151,24 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
         match info.track_type {
             track::TrackType::PartitionHeader => {
                 // Start a new partition
-                let idx = partitions.len();
-                if let Some(p) = current_partition.take() {
-                    partitions.push(p);
+                if let Some(p) = self.current_partition.take() {
+                    self.partitions.push(p);
                 }
+                let idx = self.partitions.len();
                 let ph = rec.payload.as_ref().map(|payload| PartitionHeader {
                     file_offset: rec.file_offset,
-                    dts: rec.dts,
-                    clock_rate: rec.clock_rate,
+                    dts,
+                    clock_rate,
                     format_code: rec.format_code,
                     payload: payload.clone(),
                 });
-                current_partition = Some(Partition {
+                self.current_partition = Some(Partition {
                     index: idx,
                     entries: Vec::new(),
                     header: ph,
                 });
-                current_clock_sync = None;
-                partition_state = Some(PartitionState {
+                self.current_clock_sync = None;
+                self.partition_state = Some(PartitionState {
                     index: idx,
                     record_count: 1, // the header is the partition's first record
                 });
@@ -173,16 +178,23 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
                 // Parse clock sync from payload
                 if let Some(payload) = &rec.payload {
                     let cs = ClockSync::from_record(
-                        rec.dts,
-                        rec.clock_rate,
+                        dts,
+                        clock_rate,
                         rec.file_offset,
                         rec.track_id,
                         payload,
                     )
-                    .map_err(|e| wrap(e, prev_record, partition_state, total_records))?;
-                    current_clock_sync = Some(cs);
+                    .map_err(|e| {
+                        self.context(UbvError::RecordContext {
+                            offset: rec.file_offset,
+                            track_id: rec.track_id,
+                            format: rec.format_code.0,
+                            source: Box::new(e),
+                        })
+                    })?;
+                    self.current_clock_sync = Some(cs);
 
-                    if let Some(p) = current_partition.as_mut() {
+                    if let Some(p) = self.current_partition.as_mut() {
                         p.entries.push(PartitionEntry::ClockSync(cs));
                     }
                 }
@@ -192,8 +204,8 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
                 let type_char = info.type_char.unwrap_or('?');
 
                 // Compute wall-clock if we have a clock sync
-                let wc = match &current_clock_sync {
-                    Some(cs) => cs.compute_wall_clock(rec.dts, rec.clock_rate),
+                let wc = match &self.current_clock_sync {
+                    Some(cs) => cs.compute_wall_clock(dts, clock_rate),
                     None => 0,
                 };
 
@@ -205,7 +217,7 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
                     packet_position: rec.format_code.packet_position(),
                 };
 
-                if let Some(p) = current_partition.as_mut() {
+                if let Some(p) = self.current_partition.as_mut() {
                     p.entries.push(PartitionEntry::Frame(frame));
                 }
             }
@@ -229,7 +241,7 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
                     _ => unreachable!(),
                 };
 
-                if let Some(p) = current_partition.as_mut() {
+                if let Some(p) = self.current_partition.as_mut() {
                     p.entries.push(entry);
                 }
             }
@@ -238,21 +250,85 @@ pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
                 // Reserved or other non-media tracks — skip
             }
         }
+
+        Ok(())
     }
 
-    // Push the last partition
-    if let Some(p) = current_partition {
-        partitions.push(p);
+    fn finish(mut self) -> Vec<Partition> {
+        if let Some(p) = self.current_partition.take() {
+            self.partitions.push(p);
+        }
+        self.partitions
     }
-
-    Ok(UbvFile { partitions })
 }
 
-/// Render the parser's state at the moment a parse step failed, for
-/// inclusion in `UbvError::ParseContext`. The previous-record summary is the
-/// most useful diagnostic clue: the next record should start at
-/// `prev.offset + prev.total_size`, so a mismatch with the failure offset
-/// indicates a mis-sized prior record.
+/// Parse the full stream strictly. Incomplete input is always an error.
+pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
+    let (file, error) = parse_ubv_partial(reader)?;
+    match error {
+        Some(error) => Err(error),
+        None => Ok(file),
+    }
+}
+
+/// Inspect the full stream, retaining accepted records and status on failure.
+/// Setup failures (e.g. inability to measure the stream) return `Err` directly.
+/// Callers must use a stable snapshot; observable length changes are errors.
+pub fn parse_ubv_partial<R: Read + Seek>(reader: &mut R) -> Result<(UbvFile, Option<UbvError>)> {
+    reader
+        .seek(SeekFrom::Start(0))
+        .map_err(|source| UbvError::Io {
+            context: "seeking to input start",
+            source,
+        })?;
+    let mut records = record::RecordReader::new(reader)?;
+    let mut read_status = ReadStatus {
+        end_reason: EndReason::Error,
+        validated_end_offset: 0,
+        file_size: records.file_size(),
+        padding: None,
+        failure: None,
+    };
+    let mut assembler = PartitionAssembler::default();
+
+    let error = loop {
+        let rec = match records.read_next() {
+            Ok(record::ReadOutcome::Record(r)) => r,
+            Ok(record::ReadOutcome::End(end)) => {
+                match end {
+                    record::RecordEnd::Eof => read_status.end_reason = EndReason::Eof,
+                    record::RecordEnd::ZeroPadding { start, length } => {
+                        read_status.end_reason = EndReason::ZeroPadding;
+                        read_status.padding = Some(PaddingExtent { start, length });
+                    }
+                }
+                break None;
+            }
+            Err(e) => break Some(assembler.context(e)),
+        };
+        let accepted_end = rec.file_offset + rec.total_size;
+        let processed = assembler.accept(rec);
+        if let Err(e) = processed {
+            break Some(e);
+        }
+        read_status.validated_end_offset = accepted_end;
+    };
+
+    let partitions = assembler.finish();
+
+    if let Some(e) = &error {
+        read_status.failure = Some(failure_details(e, read_status.validated_end_offset));
+    }
+    Ok((
+        UbvFile {
+            partitions,
+            read_status,
+        },
+        error,
+    ))
+}
+
+/// The previous record's extent identifies the expected next boundary.
 fn format_parser_state(
     prev_record: Option<PrevRecord>,
     partition_state: Option<PartitionState>,
@@ -356,6 +432,9 @@ mod tests {
 
         let UbvError::ParseContext { state, source } = err else {
             panic!("expected ParseContext, got {err:?}");
+        };
+        let UbvError::RecordContext { source, .. } = *source else {
+            panic!("expected record context");
         };
         assert!(matches!(*source, UbvError::ShortPayload { .. }));
         assert!(

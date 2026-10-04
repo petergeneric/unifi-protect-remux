@@ -41,7 +41,7 @@ pub enum UbvError {
     #[error("back-size mismatch at offset 0x{offset:X}: expected {expected}, got {got}")]
     BackSizeMismatch {
         offset: u64,
-        expected: u32,
+        expected: u64,
         got: u32,
     },
 
@@ -55,10 +55,32 @@ pub enum UbvError {
         got: usize,
     },
 
+    #[error("unsupported record layout at offset 0x{offset:X}: format 0x{format:04X}")]
+    UnsupportedLayout { offset: u64, format: u16 },
+
+    #[error("invalid clock rate at record offset 0x{offset:X}: expected a nonzero rate, got {got}")]
+    InvalidClockRate { offset: u64, got: u32 },
+
+    #[error("record extent overflow at offset 0x{offset:X}")]
+    ExtentOverflow { offset: u64 },
+
+    #[error("nonzero byte at offset 0x{offset:X} after padding started at 0x{padding_start:X}")]
+    NonzeroPadding { offset: u64, padding_start: u64 },
+
+    #[error("input length changed during parsing: expected {expected}, got {got}")]
+    InputChanged { expected: u64, got: u64 },
+
+    #[error("{source}; record at 0x{offset:X}, track 0x{track_id:04X}, format 0x{format:04X}")]
+    RecordContext {
+        offset: u64,
+        track_id: u16,
+        format: u16,
+        #[source]
+        source: Box<UbvError>,
+    },
+
     /// Wraps another error with parser state captured at the point of failure.
-    /// Built by `reader::parse_ubv` when a `read_record` call fails — the prior
-    /// record's offset/track/size lets the user spot mis-aligned reads (the most
-    /// common cause of bad-magic / checksum errors in malformed files).
+    /// The prior record's offset/track/size lets the user spot misaligned reads
     #[error("{source}; parser state: {state}")]
     ParseContext {
         state: String,
