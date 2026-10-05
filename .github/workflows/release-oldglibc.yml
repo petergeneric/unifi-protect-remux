@@ -19,6 +19,16 @@ jobs:
     container: debian:bullseye
 
     steps:
+      - name: Use archived Bullseye repositories
+        run: |
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$source" ] || continue
+            sed -i 's|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive.debian.org|g' "$source"
+          done
+          # Archived metadata no longer receives validity-date updates.
+          # Package signatures and checksums are still verified.
+          echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
+
       - name: Install system deps
         run: |
           apt-get update
@@ -33,6 +43,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
