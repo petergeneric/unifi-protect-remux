@@ -198,6 +198,9 @@ where
         .map_err(|e| format!("Error opening UBV file: {}", e))?;
     let ubv_file = ubv::reader::parse_ubv(&mut reader)
         .map_err(|e| format!("Error parsing UBV file: {}", e))?;
+    for warning in &ubv_file.read_status.warnings {
+        progress(ProgressEvent::Log(LogLevel::Warn, warning.message.clone()));
+    }
 
     // Warn if any frame uses chunked packets (not yet supported)
     let has_chunked = ubv_file.partitions.iter().any(|p| {

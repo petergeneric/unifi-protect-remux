@@ -1550,6 +1550,31 @@ mod hardening_fixtures;
 mod inspection_tests {
     use super::*;
     #[test]
+    fn recovered_inspection_retains_warning_and_validated_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("recovered.ubv");
+        let (bytes, start) = hardening_fixtures::stale_trailing_skip();
+        std::fs::write(&path, bytes).unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&ubv_info(path.to_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(json["inspection_complete"], false);
+        assert_eq!(json["read_status"]["end_reason"], "recovered_skip");
+        assert_eq!(json["read_status"]["validated_end_offset"], start);
+        assert!(json["read_status"]["failure"].is_null());
+        assert!(
+            json["read_status"]["warnings"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("trailing Skip")
+        );
+        assert!(
+            !json["partitions"][0]["groups"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+    #[test]
     fn partial_inspection_keeps_status_and_null_timestamps_for_untimed_records() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("partial.ubv");

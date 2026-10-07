@@ -89,6 +89,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("{}: error opening file: {}", file, e))?;
     let (ubv, parse_error) = ubv::reader::parse_ubv_partial(&mut reader)
         .map_err(|e| format!("{}: error parsing UBV: {}", file, e))?;
+    for warning in &ubv.read_status.warnings {
+        eprintln!("{file}: warning: {}", warning.message);
+    }
 
     if args.json {
         println!("{}", serde_json::to_string(&ubv)?);
@@ -127,7 +130,11 @@ fn inspection_result(
     status: &ubv::reader::ReadStatus,
     error: Option<ubv::error::UbvError>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if status.is_complete() {
+    if status.is_complete()
+        || (status.end_reason == ubv::reader::EndReason::RecoveredSkip
+            && status.failure.is_none()
+            && error.is_none())
+    {
         return Ok(());
     }
     Err(format!(
@@ -408,10 +415,7 @@ fn build_sections(
         if is_video {
             if let Some(prev) = sec.video_last_ms {
                 let delta = wc_ms.saturating_sub(prev);
-                if expected_delta_ms > 0
-                    && delta > disc_floor_ms
-                    && delta <= max_discontinuity_ms
-                {
+                if expected_delta_ms > 0 && delta > disc_floor_ms && delta <= max_discontinuity_ms {
                     sec.discontinuity_ms += delta - expected_delta_ms;
                 }
             }
@@ -478,8 +482,7 @@ fn format_timecode(dt: Option<DateTime<Utc>>, fps: Option<u32>) -> String {
     match fps.filter(|&f| f > 0) {
         Some(fps) => {
             let nanos = dt.timestamp_subsec_nanos() as u64;
-            let frame =
-                ((nanos * fps as u64 + 500_000_000) / 1_000_000_000 + 1).min(fps as u64);
+            let frame = ((nanos * fps as u64 + 500_000_000) / 1_000_000_000 + 1).min(fps as u64);
             format!("{}:{:02}@{}", dt.format("%Y-%m-%d %H:%M:%S"), frame, fps)
         }
         None => format!("{}", dt.format("%Y-%m-%d %H:%M:%S")),
@@ -517,14 +520,8 @@ mod tests {
     #[test]
     fn timecode_omits_timebase_when_unknown() {
         let dt = Utc.with_ymd_and_hms(2026, 5, 26, 14, 30, 45).unwrap();
-        assert_eq!(
-            format_timecode(Some(dt), None),
-            "2026-05-26 14:30:45"
-        );
-        assert_eq!(
-            format_timecode(Some(dt), Some(0)),
-            "2026-05-26 14:30:45"
-        );
+        assert_eq!(format_timecode(Some(dt), None), "2026-05-26 14:30:45");
+        assert_eq!(format_timecode(Some(dt), Some(0)), "2026-05-26 14:30:45");
     }
 
     #[test]
@@ -660,5 +657,4 @@ mod tests {
         assert_eq!(secs[0].video_first_ms, Some(0));
         assert_eq!(secs[0].video_last_ms, Some(200));
     }
-
 }

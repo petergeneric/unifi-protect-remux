@@ -487,6 +487,8 @@ public partial class MainViewModel : ViewModelBase
             }
             if (inspectionError != null)
                 LogLines.Add(new LogEntry("error", inspectionError, fileIndex));
+            foreach (var warning in UbvInfoParser.InspectionWarnings(json))
+                LogLines.Add(new LogEntry("warn", warning, fileIndex));
 
             OpenUbvInfoRequested?.Invoke(path, fileName, json);
         }

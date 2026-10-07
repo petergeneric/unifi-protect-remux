@@ -39,6 +39,16 @@ pub fn incomplete_video() -> (Vec<u8>, usize) {
     (bytes, start)
 }
 
+pub fn stale_trailing_skip() -> (Vec<u8>, usize) {
+    let mut bytes = Vec::new();
+    partition(&mut bytes);
+    video(&mut bytes);
+    let start = append_record(&mut bytes, 6, true, &[0; 131072]);
+    let end = bytes.len();
+    bytes[end - 4..].copy_from_slice(&4096u32.to_be_bytes());
+    (bytes, start)
+}
+
 pub fn clock_sync(bytes: &mut Vec<u8>, rate: u32) -> usize {
     let start = bytes.len();
     bytes.extend_from_slice(&[0xA0, 0xDA, 0x7E, 0x04, 0xF9, 0x01, 0, 0]);

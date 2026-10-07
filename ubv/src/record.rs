@@ -56,7 +56,16 @@ fn io_at_offset(offset: u64, context: &'static str) -> impl FnOnce(std::io::Erro
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordEnd {
     Eof,
-    ZeroPadding { start: u64, length: u64 },
+    ZeroPadding {
+        start: u64,
+        length: u64,
+    },
+    /// A zero-filled final Skip whose header and trailer disagree.
+    RecoveredSkip {
+        start: u64,
+        expected: u64,
+        got: u32,
+    },
 }
 
 #[derive(Debug)]
@@ -180,19 +189,59 @@ impl<'a, R: Read + Seek> RecordReader<'a, R> {
             });
         }
         let format_code = FormatCode::new(header[4], header[5]);
-        self.read_envelope(
+        let result = self.read_envelope(
             offset,
             track_id,
             format_code,
             u16::from_be_bytes([header[6], header[7]]),
-        )
-        .map(ReadOutcome::Record)
-        .map_err(|source| UbvError::RecordContext {
+        );
+        let context = |source| UbvError::RecordContext {
             offset,
             track_id,
             format: format_code.0,
             source: Box::new(source),
-        })
+        };
+        if let Err(UbvError::BackSizeMismatch { expected, got, .. }) = &result {
+            // Protect rewrites the final ring-space filler while recording.
+            // A copied snapshot can contain a newer header and older trailer.
+            // Only recover this specific EOF shape after checking every byte
+            // of the payload; never trust a size that could swallow media.
+            if track_id == crate::track::TRACK_SKIP
+                && format_code.0 == 0xF100
+                && offset + expected + 4 == self.file_size
+                && *got >= 12
+                && u64::from(*got) < *expected
+                && got.is_multiple_of(4)
+                && self.zero_skip_payload(offset, *expected).map_err(context)?
+            {
+                return self.finish(RecordEnd::RecoveredSkip {
+                    start: offset,
+                    expected: *expected,
+                    got: *got,
+                });
+            }
+        }
+        result.map(ReadOutcome::Record).map_err(context)
+    }
+
+    fn zero_skip_payload(&mut self, offset: u64, expected: u64) -> Result<bool> {
+        let mut position = offset + 12;
+        let end = offset + expected;
+        self.reader
+            .seek(SeekFrom::Start(position))
+            .map_err(io_at_offset(offset, "seeking to trailing Skip payload"))?;
+        let mut buf = [0u8; 65536];
+        while position < end {
+            let n = (end - position).min(buf.len() as u64) as usize;
+            self.reader
+                .read_exact(&mut buf[..n])
+                .map_err(io_at_offset(offset, "checking trailing Skip payload"))?;
+            if buf[..n].iter().any(|&byte| byte != 0) {
+                return Ok(false);
+            }
+            position += n as u64;
+        }
+        Ok(true)
     }
 
     fn read_envelope(
@@ -325,10 +374,20 @@ impl<'a, R: Read + Seek> RecordReader<'a, R> {
 }
 
 /// Compatibility API: only verified EOF or trailing padding becomes `None`.
+/// A recovered Skip is an error here because this API cannot return warnings.
 /// Repeated callers should use `RecordReader` to capture the length once.
 pub fn read_record<R: Read + Seek>(reader: &mut R) -> Result<Option<RawRecord>> {
     match RecordReader::new(reader)?.read_next()? {
         ReadOutcome::Record(record) => Ok(Some(record)),
+        ReadOutcome::End(RecordEnd::RecoveredSkip {
+            start,
+            expected,
+            got,
+        }) => Err(UbvError::BackSizeMismatch {
+            offset: start,
+            expected,
+            got,
+        }),
         ReadOutcome::End(_) => Ok(None),
     }
 }

@@ -74,6 +74,55 @@ fn zero_trailers_and_bad_eof_skip_trailers_are_errors() {
 }
 
 #[test]
+fn stale_zero_filled_final_skip_recovers_media_with_a_warning() {
+    let (bytes, start) = stale_trailing_skip();
+    let (file, error) = parse_ubv_partial(&mut Cursor::new(&bytes)).unwrap();
+    assert!(error.is_none());
+    assert!(parse_ubv(&mut Cursor::new(&bytes)).is_ok());
+    assert!(!file.read_status.is_complete());
+    assert_eq!(file.read_status.end_reason, EndReason::RecoveredSkip);
+    assert_eq!(file.read_status.validated_end_offset, start as u64);
+    assert_eq!(file.read_status.file_size, bytes.len() as u64);
+    assert!(file.read_status.failure.is_none());
+    assert_eq!(file.partitions[0].entries.len(), 1);
+    let warnings = file.read_status.warnings;
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].offset, start as u64);
+    assert_eq!(warnings[0].track_id, Some(6));
+    assert_eq!(warnings[0].expected_back_size, Some(131084));
+    assert_eq!(warnings[0].observed_back_size, Some(4096));
+    let mut cursor = Cursor::new(&bytes);
+    cursor.seek(SeekFrom::Start(start as u64)).unwrap();
+    assert!(read_record(&mut cursor).is_err()); // no warning channel
+}
+
+#[test]
+fn skip_recovery_does_not_hide_nonzero_payloads_or_later_records() {
+    for position in [12, 12 + 65536, 12 + 131071] {
+        let (mut bytes, start) = stale_trailing_skip();
+        bytes[start + position] = 1;
+        assert_incomplete(&bytes, start, "back-size mismatch");
+    }
+    let (mut bytes, start) = stale_trailing_skip();
+    video(&mut bytes);
+    assert_incomplete(&bytes, start, "back-size mismatch");
+}
+
+#[test]
+fn skip_recovery_requires_a_plausible_stale_trailer_and_skip_track() {
+    for trailer in [0, 8, 13, 131088, u32::MAX] {
+        let (mut bytes, start) = stale_trailing_skip();
+        let end = bytes.len();
+        bytes[end - 4..].copy_from_slice(&trailer.to_be_bytes());
+        assert_incomplete(&bytes, start, "back-size mismatch");
+    }
+    let (mut bytes, start) = stale_trailing_skip();
+    bytes[start + 2] = 10;
+    bytes[start + 3] = 0xA0 ^ 10;
+    assert_incomplete(&bytes, start, "back-size mismatch");
+}
+
+#[test]
 fn truncation_is_not_eof_in_either_record_api() {
     let mut bytes = Vec::new();
     partition(&mut bytes);
@@ -157,13 +206,17 @@ fn length_change_prevents_a_completeness_claim() {
     }
     let mut bytes = Vec::new();
     partition(&mut bytes);
-    let mut reader = Growing {
-        cursor: Cursor::new(bytes),
-        measurements: 0,
-    };
-    let (file, error) = parse_ubv_partial(&mut reader).unwrap();
-    assert!(!file.read_status.is_complete());
-    assert!(error.unwrap().to_string().contains("input length changed"));
+    for bytes in [bytes, stale_trailing_skip().0] {
+        let mut reader = Growing {
+            cursor: Cursor::new(bytes),
+            measurements: 0,
+        };
+        let (file, error) = parse_ubv_partial(&mut reader).unwrap();
+        assert!(!file.read_status.is_complete());
+        assert_eq!(file.read_status.end_reason, EndReason::Error);
+        assert!(file.read_status.warnings.is_empty());
+        assert!(error.unwrap().to_string().contains("input length changed"));
+    }
 }
 
 #[test]

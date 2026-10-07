@@ -59,6 +59,12 @@ public static class UbvInfoParser
             return null;
         if (root.TryGetProperty("read_status", out var status))
         {
+            if (status.TryGetProperty("end_reason", out var reason)
+                && reason.GetString() == "recovered_skip"
+                && status.TryGetProperty("failure", out var recoveredFailure)
+                && recoveredFailure.ValueKind == JsonValueKind.Null
+                && ReadWarnings(status).Count > 0)
+                return null;
             var validated = status.GetProperty("validated_end_offset").GetUInt64();
             var size = status.GetProperty("file_size").GetUInt64();
             var message = status.TryGetProperty("failure", out var failure) && failure.ValueKind == JsonValueKind.Object
@@ -67,6 +73,30 @@ public static class UbvInfoParser
             return $"Incomplete inspection (validated {validated} of {size} bytes): {message}";
         }
         return "Inspection completeness is unavailable";
+    }
+
+    public static List<string> InspectionWarnings(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("read_status", out var status)
+            ? ReadWarnings(status)
+            : new List<string>();
+    }
+
+    private static List<string> ReadWarnings(JsonElement status)
+    {
+        var messages = new List<string>();
+        if (status.TryGetProperty("warnings", out var warnings)
+            && warnings.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var warning in warnings.EnumerateArray())
+            {
+                if (warning.TryGetProperty("message", out var message)
+                    && message.GetString() is { Length: > 0 } text)
+                    messages.Add(text);
+            }
+        }
+        return messages;
     }
 
     public static List<UbvInfoTreeNode> Parse(string json)

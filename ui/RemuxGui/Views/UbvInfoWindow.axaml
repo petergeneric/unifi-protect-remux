@@ -38,8 +38,12 @@
     </Window.Styles>
 
     <Grid ColumnDefinitions="260,Auto,*" RowDefinitions="Auto,*">
-        <TextBlock x:Name="InspectionError" Grid.Row="0" Grid.ColumnSpan="3" IsVisible="False"
-                   TextWrapping="Wrap" Foreground="Red" Margin="12,8" />
+        <StackPanel Grid.Row="0" Grid.ColumnSpan="3">
+            <TextBlock x:Name="InspectionError" IsVisible="False"
+                       TextWrapping="Wrap" Foreground="Red" Margin="12,8" />
+            <TextBlock x:Name="InspectionWarning" IsVisible="False"
+                       TextWrapping="Wrap" Foreground="#DCB432" Margin="12,8" />
+        </StackPanel>
         <!-- Left pane: tree view -->
         <Border Grid.Row="1" Grid.Column="0" Padding="8"
                 BorderThickness="0,0,1,0"

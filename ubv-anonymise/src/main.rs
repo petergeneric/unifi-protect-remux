@@ -141,7 +141,21 @@ fn anonymise_staged_file(
     let mut bytes_zeroed: u64 = 0;
     let mut record_count: u64 = 0;
 
-    while let record::ReadOutcome::Record(rec) = records.read_next()? {
+    loop {
+        let rec = match records.read_next()? {
+            record::ReadOutcome::Record(rec) => rec,
+            record::ReadOutcome::End(record::RecordEnd::RecoveredSkip {
+                start,
+                expected,
+                got,
+            }) => {
+                log::warn!(
+                    "Preserving zero-filled trailing Skip at 0x{start:X} with inconsistent back-size (expected {expected}, got {got}); input may have been copied during recording"
+                );
+                break;
+            }
+            record::ReadOutcome::End(_) => break,
+        };
         record_count += 1;
 
         let should_zero = match track::track_info(rec.track_id) {

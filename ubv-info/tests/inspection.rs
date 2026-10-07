@@ -3,6 +3,29 @@ use std::process::Command;
 #[path = "../../testdata/support/records.rs"]
 mod fixtures;
 
+#[test]
+fn recovered_skip_warns_and_json_command_succeeds() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("copied-during-recording.ubv");
+    let (bytes, start) = fixtures::stale_trailing_skip();
+    std::fs::write(&path, bytes).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ubv-info"))
+        .arg("--json")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["read_status"]["end_reason"], "recovered_skip");
+    assert_eq!(json["read_status"]["validated_end_offset"], start);
+    assert_eq!(json["read_status"]["warnings"].as_array().unwrap().len(), 1);
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("warning:")
+    );
+}
+
 // The checked-in schema can retain concise descriptions independently of Rust docs.
 fn remove_descriptions(value: &mut serde_json::Value) {
     match value {

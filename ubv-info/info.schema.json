@@ -68,6 +68,7 @@
       "enum": [
         "eof",
         "zero_padding",
+        "recovered_skip",
         "error"
       ]
     },
@@ -526,6 +527,13 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
+        },
+        "warnings": {
+          "description": "Recoverable anomalies. These do not invalidate preceding media records.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReadFailure"
+          }
         }
       }
     },

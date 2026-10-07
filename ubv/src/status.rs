@@ -1,13 +1,16 @@
 use crate::error::UbvError;
 
 /// Complete means that all input bytes are validated envelopes or verified
-/// trailing padding. An error status always describes only an inspected prefix.
+/// trailing padding. Error and recovered-Skip statuses retain the validated
+/// prefix boundary; a recovered Skip allows processing with warnings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(feature = "jsonschema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EndReason {
     Eof,
     ZeroPadding,
+    // Ignored a verified zero-filled final Skip with an inconsistent trailer.
+    RecoveredSkip,
     Error,
 }
 
@@ -41,6 +44,9 @@ pub struct ReadStatus {
     pub file_size: u64,
     pub padding: Option<PaddingExtent>,
     pub failure: Option<ReadFailure>,
+    /// Recoverable anomalies. These do not invalidate preceding media records.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<ReadFailure>,
 }
 
 impl ReadStatus {
@@ -54,7 +60,7 @@ impl ReadStatus {
                     p.start == self.validated_end_offset
                         && p.start.checked_add(p.length) == Some(self.file_size)
                 }),
-                EndReason::Error => false,
+                EndReason::Error | EndReason::RecoveredSkip => false,
             }
     }
 }

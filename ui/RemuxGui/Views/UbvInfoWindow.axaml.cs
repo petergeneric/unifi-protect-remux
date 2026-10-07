@@ -45,6 +45,11 @@ public partial class UbvInfoWindow : Window
         var inspectionError = UbvInfoParser.InspectionError(json);
         window.InspectionError.Text = inspectionError;
         window.InspectionError.IsVisible = inspectionError != null;
+        var warnings = UbvInfoParser.InspectionWarnings(json);
+        window.InspectionWarning.Text = warnings.Count > 0
+            ? "Warning: " + string.Join(Environment.NewLine, warnings)
+            : null;
+        window.InspectionWarning.IsVisible = warnings.Count > 0;
         var roots = UbvInfoParser.Parse(json);
         window.InfoTree.ItemsSource = roots;
 

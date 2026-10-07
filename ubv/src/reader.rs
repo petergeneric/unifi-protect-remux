@@ -262,7 +262,8 @@ impl PartitionAssembler {
     }
 }
 
-/// Parse the full stream strictly. Incomplete input is always an error.
+/// Parse the stream, allowing a verified zero-filled final Skip with a stale
+/// trailer. Callers must surface `read_status.warnings`. Other errors are fatal.
 pub fn parse_ubv<R: Read + Seek>(reader: &mut R) -> Result<UbvFile> {
     let (file, error) = parse_ubv_partial(reader)?;
     match error {
@@ -288,6 +289,7 @@ pub fn parse_ubv_partial<R: Read + Seek>(reader: &mut R) -> Result<(UbvFile, Opt
         file_size: records.file_size(),
         padding: None,
         failure: None,
+        warnings: Vec::new(),
     };
     let mut assembler = PartitionAssembler::default();
 
@@ -300,6 +302,23 @@ pub fn parse_ubv_partial<R: Read + Seek>(reader: &mut R) -> Result<(UbvFile, Opt
                     record::RecordEnd::ZeroPadding { start, length } => {
                         read_status.end_reason = EndReason::ZeroPadding;
                         read_status.padding = Some(PaddingExtent { start, length });
+                    }
+                    record::RecordEnd::RecoveredSkip {
+                        start,
+                        expected,
+                        got,
+                    } => {
+                        read_status.end_reason = EndReason::RecoveredSkip;
+                        read_status.warnings.push(ReadFailure {
+                            offset: start,
+                            track_id: Some(track::TRACK_SKIP),
+                            format_code: Some(0xF100),
+                            expected_back_size: Some(expected),
+                            observed_back_size: Some(got),
+                            message: format!(
+                                "Ignoring zero-filled trailing Skip at 0x{start:X}: back-size mismatch (expected {expected}, got {got}); input may have been copied while Protect was writing it. Continuing with validated records."
+                            ),
+                        });
                     }
                 }
                 break None;
